@@ -10,19 +10,23 @@
 
 **Escuela Profesional de Ingeniería de Sistemas**
 
-**Proyecto *{Nombre de Proyecto}***
+**Proyecto Red Social UPT***
 
-Curso: *{Nombre de Asignatura}*
+Curso: *Patrones de Software*
 
-Docente: *{Nombre de Docente}*
+Docente: *Mag. Ing. Patricio Cuadros Quiroga*
 
 Integrantes:
 
-***{Apellidos y nombres del estudiante (código universitario)}***
+***Cutipa Gutierrez, Ricardo (2021069827)***
+
+***Malaga Espinoza, Ivan (2021071086)***
+
+***Chino Rivera, Angel (2021069830)***
 
 **Tacna – Perú**
 
-***{Año}***
+***2026***
 
 **  
 **
@@ -38,7 +42,7 @@ Versión *{1.0}*
 |CONTROL DE VERSIONES||||||
 | :-: | :- | :- | :- | :- | :- |
 |Versión|Hecha por|Revisada por|Aprobada por|Fecha|Motivo|
-|1\.0|MPV|ELV|ARV|10/10/2020|Versión Original|
+|1\.0|RCG|IME|ACR|06/04/2026|Versión Original|
 
 <div style="page-break-after: always; visibility: hidden">\pagebreak</div>
 
@@ -76,24 +80,68 @@ Versión *{1.0}*
 1. <span id="_Toc52661346" class="anchor"></span>**Descripción del Proyecto**
 
     1.1. Nombre del proyecto
+   Red Social UPT – Plataforma Social Universitaria basada en Microservicios
 
     1.2. Duración del proyecto
+   El proyecto tendrá una duración estimada de 4 meses (16 semanas), correspondiente al semestre académico 2026-I, desde abril hasta julio de 2026.
 
     1.3. Descripción
 
-        En que consiste el proyecto/importancia del mismo, contexto en que se va desenvolver
+   La Red Social UPT es una plataforma digital desarrollada para la comunidad estudiantil de la Universidad Privada de Tacna, que permitirá la comunicación e      interacción académica y social dentro de un entorno institucional seguro.
+
+   El proyecto consiste en el desarrollo de una red social web basada en arquitectura de microservicios, que permitirá a los estudiantes registrarse con su        cuenta institucional @virtual.upt.pe, publicar contenido, crear historias, interactuar con otros estudiantes y organizarse por facultad y carrera.
+
+   La importancia del proyecto radica en que actualmente los estudiantes utilizan redes sociales externas como Facebook o WhatsApp para coordinar actividades      académicas, lo que genera problemas de privacidad, falta de control institucional y dispersión de la información.
+
+   El sistema se desenvolverá en un entorno universitario digital, utilizando tecnologías modernas como:
+    
+    - PHP/Lumen
+    - MySQL
+    - Docker
+    - Terraform
+    - GitHub Actions
+    - SonarQube
+    - VPS Debian
+
+  El objetivo principal es ofrecer una plataforma segura, escalable y centralizada que mejore la comunicación universitaria.
 
     1.4. Objetivos
 
         1.4.1 Objetivo general
+        Desarrollar una plataforma web de red social universitaria basada en arquitectura de microservicios que permita a los estudiantes de la Universidad             Privada de Tacna interactuar, compartir contenido y comunicarse de forma segura mediante cuentas institucionales.
+        
         1.4.2 Objetivos Específicos
-            Para cada objetivo específico se indicara que se va a lograr
+        OE1: Diseñar la arquitectura de microservicios del sistema
+        Se logrará definir la estructura del sistema, los microservicios de autenticación, publicaciones y perfiles, y su comunicación mediante API REST.
+        
+        OE2: Implementar el sistema de autenticación institucional
+        Se logrará permitir el registro e inicio de sesión mediante cuentas @virtual.upt.pe utilizando JWT.
+        
+        OE3: Desarrollar el módulo de publicaciones e historias
+        Se logrará permitir a los usuarios publicar contenido, historias efímeras e imágenes en el feed.
+        
+        OE4: Implementar el módulo de perfiles e interacciones sociales
+        Se logrará permitir la gestión de perfiles, likes, comentarios y segmentación por facultad y carrera.
+        
+        OE5: Desplegar el sistema en un VPS con Docker y Terraform
+        Se logrará que el sistema funcione en la nube con infraestructura automatizada.
+        
+        OE6: Implementar control de calidad y seguridad del código
+        Se logrará integrar SonarQube, Snyk o Semgrep y GitHub Actions para garantizar la calidad del software.
 
 <div style="page-break-after: always; visibility: hidden">\pagebreak</div>
 
 2. <span id="_Toc52661347" class="anchor"></span>**Riesgos**
 
-    Señale los riesgos que pudieran afectar el éxito del proyecto.}*
+    Los principales riesgos que podrían afectar el éxito del proyecto son:
+
+        Riesgo	Descripción	Impacto	Mitigación
+        Falta de tiempo	Retraso en el desarrollo por carga académica	Alto	Planificación semanal
+        Fallas en VPS	Problemas en el servidor	Medio	Backup y pruebas locales
+        Problemas en microservicios	Errores en la integración	Alto	Pruebas continuas
+        Fallas de seguridad	Vulnerabilidades en PHP	Alto	SonarQube y Snyk
+        Problemas en Docker	Configuración incorrecta	Medio	Documentación y pruebas
+        Falta de coordinación	Desorganización del equipo	Alto	Reuniones semanales
 
 <div style="page-break-after: always; visibility: hidden">\pagebreak</div>
 
