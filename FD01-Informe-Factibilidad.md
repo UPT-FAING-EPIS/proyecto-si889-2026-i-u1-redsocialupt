@@ -33,7 +33,7 @@ Integrantes:
 </center>
 <div style="page-break-after: always; visibility: hidden">\pagebreak</div>
 
-Sistema *{Nombre del Sistema}*
+Sistema *Red Social UPT – Plataforma Social Universitaria basada en Microservicios*
 
 Informe de Factibilidad
 
@@ -316,7 +316,7 @@ Versión *{1.0}*
 
             La relación beneficio/costo permite evaluar si los beneficios del proyecto superan a los costos de inversión.
             Cuando el resultado es mayor a 1, el proyecto es rentable y puede ser aceptado.
-![B/C](./media/PASOFT_IMAGE03.png)
+   ![B/C](./media/PASOFT_IMAGE03.png)
             B/C = 1.72
             
             Esto indica que el proyecto es rentable, ya que los beneficios son mayores que los costos.
@@ -325,7 +325,7 @@ Versión *{1.0}*
             
             El Valor Actual Neto representa el valor actual de los beneficios que generará el proyecto a lo largo del tiempo.
             Si el VAN es mayor a cero, el proyecto es viable económicamente.
-![VAN](./media/PASOFT_IMAGE01.png)
+   ![VAN](./media/PASOFT_IMAGE01.png)
             VAN = S/ 4,081.11
             i = 13%
             
@@ -335,7 +335,7 @@ Versión *{1.0}*
 
             La Tasa Interna de Retorno indica la rentabilidad del proyecto en porcentaje anual.
             Si la TIR es mayor que el costo de oportunidad (COK), el proyecto se acepta.
-![TIR](./media/PASOFT_IMAGE02.png)
+   ![TIR](./media/PASOFT_IMAGE02.png)
             TIR = 43%
             
             Esto indica que el proyecto tiene una alta rentabilidad, superando el costo de oportunidad del 13%, por lo que es viable.
