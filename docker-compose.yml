@@ -99,6 +99,40 @@ services:
       auth-service:
         condition: service_started
 
+  # --- Chat ---
+  chat-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: chat_db
+    ports:
+      - "3309:3306"
+    volumes:
+      - chat_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  chat-service:
+    build: ./chat-service
+    ports:
+      - "8004:8000"
+    environment:
+      APP_KEY: base64:randomkey
+      DB_CONNECTION: mysql
+      DB_HOST: chat-db
+      DB_PORT: 3306
+      DB_DATABASE: chat_db
+      DB_USERNAME: root
+      DB_PASSWORD: rootpass
+      JWT_SECRET: super-secret-key-change-in-production
+    depends_on:
+      chat-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
   # --- Frontend ---
   frontend:
     build: ./frontend
@@ -108,8 +142,10 @@ services:
       - auth-service
       - posts-service
       - profile-social-service
+      - chat-service
 
 volumes:
   auth_db_data:
   posts_db_data:
   social_db_data:
+  chat_db_data:
