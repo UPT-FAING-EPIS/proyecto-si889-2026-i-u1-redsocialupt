@@ -1,50 +1,163 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Red Social UPT — Iniciar Sesión</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UPT Connect — Acceso institucional</title>
+  <meta name="description" content="Accede a UPT Connect con tu cuenta institucional @virtual.upt.pe de la Universidad Privada de Tacna.">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    body { background: var(--primary); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+    .login-wrapper {
+      display: grid; grid-template-columns: 1fr 1fr;
+      width: 100%; max-width: 960px; min-height: 560px;
+      background: var(--surface-card); border-radius: var(--r-lg);
+      overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,.35);
+    }
+
+    /* Left panel */
+    .login-hero {
+      background: linear-gradient(145deg, var(--primary) 0%, var(--primary-container) 100%);
+      padding: var(--lg); display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .login-hero .brand { display: flex; align-items: center; gap: var(--sm); color: #fff; }
+    .login-hero .brand .logo {
+      width: 44px; height: 44px; background: var(--secondary);
+      border-radius: var(--r-md); display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 18px; color: var(--on-secondary);
+    }
+    .login-hero .brand-name { font-size: 20px; font-weight: 700; }
+    .login-hero .brand-sub { font-size: 11px; opacity: .65; }
+    .login-hero .tagline { color: rgba(255,255,255,.9); }
+    .login-hero .tagline h1 { font-size: 30px; font-weight: 700; line-height: 1.2; margin-bottom: var(--sm); }
+    .login-hero .tagline p { font-size: 14px; opacity: .75; line-height: 1.6; }
+    .login-hero .deco {
+      display: flex; gap: var(--xs); flex-wrap: wrap;
+    }
+    .login-hero .deco span {
+      padding: 4px 10px; border-radius: var(--r-full);
+      background: rgba(255,255,255,.12); color: rgba(255,255,255,.8);
+      font-size: 11px; font-weight: 600;
+    }
+
+    /* Right panel */
+    .login-panel { padding: var(--lg); display: flex; flex-direction: column; justify-content: center; }
+    .login-panel h2 { font-size: 24px; font-weight: 700; color: var(--primary); margin-bottom: 6px; }
+    .login-panel .subtitle { font-size: 14px; color: var(--on-surface-var); margin-bottom: var(--lg); line-height: 1.5; }
+
+    .google-btn {
+      display: flex; align-items: center; justify-content: center; gap: var(--sm);
+      width: 100%; padding: 14px; border-radius: var(--r-sm);
+      border: 1.5px solid var(--outline-var); background: #fff;
+      font-size: 15px; font-weight: 600; color: var(--on-surface);
+      transition: box-shadow .15s, border-color .15s;
+      cursor: pointer;
+    }
+    .google-btn:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); border-color: var(--outline); }
+    .google-btn img { width: 22px; height: 22px; }
+
+    .divider { display: flex; align-items: center; gap: var(--sm); margin: var(--md) 0; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--outline-var); }
+    .divider span { font-size: 12px; color: var(--on-surface-var); }
+
+    .notice {
+      background: var(--surface-low); border-radius: var(--r-sm);
+      padding: var(--sm); font-size: 13px; color: var(--on-surface-var);
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .notice .mi { color: var(--secondary); font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+    #google-btn-container { min-height: 48px; }
+    .loading-google { text-align: center; color: var(--on-surface-var); font-size: 14px; padding: 14px; }
+
+    @media (max-width: 640px) {
+      .login-wrapper { grid-template-columns: 1fr; min-height: auto; }
+      .login-hero { display: none; }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎓 Red Social UPT</h1>
-        <p>Plataforma exclusiva para la comunidad universitaria</p>
-
-        <div id="login-section">
-            <p>Inicia sesión con tu cuenta <strong>@virtual.upt.pe</strong></p>
-
-            <div id="g_id_onload"
-                 data-client_id="955206169841-jpg61cp2k46i1bdfbg7mujqukqqfsbgs.apps.googleusercontent.com"
-                 data-callback="handleGoogleAuth"
-                 data-auto_prompt="false">
-            </div>
-            <div class="g_id_signin"
-                 data-type="standard"
-                 data-size="large"
-                 data-theme="outline"
-                 data-text="sign_in_with"
-                 data-shape="rectangular"
-                 data-locale="es">
-            </div>
-
-            <div id="error-message" style="display:none; color:red; margin-top:10px;"></div>
+  <div class="login-wrapper">
+    <!-- Hero -->
+    <div class="login-hero">
+      <div class="brand">
+        <div class="logo">UC</div>
+        <div>
+          <div class="brand-name">UPT Connect</div>
+          <div class="brand-sub">Universidad Privada de Tacna</div>
         </div>
-
-        <div id="user-section" style="display:none;">
-            <div id="user-info">
-                <img id="user-avatar" src="" alt="Avatar" width="50" height="50" style="border-radius:50%;">
-                <span id="user-name"></span>
-                <span id="user-email"></span>
-            </div>
-            <button id="btn-logout" onclick="logout()">Cerrar Sesión</button>
-            <a id="btn-admin" href="pages/admin.html" style="display:none;">Panel de Admin</a>
-            <a href="pages/feed.html">Ir al Feed</a>
-        </div>
+      </div>
+      <div class="tagline">
+        <h1>Tu campus digital, siempre contigo</h1>
+        <p>Conecta con compañeros, comparte logros académicos y mantente al día con tu comunidad universitaria.</p>
+      </div>
+      <div class="deco">
+        <span>📚 Ing. de Sistemas</span>
+        <span>⚕️ Medicina Humana</span>
+        <span>⚖️ Derecho</span>
+        <span>🏗️ Ing. Civil</span>
+        <span>🏛️ Arquitectura</span>
+        <span>📊 Administración</span>
+      </div>
     </div>
 
-    <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
+    <!-- Login panel -->
+    <div class="login-panel">
+      <h2>Bienvenido de vuelta</h2>
+      <p class="subtitle">Accede con tu cuenta institucional de Google.<br>Solo cuentas <strong>@virtual.upt.pe</strong> están permitidas.</p>
+
+      <div id="google-btn-container">
+        <p class="loading-google">Cargando inicio de sesión...</p>
+      </div>
+
+      <div class="divider"><span>o</span></div>
+
+      <div class="notice">
+        <span class="mi">info</span>
+        <span>Si eres nuevo, serás redirigido para completar tu perfil académico tras el primer acceso.</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    requireGuest();
+
+    // Google Identity Services
+    window.onload = () => {
+      if (typeof google === 'undefined') {
+        document.getElementById('google-btn-container').innerHTML =
+          `<p style="color:var(--error);font-size:13px;">No se pudo cargar Google Sign-In. Revisa tu conexión.</p>`;
+        return;
+      }
+      google.accounts.id.initialize({
+        client_id: 'TU_GOOGLE_CLIENT_ID',  // ← reemplazar con GOOGLE_CLIENT_ID del .env
+        callback: handleCredentialResponse,
+        auto_select: false,
+      });
+      google.accounts.id.renderButton(
+        document.getElementById('google-btn-container'),
+        { theme: 'outline', size: 'large', text: 'signin_with', width: 320 }
+      );
+    };
+
+    async function handleCredentialResponse(response) {
+      const result = await AuthAPI.googleLogin(response.credential);
+      if (!result || !result.ok) {
+        showToast(result?.data?.error || 'Error al iniciar sesión', 'error');
+        return;
+      }
+      const { token, user, requires_onboarding } = result.data;
+      saveSession(token, user);
+      if (requires_onboarding) {
+        window.location.href = '/pages/onboarding.html';
+      } else {
+        window.location.href = '/pages/feed.html';
+      }
+    }
+  </script>
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </body>
 </html>

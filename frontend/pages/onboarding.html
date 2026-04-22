@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding — UPT Connect</title>
+  <meta name="description" content="Completa tu perfil académico para unirte a UPT Connect.">
+  <link rel="stylesheet" href="../css/styles.css">
+  <style>
+    body { background: var(--primary); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--md); }
+    .ob-card { background: var(--surface-card); border-radius: var(--r-lg); padding: var(--lg); width: 100%; max-width: 560px; box-shadow: 0 24px 80px rgba(0,0,0,.3); }
+    .ob-header { text-align: center; margin-bottom: var(--lg); }
+    .ob-header .logo { width: 56px; height: 56px; background: var(--primary); border-radius: var(--r-md); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 22px; color: #fff; margin: 0 auto var(--sm); }
+    .ob-header h1 { font-size: 22px; font-weight: 700; color: var(--primary); }
+    .ob-header p { font-size: 14px; color: var(--on-surface-var); margin-top: 4px; }
+    .ob-form { display: flex; flex-direction: column; gap: var(--sm); }
+    .ob-avatar-row { display: flex; align-items: center; gap: var(--md); margin-bottom: var(--xs); }
+    .ob-avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 24px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .ob-avatar-info { font-size: 13px; color: var(--on-surface-var); }
+    .ob-avatar-info strong { display: block; font-size: 15px; color: var(--on-surface); margin-bottom: 2px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sm); }
+    .ob-submit { margin-top: var(--sm); }
+  </style>
+</head>
+<body>
+  <div class="ob-card">
+    <div class="ob-header">
+      <div class="logo">UC</div>
+      <h1>Completa tu perfil académico</h1>
+      <p>Esta información es necesaria para conectarte con tu comunidad UPT.</p>
+    </div>
+    <div class="ob-avatar-row">
+      <div class="ob-avatar" id="ob-avatar">U</div>
+      <div class="ob-avatar-info">
+        <strong id="ob-name">Cargando...</strong>
+        <span id="ob-email">...</span>
+      </div>
+    </div>
+    <form class="ob-form" id="ob-form">
+      <div class="form-row">
+        <div class="input-group">
+          <label for="faculty">Facultad</label>
+          <select id="faculty" class="input-field" required>
+            <option value="">Seleccionar...</option>
+            <option>Ingeniería de Sistemas</option>
+            <option>Medicina Humana</option>
+            <option>Derecho</option>
+            <option>Administración de Empresas</option>
+            <option>Ingeniería Civil</option>
+            <option>Arquitectura</option>
+            <option>Educación Inicial</option>
+            <option>Contabilidad</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="semester">Semestre</label>
+          <select id="semester" class="input-field" required>
+            <option value="">Seleccionar...</option>
+            <option>I</option><option>II</option><option>III</option>
+            <option>IV</option><option>V</option><option>VI</option>
+            <option>VII</option><option>VIII</option><option>IX</option><option>X</option>
+          </select>
+        </div>
+      </div>
+      <div class="input-group">
+        <label for="bio">Descripción breve (opcional)</label>
+        <input type="text" id="bio" class="input-field" placeholder="Ej: Estudiante de 5to semestre apasionado por el desarrollo web">
+      </div>
+      <div class="input-group">
+        <label for="phone">Teléfono (opcional)</label>
+        <input type="tel" id="phone" class="input-field" placeholder="+51 900 000 000">
+      </div>
+      <button type="submit" class="btn btn-primary ob-submit" id="ob-submit">
+        <span class="mi">check_circle</span> Unirme a UPT Connect
+      </button>
+    </form>
+  </div>
+  <script src="../js/api.js"></script>
+  <script>
+    requireAuth();
+    const user = getUser();
+    if (user) {
+      document.getElementById('ob-name').textContent = user.name || 'Usuario';
+      document.getElementById('ob-email').textContent = user.email || '';
+      document.getElementById('ob-avatar').textContent = initials(user.name);
+    }
+    document.getElementById('ob-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('ob-submit');
+      btn.disabled = true; btn.textContent = 'Guardando...';
+      const res = await AuthAPI.completeProfile({
+        career: document.getElementById('faculty').value,
+        semester: document.getElementById('semester').value,
+        bio: document.getElementById('bio').value,
+        phone: document.getElementById('phone').value,
+      });
+      if (res?.ok) {
+        localStorage.setItem('upt_user', JSON.stringify({ ...user, ...res.data.user }));
+        window.location.href = '/pages/feed.html';
+      } else {
+        showToast(res?.data?.error || 'Error al guardar', 'error');
+        btn.disabled = false; btn.innerHTML = '<span class="mi">check_circle</span> Unirme a UPT Connect';
+      }
+    });
+  </script>
+</body>
+</html>
