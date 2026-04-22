@@ -1,17 +1,171 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Perfil — Red Social UPT</title>
-    <link rel="stylesheet" href="../css/styles.css">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Perfil — UPT Connect</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <style>
+    .profile-header { display:flex; align-items:flex-start; gap:var(--md); padding-bottom:var(--md); border-bottom:1px solid var(--outline-var); margin-bottom:var(--md); }
+    .profile-cover { width:100%; height:140px; border-radius:var(--r-md); object-fit:cover; margin-bottom:calc(-1 * var(--xl)); background:linear-gradient(135deg,var(--primary) 0%,var(--primary-container) 100%); }
+    .profile-avatar-wrap { position:relative; flex-shrink:0; }
+    .profile-avatar { width:96px; height:96px; font-size:32px; font-weight:700; border:4px solid var(--surface-card); }
+    .profile-info { flex:1; }
+    .profile-info h1 { font-size:22px; font-weight:700; color:var(--on-surface); margin-bottom:4px; }
+    .profile-info .career { font-size:14px; color:var(--on-surface-var); margin-bottom:var(--xs); }
+    .profile-info .bio { font-size:14px; color:var(--on-surface-var); line-height:1.5; }
+    .profile-meta { display:flex; gap:var(--md); margin-top:var(--sm); }
+    .profile-meta .stat { text-align:center; }
+    .profile-meta .stat .val { font-weight:700; font-size:18px; color:var(--primary); }
+    .profile-meta .stat .lbl { font-size:12px; color:var(--on-surface-var); }
+    .profile-actions { display:flex; gap:var(--sm); margin-top:var(--sm); flex-wrap:wrap; }
+    .profile-posts { display:flex; flex-direction:column; gap:var(--sm); margin-top:var(--md); }
+    .edit-form { display:flex; flex-direction:column; gap:var(--sm); }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>👤 Perfil</h1>
-        <a href="../index.html">← Volver al inicio</a>
-        <p><em>Pendiente — será implementado por el equipo en profile-social-service.</em></p>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><div class="logo">UC</div><span>UPT Connect</span></div>
+    <div class="sidebar-user">
+      <div class="avatar avatar-sm" id="sb-avatar" style="background:#C9A227;color:#241a00">U</div>
+      <div class="sidebar-user-info"><div class="name" id="sb-name">...</div><div class="career" id="sb-career">...</div></div>
     </div>
-    <script src="../js/api.js"></script>
+    <nav class="sidebar-nav">
+      <a href="feed.html"><span class="mi">home</span> Inicio</a>
+      <a href="profile.html" class="active"><span class="mi">person</span> Mi Perfil</a>
+      <a href="messages.html"><span class="mi">chat</span> Mensajes</a>
+      <a href="companions.html"><span class="mi">groups</span> Compañeros</a>
+    </nav>
+    <div class="sidebar-footer"><button onclick="logout()"><span class="mi">logout</span> Cerrar sesión</button></div>
+  </aside>
+  <div class="main-content">
+    <header class="topbar">
+      <span class="topbar-title" id="topbar-title">Perfil</span>
+    </header>
+    <main class="page-body">
+      <div class="card" id="profile-card">
+        <div class="loading-center"><div class="spinner"></div></div>
+      </div>
+      <div class="profile-posts" id="profile-posts"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Edit profile modal (own profile only) -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Editar perfil</h2>
+      <button class="btn btn-ghost btn-icon" onclick="closeEdit()"><span class="mi">close</span></button>
+    </div>
+    <form class="edit-form" id="edit-form">
+      <div class="input-group"><label>Biografía</label><input type="text" id="edit-bio" class="input-field" placeholder="Cuéntanos algo de ti..."></div>
+      <div class="input-group"><label>Semestre</label>
+        <select id="edit-semester" class="input-field">
+          <option value="">Seleccionar...</option>
+          <option>I</option><option>II</option><option>III</option><option>IV</option>
+          <option>V</option><option>VI</option><option>VII</option><option>VIII</option><option>IX</option><option>X</option>
+        </select>
+      </div>
+      <div class="input-group"><label>Teléfono</label><input type="tel" id="edit-phone" class="input-field"></div>
+      <button type="submit" class="btn btn-primary"><span class="mi">save</span> Guardar cambios</button>
+    </form>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+requireAuth();
+const me = getUser();
+const urlParams = new URLSearchParams(location.search);
+const viewUserId = urlParams.get('id'); // null = own profile
+const isOwnProfile = !viewUserId || (me && String(me.id) === viewUserId);
+let profileData = null, friendStatus = null;
+
+function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function getFriendBtnLabel(status){ if(status==='friends') return '<span class="mi">how_to_reg</span> Son amigos'; if(status==='pending') return '<span class="mi">hourglass_empty</span> Solicitud enviada'; return '<span class="mi">person_add</span> Mandar solicitud'; }
+
+if(me){
+  document.getElementById('sb-name').textContent=me.name||'';
+  document.getElementById('sb-career').textContent=me.career||'';
+  const c=getFacultyColor(me.career);
+  const el=document.getElementById('sb-avatar'); el.textContent=initials(me.name); el.style.background=c; el.style.color='#fff';
+}
+
+async function loadProfile() {
+  const uid = viewUserId || (me?.id);
+  const res = await AuthAPI.getProfile(uid);
+  if(!res?.ok){ document.getElementById('profile-card').innerHTML=`<div class="empty-state"><span class="mi">error_outline</span><p>Perfil no encontrado</p></div>`; return; }
+  profileData = res.data;
+  const color = getFacultyColor(profileData.career);
+  document.getElementById('topbar-title').textContent = isOwnProfile ? 'Mi Perfil' : profileData.name;
+
+  // Determine friend status
+  let actions = '';
+  if(isOwnProfile){
+    actions=`<button class="btn btn-secondary btn-sm" onclick="openEdit()"><span class="mi">edit</span> Editar perfil</button>`;
+  } else {
+    // Check friendship
+    const fr=await SocialAPI.getFriends();
+    const friends=(fr?.data||[]);
+    const isFriend=friends.some(f=>f.id===profileData.id);
+    if(isFriend){
+      friendStatus='friends';
+      actions=`<span style="font-size:14px;font-weight:600;color:var(--on-surface-var);display:flex;align-items:center;gap:4px"><span class="mi">how_to_reg</span> Son amigos</span>
+               <a href="messages.html?user=${profileData.id}" class="btn btn-secondary btn-sm"><span class="mi">chat</span> Mensaje</a>
+               <button class="btn btn-ghost btn-sm" onclick="removeFriend(${profileData.id})"><span class="mi">person_remove</span> Eliminar</button>`;
+    } else {
+      friendStatus='none';
+      actions=`<button class="btn btn-primary btn-sm" id="req-btn" onclick="sendReq(${profileData.id})"><span class="mi">person_add</span> Mandar solicitud</button>
+               <a href="messages.html?user=${profileData.id}" class="btn btn-secondary btn-sm"><span class="mi">chat</span> Mensaje</a>`;
+    }
+  }
+
+  document.getElementById('profile-card').innerHTML=`
+    <div style="height:120px;border-radius:var(--r-md);background:linear-gradient(135deg,${color} 0%,${color}99 100%);margin:-var(--md) -var(--md) var(--md);border-radius:var(--r-md) var(--r-md) 0 0"></div>
+    <div class="profile-header">
+      <div class="profile-avatar-wrap">
+        <div class="avatar profile-avatar" style="background:${color}">${initials(profileData.name)}</div>
+      </div>
+      <div class="profile-info">
+        <h1>${esc(profileData.name||'Usuario')}</h1>
+        <div class="career">${esc(profileData.career||'')} ${profileData.semester?'· Semestre '+esc(profileData.semester):''}</div>
+        ${profileData.bio?`<p class="bio">${esc(profileData.bio)}</p>`:''}
+        <span class="faculty-badge" style="background:${color};margin-top:6px;font-size:10px">${esc(profileData.career||'')}</span>
+        <div class="profile-meta">
+          <div class="stat"><div class="val" id="posts-count">—</div><div class="lbl">Publicaciones</div></div>
+          <div class="stat"><div class="val" id="friends-count">—</div><div class="lbl">Compañeros</div></div>
+        </div>
+        <div class="profile-actions">${actions}</div>
+      </div>
+    </div>`;
+
+  // Load stats
+  const [postRes, friendRes] = await Promise.all([PostsAPI.getFeed(), SocialAPI.getFriends()]);
+  if(postRes?.ok) document.getElementById('posts-count').textContent=(postRes.data||[]).filter(p=>p.author_id===profileData.id).length;
+  if(friendRes?.ok) document.getElementById('friends-count').textContent=(friendRes.data||[]).length;
+}
+
+async function sendReq(uid){ const r=await SocialAPI.sendRequest(uid); if(r?.ok){showToast('Solicitud enviada ✓','success');const btn=document.getElementById('req-btn');if(btn){btn.disabled=true;btn.innerHTML='<span class="mi">hourglass_empty</span> Pendiente';}}else showToast(r?.data?.error||'Error','error'); }
+async function removeFriend(uid){ if(!confirm('¿Eliminar de compañeros?')) return; const r=await SocialAPI.removeFriend(uid); if(r?.ok){showToast('Eliminado','');loadProfile();}else showToast('Error','error'); }
+
+function openEdit(){
+  if(!profileData) return;
+  document.getElementById('edit-bio').value=profileData.bio||'';
+  document.getElementById('edit-semester').value=profileData.semester||'';
+  document.getElementById('edit-phone').value=profileData.phone||'';
+  document.getElementById('edit-modal').classList.add('open');
+}
+function closeEdit(){ document.getElementById('edit-modal').classList.remove('open'); }
+document.getElementById('edit-form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const res=await AuthAPI.updateProfile({bio:document.getElementById('edit-bio').value,semester:document.getElementById('edit-semester').value,phone:document.getElementById('edit-phone').value});
+  if(res?.ok){closeEdit();showToast('Perfil actualizado ✓','success');if(res.data.user)localStorage.setItem('upt_user',JSON.stringify({...me,...res.data.user}));loadProfile();}
+  else showToast(res?.data?.error||'Error','error');
+});
+document.getElementById('edit-modal').addEventListener('click', e=>{ if(e.target===document.getElementById('edit-modal')) closeEdit(); });
+
+loadProfile();
+</script>
 </body>
 </html>
