@@ -30,7 +30,7 @@ class AuthController extends BaseController
             $result = $this->authService->googleAuth($request->input('id_token'));
             return response()->json($result, 200);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+            return response()->json(['error' => $e->getMessage()], is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
 
@@ -54,9 +54,9 @@ class AuthController extends BaseController
                 $request->auth->sub,
                 $request->only(['full_name', 'user_type', 'faculty', 'career', 'academic_cycle', 'student_code'])
             );
-            return response()->json(['message' => 'Perfil completado', 'user' => $user], 200);
+            return response()->json(['message' => 'Perfil completado', 'user' => $user['user'], 'token' => $user['token']], 200);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+            return response()->json(['error' => $e->getMessage()], is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
 
@@ -67,18 +67,43 @@ class AuthController extends BaseController
     public function updateProfile(Request $request): JsonResponse
     {
         $this->validate($request, [
-            'avatar_url' => 'nullable|string|max:500',
-            'bio'        => 'nullable|string',
+            'avatar'         => 'nullable|image|max:2048',
+            'banner'         => 'nullable|image|max:2048',
+            'avatar_url'     => 'nullable|string|max:500',
+            'banner_url'     => 'nullable|string|max:500',
+            'bio'            => 'nullable|string',
+            'academic_cycle' => 'nullable|string',
         ]);
+
+        $data = $request->only(['bio', 'avatar_url', 'banner_url', 'academic_cycle']);
+        
+        $uploadDir = public_path('auth-uploads');
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0775, true);
+        }
+
+        if ($request->hasFile('avatar') && $request->file('avatar')->isValid()) {
+            $file = $request->file('avatar');
+            $filename = time() . '_avatar_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $file->move($uploadDir, $filename);
+            $data['avatar_url'] = '/auth-uploads/' . $filename;
+        }
+
+        if ($request->hasFile('banner') && $request->file('banner')->isValid()) {
+            $file = $request->file('banner');
+            $filename = time() . '_banner_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $file->move($uploadDir, $filename);
+            $data['banner_url'] = '/auth-uploads/' . $filename;
+        }
 
         try {
             $user = $this->authService->updateProfile(
                 $request->auth->sub,
-                $request->only(['avatar_url', 'bio'])
+                $data
             );
-            return response()->json(['message' => 'Perfil actualizado', 'user' => $user], 200);
+            return response()->json(['message' => 'Perfil actualizado', 'user' => $user['user'], 'token' => $user['token']], 200);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+            return response()->json(['error' => $e->getMessage()], is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
 
@@ -101,7 +126,7 @@ class AuthController extends BaseController
             $user = $this->authService->getAuthenticatedUser($request->auth->sub);
             return response()->json($user, 200);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+            return response()->json(['error' => $e->getMessage()], is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
 
@@ -117,6 +142,29 @@ class AuthController extends BaseController
             'email'   => $request->auth->email,
             'role'    => $request->auth->role,
         ], 200);
+    }
+
+    /**
+     * GET /api/auth/users
+     * Lista todos los usuarios (público para autenticados).
+     */
+    public function listUsersPublic(): JsonResponse
+    {
+        return response()->json($this->authService->listUsersPublic(), 200);
+    }
+
+    /**
+     * GET /api/auth/users/{id}
+     * Obtiene el perfil de un usuario por id.
+     */
+    public function getUser(int $id): JsonResponse
+    {
+        try {
+            $user = $this->authService->getUserById($id);
+            return response()->json($user, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
+        }
     }
 
     /**
@@ -149,7 +197,7 @@ class AuthController extends BaseController
                 'user'    => $user,
             ], 200);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+            return response()->json(['error' => $e->getMessage()], is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
 
@@ -177,7 +225,7 @@ class AuthController extends BaseController
             ]));
             return response()->json(['message' => 'Datos académicos actualizados', 'user' => $user], 200);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+            return response()->json(['error' => $e->getMessage()], is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
 }

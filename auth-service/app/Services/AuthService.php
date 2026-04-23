@@ -56,7 +56,7 @@ class AuthService
     /**
      * Completa el perfil en el primer acceso (RF-01).
      */
-    public function completeProfile(int $userId, array $data): User
+    public function completeProfile(int $userId, array $data): array
     {
         $user = $this->findOrFail($userId);
 
@@ -70,22 +70,24 @@ class AuthService
             'is_profile_complete' => true,
         ]);
 
-        return $user->fresh();
+        return ['user' => $this->formatUser($user->fresh()), 'token' => $this->generateJwt($user->fresh())];
     }
 
     /**
      * Actualiza avatar y bio del perfil (RF-06).
      */
-    public function updateProfile(int $userId, array $data): User
+    public function updateProfile(int $userId, array $data): array
     {
         $user = $this->findOrFail($userId);
 
         $user->update(array_filter([
-            'avatar_url' => $data['avatar_url'] ?? null,
-            'bio'        => $data['bio']        ?? null,
+            'avatar_url'     => $data['avatar_url'] ?? null,
+            'banner_url'     => $data['banner_url'] ?? null,
+            'bio'            => $data['bio']        ?? null,
+            'academic_cycle' => $data['academic_cycle'] ?? null,
         ], fn($v) => $v !== null));
 
-        return $user->fresh();
+        return ['user' => $this->formatUser($user->fresh()), 'token' => $this->generateJwt($user->fresh())];
     }
 
     /**
@@ -102,6 +104,28 @@ class AuthService
     public function listUsers()
     {
         return User::orderBy('created_at', 'desc')->get();
+    }
+
+    /**
+     * Obtiene el perfil público de un usuario por su ID.
+     */
+    public function getUserById(int $userId): array
+    {
+        $user = $this->findOrFail($userId);
+        return $this->formatUser($user);
+    }
+
+    /**
+     * Lista pública de usuarios (sin paginación compleja por simplicidad).
+     */
+    public function listUsersPublic(): array
+    {
+        $users = User::where('is_active', true)->orderBy('created_at', 'desc')->get();
+        $formatted = [];
+        foreach ($users as $user) {
+            $formatted[] = $this->formatUser($user);
+        }
+        return $formatted;
     }
 
     /**
@@ -148,11 +172,15 @@ class AuthService
     private function generateJwt(User $user): string
     {
         $payload = [
-            'sub'   => $user->id,
-            'email' => $user->email,
-            'role'  => $user->role,
-            'iat'   => time(),
-            'exp'   => time() + (env('JWT_EXPIRATION_MINUTES', 60) * 60),
+            'sub'        => $user->id,
+            'email'      => $user->email,
+            'name'       => $user->name,
+            'school'     => $user->school,
+            'faculty'    => $user->faculty,
+            'role'       => $user->role,
+            'avatar_url' => $user->avatar_url,
+            'iat'        => time(),
+            'exp'        => time() + (env('JWT_EXPIRATION_MINUTES', 60) * 60),
         ];
 
         return JWT::encode($payload, env('JWT_SECRET'), env('JWT_ALGORITHM', 'HS256'));
@@ -166,8 +194,14 @@ class AuthService
             'name'                => $user->name,
             'full_name'           => $user->full_name,
             'avatar_url'          => $user->avatar_url,
+            'banner_url'          => $user->banner_url,
             'faculty'             => $user->faculty,
             'career'              => $user->career,
+            'school'              => $user->school,
+            'student_code'        => $user->student_code,
+            'academic_cycle'      => $user->academic_cycle,
+            'bio'                 => $user->bio,
+            'user_type'           => $user->user_type,
             'role'                => $user->role,
             'is_profile_complete' => $user->is_profile_complete,
         ];
