@@ -12,10 +12,13 @@ class PostService
     public function create(int $userId, array $data): Post
     {
         return Post::create([
-            'user_id'    => $userId,
-            'content'    => $data['content']   ?? null,
-            'image_url'  => $data['image_url'] ?? null,
-            'visibility' => $data['visibility'] ?? 'all',
+            'user_id'      => $userId,
+            'user_name'    => $data['user_name']    ?? 'Usuario',
+            'user_school'  => $data['user_school']  ?? '',
+            'user_faculty' => $data['user_faculty'] ?? '',
+            'content'      => $data['content']      ?? null,
+            'image_url'    => $data['image_url']    ?? null,
+            'visibility'   => $data['visibility']   ?? 'all',
         ]);
     }
 
