@@ -11,8 +11,27 @@
     body { font-family: 'Inter', sans-serif; }
     .dot-grid {
         background-color: #f8f9fa;
-        background-image: radial-gradient(#d1d5db 0.8px, transparent 0.8px);
-        background-size: 24px 24px;
+    }
+    .login-dot-wave {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 0;
+    }
+    .login-wave-dot {
+        position: absolute;
+        width: 2.5px;
+        height: 2.5px;
+        border-radius: 50%;
+        background: #c8c8c8;
+        animation: loginWave 2s ease-in-out infinite;
+        opacity: 0.3;
+        will-change: transform, opacity;
+    }
+    @keyframes loginWave {
+        0%, 100% { opacity: 0.3; transform: translateY(0); }
+        50% { opacity: 1; transform: translateY(-12px); }
     }
     /* Toast styles */
     .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
@@ -43,7 +62,8 @@
 </script>
 </head>
 <body class="bg-surface dot-grid min-h-screen flex items-center justify-center p-6 relative w-full">
-<div class="flex flex-col items-center w-full max-w-[540px] gap-8">
+<div id="login-dot-wave" class="login-dot-wave" aria-hidden="true"></div>
+<div class="flex flex-col items-center w-full max-w-[540px] gap-8 relative z-10">
 <!-- Header Branding (Logo & Title) -->
 <div class="flex flex-col items-center text-center">
 <!-- Logo with Golden Dot -->
@@ -79,7 +99,7 @@
 </main>
 </div>
 <!-- Global Viewport Footer -->
-<footer class="absolute bottom-8 w-full text-center left-0">
+<footer class="absolute bottom-8 w-full text-center left-0 z-10">
 <p class="text-on-surface-variant text-[10px] font-medium tracking-[0.2em] uppercase opacity-60">
     UPT Connect — Universidad Privada de Tacna
 </p>
@@ -89,7 +109,44 @@
 <script>
   requireGuest();
 
+  const loginDotWave = document.getElementById('login-dot-wave');
+  let loginDotWaveResizeTimer = null;
+
+  function renderLoginDotWave() {
+    if (!loginDotWave) return;
+
+    const spacing = 20;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const fragment = document.createDocumentFragment();
+
+    loginDotWave.innerHTML = '';
+
+    for (let y = 0; y < height; y += spacing) {
+      for (let x = 0; x < width; x += spacing) {
+        const dot = document.createElement('div');
+        const distance = Math.max(Math.abs(x - centerX), Math.abs(y - centerY));
+
+        dot.className = 'login-wave-dot';
+        dot.style.left = `${x}px`;
+        dot.style.top = `${y}px`;
+        dot.style.animationDelay = `${(distance / 500) * 0.6}s`;
+        fragment.appendChild(dot);
+      }
+    }
+
+    loginDotWave.appendChild(fragment);
+  }
+
+  window.addEventListener('resize', () => {
+    if (loginDotWaveResizeTimer) clearTimeout(loginDotWaveResizeTimer);
+    loginDotWaveResizeTimer = setTimeout(renderLoginDotWave, 120);
+  });
+
   window.onload = () => {
+    renderLoginDotWave();
     if (typeof google === 'undefined') {
       document.getElementById('google-btn-container').innerHTML =
         `<p class="text-red-600 text-sm">No se pudo cargar Google Sign-In. Revisa tu conexión.</p>`;
@@ -119,7 +176,7 @@
     if (!is_profile_complete) {
       window.location.href = '/pages/onboarding.html';
     } else {
-      window.location.href = '/pages/feed.html';
+      window.location.href = '/app.html#feed';
     }
   }
 </script>

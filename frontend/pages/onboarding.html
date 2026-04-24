@@ -239,7 +239,7 @@
       const updated = { ...getUser(), ...result.data.user, is_profile_complete: true };
       localStorage.setItem('upt_user', JSON.stringify(updated));
       showToast('Perfil completado correctamente');
-      window.location.href = '/pages/feed.html';
+      window.location.href = '/app.html#feed';
     } else {
       showToast(result?.data?.error || 'Error al guardar perfil', 'error');
       btn.disabled = false;

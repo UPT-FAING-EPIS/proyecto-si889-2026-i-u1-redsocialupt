@@ -27,36 +27,71 @@ function getList(result) {
   return [];
 }
 
+function buildResponseData(res, text) {
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const normalized = text
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      error: normalized || (res.ok ? 'Respuesta vacia del servidor' : `Error ${res.status}`),
+      raw: text,
+    };
+  }
+}
+
 /* ── Generic fetch (JSON) ────────────────────────────────────── */
 async function apiFetch(url, options = {}) {
   try {
-    const res = await fetch(url, { headers: authHeaders(), ...options });
-    if (res.status === 401) { logout(); return; }
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        ...authHeaders(),
+        ...(options.headers || {}),
+      },
+    });
+    if (res.status === 401) {
+      logout();
+      return { ok: false, status: 401, data: { error: 'Sesion expirada' } };
+    }
     const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
+    const data = buildResponseData(res, text);
     return { ok: res.ok, status: res.status, data };
   } catch (e) {
     console.error('API error:', e);
-    return { ok: false, data: { error: 'Error de conexión' } };
+    return { ok: false, data: { error: 'Error de conexion' } };
   }
 }
 
 /* ── Generic fetch (multipart/FormData) ──────────────────────── */
-async function apiFetchForm(url, formData) {
+async function apiFetchForm(url, formData, options = {}) {
   try {
-    // No ponemos Content-Type: el browser lo setea con boundary
     const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${getToken()}` },
+      method: options.method || 'POST',
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${getToken()}`,
+        ...(options.headers || {}),
+      },
       body: formData,
     });
-    if (res.status === 401) { logout(); return; }
+    if (res.status === 401) {
+      logout();
+      return { ok: false, status: 401, data: { error: 'Sesion expirada' } };
+    }
     const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
+    const data = buildResponseData(res, text);
     return { ok: res.ok, status: res.status, data };
   } catch (e) {
     console.error('API error (form):', e);
-    return { ok: false, data: { error: 'Error de conexión' } };
+    return { ok: false, data: { error: 'Error de conexion' } };
   }
 }
 
@@ -72,6 +107,9 @@ const AuthAPI = {
     if (!userId) return apiFetch(`${API.auth}/auth/me`);
     return apiFetch(`${API.auth}/auth/users/${userId}`);
   },
+  touchPresence: () => apiFetch(`${API.auth}/auth/presence`, {
+    method: 'POST'
+  }),
   updateProfile: (data) => {
     if (data instanceof FormData) {
       return apiFetchForm(`${API.auth}/auth/profile`, data);
@@ -83,7 +121,12 @@ const AuthAPI = {
   updateAcademic: (userId, data) => apiFetch(`${API.auth}/auth/admin/users/${userId}/academic`, {
     method: 'PUT', body: JSON.stringify(data)
   }),
+  toggleUser: (userId) => apiFetch(`${API.auth}/auth/admin/users/${userId}`, {
+    method: 'PUT'
+  }),
   listUsers: (params = '') => apiFetch(`${API.auth}/auth/users?${params}`),
+  listPublicUsers: (params = '') => apiFetch(`${API.auth}/auth/users?${params}`),
+  listAdminUsers: (params = '') => apiFetch(`${API.auth}/auth/admin/users${params ? `?${params}` : ''}`),
 };
 
 /* ── Posts Service ────────────────────────────────────────────── */
@@ -106,18 +149,20 @@ const PostsAPI = {
   },
 
   deletePost: (id) => apiFetch(`${API.posts}/${id}`, { method: 'DELETE' }),
+  adminDeletePost: (id) => apiFetch(`${API.posts}/${id}/admin`, { method: 'DELETE' }),
   likePost: (id) => apiFetch(`${API.posts}/${id}/like`, { method: 'POST' }),
-  getComments: (postId) => apiFetch(`${API.posts}/${postId}/comments`),
+  getComments: (postId, sort = 'oldest') => apiFetch(`${API.posts}/${postId}/comments?sort=${encodeURIComponent(sort)}`),
   addComment: (postId, content) => apiFetch(`${API.posts}/${postId}/comments`, {
     method: 'POST', body: JSON.stringify({ content })
   }),
+  likeComment: (commentId) => apiFetch(`/api/comments/${commentId}/like`, { method: 'POST' }),
   deleteComment: (postId, commentId) => apiFetch(`${API.posts}/${postId}/comments/${commentId}`, { method: 'DELETE' }),
-  adminListPosts: () => apiFetch(`${API.posts}/admin`),
 };
 
 /* ── Social Service ───────────────────────────────────────────── */
 const SocialAPI = {
   getDirectory: (params = '') => apiFetch(`/api/directory?${params}`),
+  searchDirectory: (query) => apiFetch(`/api/directory/search?q=${encodeURIComponent(query)}`),
   getFriends: () => apiFetch(`/api/friends`),
   getPendingRequests: () => apiFetch(`/api/friends/pending`),
   sendRequest: (receiverId) => apiFetch(`/api/friends/request`, {
@@ -132,15 +177,33 @@ const SocialAPI = {
 const ChatAPI = {
   getInbox: () => apiFetch(`${API.chat}/inbox`),
   getConversation: (userId, limit = 50) => apiFetch(`${API.chat}/messages/${userId}?limit=${limit}`),
-  sendMessage: (receiverId, content, imageUrl = null) => apiFetch(`${API.chat}/messages`, {
-    method: 'POST', body: JSON.stringify({ receiver_id: receiverId, content, image_url: imageUrl })
-  }),
+  sendMessage: ({ receiverId, content = '', imageFile = null, imageUrl = null }) => {
+    if (imageFile) {
+      const fd = new FormData();
+      fd.append('receiver_id', receiverId);
+      if (content) fd.append('content', content);
+      fd.append('image', imageFile);
+      return apiFetchForm(`${API.chat}/messages`, fd);
+    }
+
+    return apiFetch(`${API.chat}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ receiver_id: receiverId, content, image_url: imageUrl }),
+    });
+  },
 };
 
 /* ── Auth actions ─────────────────────────────────────────────── */
 function saveSession(token, user) {
   localStorage.setItem('upt_token', token);
   localStorage.setItem('upt_user', JSON.stringify(user));
+}
+
+function updateStoredUser(patch) {
+  const current = getUser() || {};
+  const updated = { ...current, ...patch };
+  localStorage.setItem('upt_user', JSON.stringify(updated));
+  return updated;
 }
 
 function logout() {
@@ -191,6 +254,40 @@ function initials(name) {
   return name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
 }
 
+function getDisplayName(userOrName) {
+  if (!userOrName) return 'Usuario';
+  if (typeof userOrName === 'string') return userOrName;
+  return userOrName.full_name || userOrName.name || 'Usuario';
+}
+
+function getCareerLabel(user) {
+  if (!user) return '';
+  return user.school || user.career || '';
+}
+
+function formatAcademicCycle(value, short = false) {
+  if (!value) return '';
+
+  const raw = String(value).trim();
+  const compact = raw.toUpperCase();
+  const numeric = Number.parseInt(raw, 10);
+
+  if (Number.isInteger(numeric) && numeric > 0) {
+    return short ? `${numeric}vo Ciclo` : `${numeric}vo ciclo`;
+  }
+
+  const romanMap = {
+    I: 1, II: 2, III: 3, IV: 4, V: 5,
+    VI: 6, VII: 7, VIII: 8, IX: 9, X: 10,
+  };
+
+  if (romanMap[compact]) {
+    return short ? `${compact} Ciclo` : `${compact} ciclo`;
+  }
+
+  return raw;
+}
+
 /* ── Toast ────────────────────────────────────────────────────── */
 function showToast(msg, type = '') {
   let container = document.getElementById('toast-container');
@@ -214,7 +311,15 @@ function requireAuth() {
 
 /* ── Guard: redirect to feed if already authenticated ─────────── */
 function requireGuest() {
-  if (isLoggedIn()) { window.location.href = '/pages/feed.html'; }
+  if (!isLoggedIn()) return;
+
+  const user = getUser();
+  if (user && user.is_profile_complete === false) {
+    window.location.href = '/pages/onboarding.html';
+    return;
+  }
+
+  window.location.href = '/app.html#feed';
 }
 
 /* ── Notifications (friend requests) ─────────────────────────── */
@@ -223,8 +328,12 @@ async function loadNotifications() {
   if (!list) return;
   list.innerHTML = '<div class="px-4 py-6 text-sm text-slate-500 text-center">Cargando...</div>';
 
-  const result = await SocialAPI.getPendingRequests();
+  const [result, usersResult] = await Promise.all([
+    SocialAPI.getPendingRequests(),
+    AuthAPI.listPublicUsers(),
+  ]);
   const requests = getList(result);
+  const usersById = new Map(getList(usersResult).map((item) => [Number(item.id), item]));
   if (result && result.ok) {
     if (requests.length === 0) {
       list.innerHTML = '<div class="px-4 py-6 text-sm text-slate-500 text-center">No tienes notificaciones pendientes</div>';
@@ -234,16 +343,19 @@ async function loadNotifications() {
       const badge = document.getElementById('notif-badge');
       if (badge) badge.classList.remove('hidden');
       list.innerHTML = requests.map(req => {
-        const u = req.sender || req;
-        const ini = initials(u.name);
-        const color = getFacultyColor(u.school || '');
+        const senderId = Number(req.sender_id || req.sender?.id || 0);
+        const u = req.sender || usersById.get(senderId) || {};
+        const userName = getDisplayName(u);
+        const userSchool = getCareerLabel(u);
+        const ini = initials(userName);
+        const color = getFacultyColor(u.faculty || userSchool || '');
         return `
           <div class="px-4 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors">
             <div class="flex items-center justify-between gap-3">
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style="background:${color}">${ini}</div>
                 <div>
-                  <div class="font-bold text-sm text-slate-900">${u.name || 'Usuario'}</div>
+                  <div class="font-bold text-sm text-slate-900">${userName || 'Usuario'}</div>
                   <div class="text-xs text-slate-500">Solicitud de amistad</div>
                 </div>
               </div>
@@ -262,13 +374,21 @@ async function loadNotifications() {
 
 async function acceptFriendRequest(id) {
   const result = await SocialAPI.acceptRequest(id);
-  if (result && result.ok) { showToast('Solicitud aceptada'); loadNotifications(); }
+  if (result && result.ok) {
+    showToast('Solicitud aceptada');
+    loadNotifications();
+    window.dispatchEvent(new CustomEvent('friendship:changed'));
+  }
   else { showToast('Error al aceptar', 'error'); }
 }
 
 async function rejectFriendRequest(id) {
   const result = await SocialAPI.rejectRequest(id);
-  if (result && result.ok) { showToast('Solicitud rechazada'); loadNotifications(); }
+  if (result && result.ok) {
+    showToast('Solicitud rechazada');
+    loadNotifications();
+    window.dispatchEvent(new CustomEvent('friendship:changed'));
+  }
   else { showToast('Error al rechazar', 'error'); }
 }
 

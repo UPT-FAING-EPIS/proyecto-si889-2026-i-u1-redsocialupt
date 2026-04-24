@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html class="light" lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>UPT Connect</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <link href="/css/app.css?v=5" rel="stylesheet"/>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#001256',
+            'primary-container': '#1b2a6b',
+            surface: '#f3f4f6',
+            'on-surface': '#1a1c1c',
+            'on-surface-variant': '#454650',
+            outline: '#767681',
+            'outline-variant': '#c6c5d2',
+            'secondary-container': '#fed255',
+            error: '#ba1a1a'
+          },
+          borderRadius: {
+            DEFAULT: '0.125rem',
+            lg: '0.5rem',
+            xl: '1rem',
+            full: '9999px'
+          }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="bg-surface text-on-surface h-screen overflow-hidden pt-16" style="font-family:'Inter',sans-serif;">
+  <app-header></app-header>
+  <div class="max-w-7xl mx-auto px-4 h-[calc(100vh-4rem)] overflow-hidden">
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 py-6 h-full">
+      <app-sidebar active-nav="feed"></app-sidebar>
+      <main class="col-span-1 md:col-span-9 min-w-0 h-full overflow-y-auto pr-1" id="app-view">
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+          <p class="text-slate-500 text-sm">Cargando vista...</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/js/api.js?v=10"></script>
+  <script src="/js/components.js?v=10"></script>
+  <script src="/js/app.js?v=8"></script>
+</body>
+</html>
