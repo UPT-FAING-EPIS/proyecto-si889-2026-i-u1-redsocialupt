@@ -70,10 +70,14 @@ class MessageController extends BaseController
      */
     public function conversation(Request $request, int $userId): JsonResponse
     {
-        $limit    = (int) $request->query('limit', 50);
-        $messages = $this->messageService->getConversation($request->auth->sub, $userId, $limit, $request->bearerToken() ?? '');
+        try {
+            $limit    = (int) $request->query('limit', 50);
+            $messages = $this->messageService->getConversation($request->auth->sub, $userId, $limit, $request->bearerToken() ?? '');
 
-        return response()->json($messages, 200);
+            return response()->json($messages, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+        }
     }
 
     /**
@@ -82,7 +86,11 @@ class MessageController extends BaseController
      */
     public function inbox(Request $request): JsonResponse
     {
-        $conversations = $this->messageService->getInbox($request->auth->sub, $request->bearerToken() ?? '');
-        return response()->json($conversations, 200);
+        try {
+            $conversations = $this->messageService->getInbox($request->auth->sub, $request->bearerToken() ?? '');
+            return response()->json($conversations, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+        }
     }
 }

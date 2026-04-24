@@ -30,8 +30,8 @@ class PostTest extends TestCase
 
     public function testRootEndpoint(): void
     {
-        $response = $this->get('/');
-        $this->assertEquals(200, $response->status());
+        $this->get('/');
+        $this->seeStatusCode(200);
         $this->seeJson(['service' => 'posts-service']);
     }
 
@@ -39,48 +39,48 @@ class PostTest extends TestCase
 
     public function testPostsRequireJwt(): void
     {
-        $response = $this->get('/api/posts');
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/posts');
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token no proporcionado']);
     }
 
     public function testPostsWithInvalidJwt(): void
     {
-        $response = $this->get('/api/posts', ['Authorization' => 'Bearer invalid']);
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/posts', ['Authorization' => 'Bearer invalid']);
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token inválido']);
     }
 
     public function testExpiredToken(): void
     {
         $token    = $this->generateToken(['exp' => time() - 100]);
-        $response = $this->get('/api/posts', $this->authHeader($token));
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/posts', $this->authHeader($token));
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token expirado']);
     }
 
     // ── Validación de creación de post ────────────────────────────────
 
-    public function testCreatePostRequiresVisibility(): void
+    public function testCreatePostRejectsInvalidVisibility(): void
     {
         $token    = $this->generateToken();
-        $response = $this->post(
+        $this->post(
             '/api/posts',
-            ['content' => 'Hola mundo'],
+            ['content' => 'Hola mundo', 'visibility' => 'private'],
             $this->authHeader($token)
         );
-        $this->assertEquals(422, $response->status());
+        $this->seeStatusCode(422);
     }
 
     public function testCreatePostRequiresContentOrImage(): void
     {
         $token    = $this->generateToken();
-        $response = $this->post(
+        $this->post(
             '/api/posts',
             ['visibility' => 'all'],
             $this->authHeader($token)
         );
-        $this->assertEquals(422, $response->status());
+        $this->seeStatusCode(422);
     }
 
     // ── Validación de comentarios ─────────────────────────────────────
@@ -88,12 +88,12 @@ class PostTest extends TestCase
     public function testCommentRequiresContent(): void
     {
         $token    = $this->generateToken();
-        $response = $this->post(
+        $this->post(
             '/api/posts/1/comments',
             [],
             $this->authHeader($token)
         );
-        $this->assertEquals(422, $response->status());
+        $this->seeStatusCode(422);
     }
 
     // ── Protección admin ──────────────────────────────────────────────
@@ -101,16 +101,16 @@ class PostTest extends TestCase
     public function testAdminDestroyPostAsNonAdmin(): void
     {
         $token    = $this->generateToken(['role' => 'user']);
-        $response = $this->delete('/api/posts/1/admin', [], $this->authHeader($token));
-        $this->assertEquals(403, $response->status());
+        $this->delete('/api/posts/1/admin', [], $this->authHeader($token));
+        $this->seeStatusCode(403);
         $this->seeJson(['error' => 'No autorizado']);
     }
 
     public function testAdminDestroyCommentAsNonAdmin(): void
     {
         $token    = $this->generateToken(['role' => 'user']);
-        $response = $this->delete('/api/comments/1/admin', [], $this->authHeader($token));
-        $this->assertEquals(403, $response->status());
+        $this->delete('/api/comments/1/admin', [], $this->authHeader($token));
+        $this->seeStatusCode(403);
         $this->seeJson(['error' => 'No autorizado']);
     }
 }

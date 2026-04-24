@@ -35,38 +35,38 @@ class AuthTest extends TestCase
 
     public function testRootEndpoint(): void
     {
-        $response = $this->get('/');
-        $this->assertEquals(200, $response->status());
+        $this->get('/');
+        $this->seeStatusCode(200);
         $this->seeJson(['service' => 'auth-service']);
     }
 
     public function testGoogleAuthRequiresToken(): void
     {
-        $response = $this->post('/api/auth/google', []);
-        $this->assertEquals(422, $response->status());
+        $this->post('/api/auth/google', []);
+        $this->seeStatusCode(422);
     }
 
     // ── Tests JWT middleware ──────────────────────────────────────────────
 
     public function testMeWithoutJwt(): void
     {
-        $response = $this->get('/api/auth/me');
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/auth/me');
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token no proporcionado']);
     }
 
     public function testMeWithInvalidJwt(): void
     {
-        $response = $this->get('/api/auth/me', ['Authorization' => 'Bearer token-invalido']);
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/auth/me', ['Authorization' => 'Bearer token-invalido']);
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token inválido']);
     }
 
     public function testExpiredToken(): void
     {
         $token    = $this->generateTestToken(['exp' => time() - 100]);
-        $response = $this->get('/api/auth/verify', $this->authHeader($token));
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/auth/verify', $this->authHeader($token));
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token expirado']);
     }
 
@@ -75,8 +75,8 @@ class AuthTest extends TestCase
     public function testVerifyWithValidJwt(): void
     {
         $token    = $this->generateTestToken();
-        $response = $this->get('/api/auth/verify', $this->authHeader($token));
-        $this->assertEquals(200, $response->status());
+        $this->get('/api/auth/verify', $this->authHeader($token));
+        $this->seeStatusCode(200);
         $this->seeJson([
             'valid'   => true,
             'user_id' => 1,
@@ -88,22 +88,22 @@ class AuthTest extends TestCase
     public function testLogout(): void
     {
         $token    = $this->generateTestToken();
-        $response = $this->post('/api/auth/logout', [], $this->authHeader($token));
-        $this->assertEquals(200, $response->status());
+        $this->post('/api/auth/logout', [], $this->authHeader($token));
+        $this->seeStatusCode(200);
         $this->seeJson(['message' => 'Sesión cerrada correctamente']);
     }
 
     public function testCompleteProfileRequiresFullName(): void
     {
         $token    = $this->generateTestToken();
-        $response = $this->post('/api/auth/complete-profile', [], $this->authHeader($token));
-        $this->assertEquals(422, $response->status());
+        $this->post('/api/auth/complete-profile', [], $this->authHeader($token));
+        $this->seeStatusCode(422);
     }
 
     public function testUpdateProfileWithoutJwt(): void
     {
-        $response = $this->put('/api/auth/profile', ['bio' => 'Hola']);
-        $this->assertEquals(401, $response->status());
+        $this->put('/api/auth/profile', ['bio' => 'Hola']);
+        $this->seeStatusCode(401);
     }
 
     // ── Tests admin ───────────────────────────────────────────────────────
@@ -111,22 +111,22 @@ class AuthTest extends TestCase
     public function testListUsersAsNonAdmin(): void
     {
         $token    = $this->generateTestToken(['role' => 'user']);
-        $response = $this->get('/api/auth/admin/users', $this->authHeader($token));
-        $this->assertEquals(403, $response->status());
+        $this->get('/api/auth/admin/users', $this->authHeader($token));
+        $this->seeStatusCode(403);
         $this->seeJson(['error' => 'No autorizado']);
     }
 
     public function testToggleUserAsNonAdmin(): void
     {
         $token    = $this->generateTestToken(['role' => 'user']);
-        $response = $this->put('/api/auth/admin/users/1', [], $this->authHeader($token));
-        $this->assertEquals(403, $response->status());
+        $this->put('/api/auth/admin/users/1', [], $this->authHeader($token));
+        $this->seeStatusCode(403);
     }
 
     public function testUpdateAcademicAsNonAdmin(): void
     {
         $token    = $this->generateTestToken(['role' => 'user']);
-        $response = $this->put('/api/auth/admin/users/1/academic', [], $this->authHeader($token));
-        $this->assertEquals(403, $response->status());
+        $this->put('/api/auth/admin/users/1/academic', [], $this->authHeader($token));
+        $this->seeStatusCode(403);
     }
 }

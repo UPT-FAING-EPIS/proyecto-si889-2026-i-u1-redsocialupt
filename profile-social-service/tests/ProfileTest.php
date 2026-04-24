@@ -30,8 +30,8 @@ class ProfileTest extends TestCase
 
     public function testRootEndpoint(): void
     {
-        $response = $this->get('/');
-        $this->assertEquals(200, $response->status());
+        $this->get('/');
+        $this->seeStatusCode(200);
         $this->seeJson(['service' => 'profile-social-service']);
     }
 
@@ -39,23 +39,23 @@ class ProfileTest extends TestCase
 
     public function testFriendsRequireJwt(): void
     {
-        $response = $this->get('/api/social/friends');
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/social/friends');
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token no proporcionado']);
     }
 
     public function testFriendsWithInvalidJwt(): void
     {
-        $response = $this->get('/api/social/friends', ['Authorization' => 'Bearer invalid']);
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/social/friends', ['Authorization' => 'Bearer invalid']);
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token inválido']);
     }
 
     public function testExpiredToken(): void
     {
         $token    = $this->generateToken(['exp' => time() - 100]);
-        $response = $this->get('/api/social/friends', $this->authHeader($token));
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/social/friends', $this->authHeader($token));
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token expirado']);
     }
 
@@ -64,35 +64,35 @@ class ProfileTest extends TestCase
     public function testSendRequestRequiresReceiverId(): void
     {
         $token    = $this->generateToken();
-        $response = $this->post('/api/social/friends/request', [], $this->authHeader($token));
-        $this->assertEquals(422, $response->status());
+        $this->post('/api/social/friends/request', [], $this->authHeader($token));
+        $this->seeStatusCode(422);
     }
 
     public function testDirectoryRequiresJwt(): void
     {
-        $response = $this->get('/api/social/directory');
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/social/directory');
+        $this->seeStatusCode(401);
     }
 
     public function testSearchRequiresQuery(): void
     {
         $token    = $this->generateToken();
-        $response = $this->get('/api/social/directory/search', $this->authHeader($token));
-        $this->assertEquals(422, $response->status());
+        $this->get('/api/social/directory/search', $this->authHeader($token));
+        $this->seeStatusCode(422);
     }
 
     public function testPendingEndpointWithJwt(): void
     {
         $token    = $this->generateToken();
-        $response = $this->get('/api/social/friends/pending', $this->authHeader($token));
+        $this->get('/api/social/friends/pending', $this->authHeader($token));
         // Debería funcionar (200) aunque esté vacío — solo verifica que la ruta existe
-        $this->assertEquals(200, $response->status());
+        $this->seeStatusCode(200);
     }
 
     public function testFriendsListWithJwt(): void
     {
         $token    = $this->generateToken();
-        $response = $this->get('/api/social/friends', $this->authHeader($token));
-        $this->assertEquals(200, $response->status());
+        $this->get('/api/social/friends', $this->authHeader($token));
+        $this->seeStatusCode(200);
     }
 }

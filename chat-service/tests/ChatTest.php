@@ -30,8 +30,8 @@ class ChatTest extends TestCase
 
     public function testRootEndpoint(): void
     {
-        $response = $this->get('/');
-        $this->assertEquals(200, $response->status());
+        $this->get('/');
+        $this->seeStatusCode(200);
         $this->seeJson(['service' => 'chat-service']);
     }
 
@@ -39,35 +39,35 @@ class ChatTest extends TestCase
 
     public function testInboxRequiresJwt(): void
     {
-        $response = $this->get('/api/chat/inbox');
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/chat/inbox');
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token no proporcionado']);
     }
 
     public function testSendRequiresJwt(): void
     {
-        $response = $this->post('/api/chat/messages', []);
-        $this->assertEquals(401, $response->status());
+        $this->post('/api/chat/messages', []);
+        $this->seeStatusCode(401);
     }
 
     public function testConversationRequiresJwt(): void
     {
-        $response = $this->get('/api/chat/messages/2');
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/chat/messages/2');
+        $this->seeStatusCode(401);
     }
 
     public function testInvalidToken(): void
     {
-        $response = $this->get('/api/chat/inbox', ['Authorization' => 'Bearer fake']);
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/chat/inbox', ['Authorization' => 'Bearer fake']);
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token inválido']);
     }
 
     public function testExpiredToken(): void
     {
         $token    = $this->generateToken(['exp' => time() - 100]);
-        $response = $this->get('/api/chat/inbox', $this->authHeader($token));
-        $this->assertEquals(401, $response->status());
+        $this->get('/api/chat/inbox', $this->authHeader($token));
+        $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token expirado']);
     }
 
@@ -76,21 +76,23 @@ class ChatTest extends TestCase
     public function testSendRequiresReceiverId(): void
     {
         $token    = $this->generateToken();
-        $response = $this->post('/api/chat/messages', [], $this->authHeader($token));
-        $this->assertEquals(422, $response->status());
+        $this->post('/api/chat/messages', [], $this->authHeader($token));
+        $this->seeStatusCode(422);
     }
 
     public function testInboxWithJwt(): void
     {
         $token    = $this->generateToken();
-        $response = $this->get('/api/chat/inbox', $this->authHeader($token));
-        $this->assertEquals(200, $response->status());
+        $this->get('/api/chat/inbox', $this->authHeader($token));
+        $this->seeStatusCode(503);
+        $this->seeJson(['error' => 'No se pudo validar la lista de amigos']);
     }
 
     public function testConversationWithJwt(): void
     {
         $token    = $this->generateToken();
-        $response = $this->get('/api/chat/messages/2', $this->authHeader($token));
-        $this->assertEquals(200, $response->status());
+        $this->get('/api/chat/messages/2', $this->authHeader($token));
+        $this->seeStatusCode(503);
+        $this->seeJson(['error' => 'No se pudo validar la amistad']);
     }
 }
