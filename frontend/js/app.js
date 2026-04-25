@@ -1181,8 +1181,19 @@
                   <button id="clear-image-btn" type="button" title="Quitar imagen">x</button>
                 </div>
                 <input type="file" id="file-input" accept="image/*" class="hidden"/>
-                <div class="flex justify-between items-center pt-2">
-                  <div class="flex gap-2 relative">
+                <div class="flex flex-col gap-3 pt-2">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="flex items-center gap-2">
+                      <label for="post-visibility" class="text-sm font-medium text-slate-500">Mostrar a</label>
+                      <select id="post-visibility" class="bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                        <option value="all">Toda la comunidad UPT</option>
+                        <option value="friends">Solo amigos</option>
+                        <option value="faculty">Solo mi facultad</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <div class="flex gap-2 relative">
                     <button id="pick-image-btn" type="button" class="flex items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">
                       <span class="material-symbols-outlined text-[20px] text-blue-500">image</span><span class="text-sm font-medium">Foto</span>
                     </button>
@@ -1195,8 +1206,9 @@
                         <div class="emoji-grid" id="emoji-grid"></div>
                       </div>
                     </div>
+                    </div>
+                    <button id="btn-publish" type="button" class="bg-[#E5D59A] text-[#5A4A1A] px-6 py-1.5 rounded-full text-sm font-bold hover:bg-[#d8c686] transition-colors">Publicar</button>
                   </div>
-                  <button id="btn-publish" type="button" class="bg-[#E5D59A] text-[#5A4A1A] px-6 py-1.5 rounded-full text-sm font-bold hover:bg-[#d8c686] transition-colors">Publicar</button>
                 </div>
               </div>
               <div id="feed-posts" class="flex flex-col gap-6">
@@ -1274,6 +1286,7 @@
         const previewWrap = container.querySelector('#img-preview-wrap');
         const previewImage = container.querySelector('#img-preview');
         const postContent = container.querySelector('#post-content');
+        const postVisibility = container.querySelector('#post-visibility');
         const emojiPicker = container.querySelector('#emoji-picker');
         const emojiCats = container.querySelector('#emoji-cats');
         const emojiGrid = container.querySelector('#emoji-grid');
@@ -1424,6 +1437,7 @@
 
         async function publishPost() {
           const content = postContent.value.trim();
+          const visibility = postVisibility?.value || 'all';
           if (!content && !selectedImageFile) {
             showToast('Escribe algo o adjunta una imagen', 'error');
             return;
@@ -1432,13 +1446,14 @@
           publishButton.disabled = true;
           publishButton.textContent = 'Publicando...';
 
-          const result = await PostsAPI.createPost({ content, imageFile: selectedImageFile });
+          const result = await PostsAPI.createPost({ content, imageFile: selectedImageFile, visibility });
 
           publishButton.disabled = false;
           publishButton.textContent = 'Publicar';
 
           if (result?.ok) {
             postContent.value = '';
+            if (postVisibility) postVisibility.value = 'all';
             clearImage();
             showToast('Publicacion creada', 'success');
             loadFeed();
