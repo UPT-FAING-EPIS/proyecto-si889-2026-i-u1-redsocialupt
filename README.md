@@ -1,6 +1,6 @@
 # 🎓 Red Social UPT
 
-Plataforma social universitaria exclusiva para la comunidad de la Universidad Privada de Tacna (UPT). Solo accesible con cuenta institucional `@virtual.upt.pe` mediante Google OAuth.
+Plataforma social universitaria exclusiva para la comunidad de la Universidad Privada de Tacna (UPT). Solo accesible con cuenta institucional `@virtual.upt.pe` mediante Google OAuth.wtre
 
 ---
 
