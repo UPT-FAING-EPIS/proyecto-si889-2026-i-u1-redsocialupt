@@ -81,6 +81,7 @@ jobs:
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
+    if: github.repository == 'UPT-FAING-EPIS/proyecto-si889-2026-i-u1-redsocialupt'
     steps:
       - uses: actions/checkout@v4
       - name: Build auth-service
@@ -97,7 +98,7 @@ jobs:
     name: Publish to GitHub Packages
     runs-on: ubuntu-latest
     needs: [docker-build, sonarcloud]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.repository == 'UPT-FAING-EPIS/proyecto-si889-2026-i-u1-redsocialupt' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
