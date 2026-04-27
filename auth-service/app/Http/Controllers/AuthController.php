@@ -9,6 +9,7 @@ use Laravel\Lumen\Routing\Controller as BaseController;
 
 class AuthController extends BaseController
 {
+    private const ERR_NO_AUTORIZADO = 'No autorizado';
     private AuthService $authService;
 
     private function publicUploadsPath(string $directory): string
@@ -230,7 +231,7 @@ class AuthController extends BaseController
     public function listUsers(Request $request): JsonResponse
     {
         if ($request->auth->role !== 'admin') {
-            return response()->json(['error' => 'No autorizado'], 403);
+            return response()->json(['error' => self::ERR_NO_AUTORIZADO], 403);
         }
 
         return response()->json($this->authService->listUsers(), 200);
@@ -243,7 +244,7 @@ class AuthController extends BaseController
     public function toggleUser(Request $request, int $id): JsonResponse
     {
         if ($request->auth->role !== 'admin') {
-            return response()->json(['error' => 'No autorizado'], 403);
+            return response()->json(['error' => self::ERR_NO_AUTORIZADO], 403);
         }
 
         $this->validate($request, [
@@ -277,7 +278,7 @@ class AuthController extends BaseController
     public function updateAcademic(Request $request, int $id): JsonResponse
     {
         if ($request->auth->role !== 'admin') {
-            return response()->json(['error' => 'No autorizado'], 403);
+            return response()->json(['error' => self::ERR_NO_AUTORIZADO], 403);
         }
 
         $this->validate($request, [
@@ -305,7 +306,7 @@ class AuthController extends BaseController
     public function updateRole(Request $request, int $id): JsonResponse
     {
         if ($request->auth->role !== 'admin') {
-            return response()->json(['error' => 'No autorizado'], 403);
+            return response()->json(['error' => self::ERR_NO_AUTORIZADO], 403);
         }
 
         $this->validate($request, [
@@ -336,3 +337,4 @@ class AuthController extends BaseController
         return [$e->getMessage(), null, null];
     }
 }
+
