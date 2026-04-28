@@ -129,7 +129,7 @@
 <!-- Código de Estudiante -->
 <div class="flex flex-col gap-1.5 w-full" id="code-container">
 <label class="text-sm font-semibold text-gray-900" for="studentCode">Código de Estudiante <span class="text-error">*</span></label>
-<input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="studentCode" placeholder="Ej. 2024001234" required type="text" inputmode="numeric" pattern="[0-9]+"/>
+<input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="studentCode" placeholder="Ej. 2024001234" required type="text" inputmode="numeric" pattern="[0-9]{1,10}" maxlength="10"/>
 </div>
 <!-- Correo Institucional -->
 <div class="flex flex-col gap-1.5 w-full">
@@ -219,7 +219,7 @@
   }
 
   document.getElementById('studentCode').addEventListener('input', (event) => {
-    event.target.value = event.target.value.replace(/\D+/g, '');
+    event.target.value = event.target.value.replace(/\D+/g, '').slice(0, 10);
   });
 
   document.getElementById('onboarding-form').addEventListener('submit', async (e) => {
@@ -237,8 +237,8 @@
       student_code: document.getElementById('studentCode').value.trim(),
     };
 
-    if (data.user_type === 'student' && data.student_code && !/^\d+$/.test(data.student_code)) {
-      showToast('El codigo de estudiante solo debe contener numeros', 'error');
+    if (data.user_type === 'student' && data.student_code && !/^\d{1,10}$/.test(data.student_code)) {
+      showToast('El codigo de estudiante debe ser numerico y tener maximo 10 digitos', 'error');
       btn.disabled = false;
       btn.innerHTML = 'Siguiente <span class="material-symbols-outlined text-[18px]">arrow_forward</span>';
       return;

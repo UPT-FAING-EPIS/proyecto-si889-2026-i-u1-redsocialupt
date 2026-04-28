@@ -42,7 +42,10 @@ class PostService
                 return match ($post->visibility) {
                     'all'     => true,
                     'friends' => in_array($post->user_id, $friendIds),
-                    'faculty' => $userFaculty !== null,
+                    'faculty' => $userFaculty !== null
+                        && trim((string) $userFaculty) !== ''
+                        && trim((string) $post->user_faculty) !== ''
+                        && trim((string) $post->user_faculty) === trim((string) $userFaculty),
                     default   => false,
                 };
             })

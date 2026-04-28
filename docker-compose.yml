@@ -122,6 +122,8 @@ services:
     build: ./chat-service
     ports:
       - "8004:8000"
+    volumes:
+      - ./chat-service/public/chat-uploads:/app/public/chat-uploads
     environment:
       APP_KEY: base64:randomkey
       DB_CONNECTION: mysql
