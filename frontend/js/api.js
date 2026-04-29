@@ -221,7 +221,23 @@ const AuthAPI = {
 
 /* ── Posts Service ────────────────────────────────────────────── */
 const PostsAPI = {
-  getFeed: (page = 1) => apiFetch(`${API.posts}?page=${page}`),
+  getFeed: async (page = 1) => {
+    let friendIds = [];
+    const friendsResult = await SocialAPI.getFriends();
+    if (friendsResult?.ok) {
+      friendIds = getList(friendsResult)
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value));
+    }
+
+    const currentUser = getUser();
+    return apiFetch(`${API.posts}?page=${page}`, {
+      headers: {
+        'X-Friend-Ids': JSON.stringify(friendIds),
+        'X-User-Faculty': currentUser?.faculty || '',
+      },
+    });
+  },
 
   // Crea un post. Si imageFile es un File, usa multipart; si no, usa JSON.
   createPost: ({ content, imageFile, visibility = 'all' }) => {
@@ -402,7 +418,10 @@ function requireAuth() {
 
 /* ── Guard: redirect to feed if already authenticated ─────────── */
 function requireGuest() {
-  if (getBlockedNotice()) return;
+  if (getBlockedNotice()) {
+    if (!isLoggedIn()) return;
+    clearBlockedNotice();
+  }
   if (!isLoggedIn()) return;
 
   const user = getUser();

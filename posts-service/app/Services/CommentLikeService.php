@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\PostsServiceException;
 use App\Models\Comment;
 use App\Models\CommentLike;
 
@@ -10,7 +11,7 @@ class CommentLikeService
     public function toggle(int $userId, int $commentId): array
     {
         if (!Comment::find($commentId)) {
-            throw new \Exception('Comentario no encontrado', 404);
+            throw new PostsServiceException('Comentario no encontrado', 404);
         }
 
         $existing = CommentLike::where('user_id', $userId)

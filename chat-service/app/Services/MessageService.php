@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\MessageServiceException;
 use App\Models\Message;
 
 class MessageService
@@ -14,11 +15,11 @@ class MessageService
     public function send(int $senderId, int $receiverId, ?string $content, ?string $imageUrl, string $jwt): Message
     {
         if ($senderId === $receiverId) {
-            throw new \Exception('No puedes enviarte un mensaje a ti mismo', 422);
+            throw new MessageServiceException('No puedes enviarte un mensaje a ti mismo', 422);
         }
 
         if (empty($content) && empty($imageUrl)) {
-            throw new \Exception('El mensaje debe tener contenido o imagen', 422);
+            throw new MessageServiceException('El mensaje debe tener contenido o imagen', 422);
         }
 
         $this->assertFriendship($receiverId, $jwt);
@@ -65,7 +66,7 @@ class MessageService
     {
         $friendIds = $this->fetchFriendIds($jwt);
         if ($friendIds === null) {
-            throw new \Exception('No se pudo validar la lista de amigos', 503);
+            throw new MessageServiceException('No se pudo validar la lista de amigos', 503);
         }
 
         $sentTo = Message::where('sender_id', $userId)->pluck('receiver_id');
@@ -112,11 +113,11 @@ class MessageService
     {
         $friendIds = $this->fetchFriendIds($jwt);
         if ($friendIds === null) {
-            throw new \Exception('No se pudo validar la amistad', 503);
+            throw new MessageServiceException('No se pudo validar la amistad', 503);
         }
 
         if (!in_array($otherUserId, $friendIds, true)) {
-            throw new \Exception('Solo puedes chatear con tus amigos', 403);
+            throw new MessageServiceException('Solo puedes chatear con tus amigos', 403);
         }
     }
 
@@ -126,35 +127,33 @@ class MessageService
             return $this->friendIdsCache;
         }
 
-        if ($jwt === '') {
-            return null;
+        $friendIds = null;
+        if ($jwt !== '') {
+            $url = rtrim(env('SOCIAL_SERVICE_URL', 'http://profile-social-service:8000'), '/') . '/api/social/friends';
+            $context = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'header' => "Accept: application/json\r\nAuthorization: Bearer {$jwt}\r\n",
+                    'timeout' => 5,
+                    'ignore_errors' => true,
+                ],
+            ]);
+
+            $response = @file_get_contents($url, false, $context);
+            $statusLine = $http_response_header[0] ?? '';
+            preg_match('/\s(\d{3})\s/', $statusLine, $matches);
+            $status = isset($matches[1]) ? (int) $matches[1] : 0;
+            $isSuccess = $response !== false && $status >= 200 && $status < 300;
+
+            if ($isSuccess) {
+                $decoded = json_decode($response, true);
+                if (is_array($decoded)) {
+                    $friendIds = array_values(array_unique(array_map('intval', $decoded)));
+                }
+            }
         }
 
-        $url = rtrim(env('SOCIAL_SERVICE_URL', 'http://profile-social-service:8000'), '/') . '/api/social/friends';
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'header' => "Accept: application/json\r\nAuthorization: Bearer {$jwt}\r\n",
-                'timeout' => 5,
-                'ignore_errors' => true,
-            ],
-        ]);
-
-        $response = @file_get_contents($url, false, $context);
-        $statusLine = $http_response_header[0] ?? '';
-        preg_match('/\s(\d{3})\s/', $statusLine, $matches);
-        $status = isset($matches[1]) ? (int) $matches[1] : 0;
-
-        if ($response === false || $status < 200 || $status >= 300) {
-            return null;
-        }
-
-        $decoded = json_decode($response, true);
-        if (!is_array($decoded)) {
-            return null;
-        }
-
-        $this->friendIdsCache = array_values(array_unique(array_map('intval', $decoded)));
+        $this->friendIdsCache = $friendIds;
         return $this->friendIdsCache;
     }
 }

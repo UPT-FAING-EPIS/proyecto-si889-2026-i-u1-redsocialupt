@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\PostsServiceException;
 use App\Models\Post;
 
 class PostService
@@ -41,7 +42,10 @@ class PostService
                 return match ($post->visibility) {
                     'all'     => true,
                     'friends' => in_array($post->user_id, $friendIds),
-                    'faculty' => $userFaculty !== null,
+                    'faculty' => $userFaculty !== null
+                        && trim((string) $userFaculty) !== ''
+                        && trim((string) $post->user_faculty) !== ''
+                        && trim((string) $post->user_faculty) === trim((string) $userFaculty),
                     default   => false,
                 };
             })
@@ -55,7 +59,7 @@ class PostService
     {
         $post = Post::find($postId);
         if (!$post) {
-            throw new \Exception('Publicación no encontrada', 404);
+            throw new PostsServiceException('Publicación no encontrada', 404);
         }
         return $post;
     }
@@ -67,7 +71,7 @@ class PostService
     {
         $post = $this->findOrFail($postId);
         if ($post->user_id !== $userId) {
-            throw new \Exception('No autorizado para eliminar esta publicación', 403);
+            throw new PostsServiceException('No autorizado para eliminar esta publicación', 403);
         }
         $post->delete();
     }

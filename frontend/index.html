@@ -87,6 +87,9 @@
           <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-center text-sm text-slate-600">
             Si crees que esto fue un error, comunicate con un administrador.
           </div>
+          <button id="blocked-logout-btn" type="button" class="mt-5 w-full rounded-2xl bg-[#001256] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0a1d77]">
+            Cerrar sesion
+          </button>
         </div>
 
         <div id="login-section" class="w-full flex flex-col items-center">
@@ -172,6 +175,11 @@
 
     window.onload = () => {
       renderLoginDotWave();
+      document.getElementById('blocked-logout-btn')?.addEventListener('click', () => {
+        clearBlockedNotice();
+        clearSession();
+        window.location.href = '/index.html';
+      });
       const blockedNotice = getBlockedNotice();
       if (blockedNotice) {
         renderBlockedState(blockedNotice.reason);

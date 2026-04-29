@@ -1,11 +1,16 @@
-FROM php:8.2-cli
+FROM php:8.5.6RC1-cli-alpine3.23
 
-RUN apt-get update && apt-get install -y \
-    zip unzip git curl libpng-dev libonig-dev libxml2-dev \
-    && docker-php-ext-install pdo pdo_mysql mbstring \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    libzip-dev \
+    zip \
+    unzip \
+    curl \
+    libpng-dev \
+    oniguruma-dev \
+    $PHPIZE_DEPS \
+    && docker-php-ext-install pdo pdo_mysql zip mbstring
 
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 WORKDIR /app
 COPY . .
@@ -19,5 +24,4 @@ RUN mkdir -p storage/logs storage/framework/views \
 
 EXPOSE 8000
 
-# Ejecutar migraciones y luego iniciar el servidor
 CMD php artisan migrate --force 2>/dev/null; php -S 0.0.0.0:8000 -t public

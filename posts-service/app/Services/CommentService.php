@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\PostsServiceException;
 use App\Models\Comment;
 use App\Models\Post;
 
@@ -13,7 +14,7 @@ class CommentService
     public function store(int $userId, int $postId, string $content, array $meta = []): Comment
     {
         if (!Post::find($postId)) {
-            throw new \Exception('Publicacion no encontrada', 404);
+            throw new PostsServiceException('Publicacion no encontrada', 404);
         }
 
         return Comment::create([
@@ -53,10 +54,10 @@ class CommentService
     {
         $comment = Comment::find($commentId);
         if (!$comment) {
-            throw new \Exception('Comentario no encontrado', 404);
+            throw new PostsServiceException('Comentario no encontrado', 404);
         }
         if ($comment->user_id !== $userId) {
-            throw new \Exception('No autorizado para eliminar este comentario', 403);
+            throw new PostsServiceException('No autorizado para eliminar este comentario', 403);
         }
         $comment->delete();
     }
@@ -68,7 +69,7 @@ class CommentService
     {
         $comment = Comment::find($commentId);
         if (!$comment) {
-            throw new \Exception('Comentario no encontrado', 404);
+            throw new PostsServiceException('Comentario no encontrado', 404);
         }
         $comment->delete();
     }

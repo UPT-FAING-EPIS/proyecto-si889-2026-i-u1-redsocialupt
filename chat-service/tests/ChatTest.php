@@ -3,6 +3,7 @@
 namespace Tests;
 
 use Firebase\JWT\JWT;
+use PHPUnit\Framework\Attributes\TestDox;
 
 class ChatTest extends TestCase
 {
@@ -28,6 +29,7 @@ class ChatTest extends TestCase
 
     // ── Health check ──────────────────────────────────────────────────
 
+    #[TestDox('Endpoint raíz')]
     public function testRootEndpoint(): void
     {
         $this->get('/');
@@ -35,8 +37,19 @@ class ChatTest extends TestCase
         $this->seeJson(['service' => 'chat-service']);
     }
 
+    #[TestDox('Preflight CORS permite origen confiable')]
+    public function testCorsPreflightAllowsTrustedOrigin(): void
+    {
+        $this->call('OPTIONS', '/api/chat/inbox', [], [], [], [
+            'HTTP_ORIGIN' => 'http://localhost',
+            'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET',
+        ]);
+        $this->seeStatusCode(204);
+    }
+
     // ── JWT middleware ────────────────────────────────────────────────
 
+    #[TestDox('Bandeja requiere JWT')]
     public function testInboxRequiresJwt(): void
     {
         $this->get('/api/chat/inbox');
@@ -44,25 +57,29 @@ class ChatTest extends TestCase
         $this->seeJson(['error' => 'Token no proporcionado']);
     }
 
+    #[TestDox('Enviar mensaje requiere JWT')]
     public function testSendRequiresJwt(): void
     {
         $this->post('/api/chat/messages', []);
         $this->seeStatusCode(401);
     }
 
+    #[TestDox('Conversación requiere JWT')]
     public function testConversationRequiresJwt(): void
     {
         $this->get('/api/chat/messages/2');
         $this->seeStatusCode(401);
     }
 
+    #[TestDox('JWT inválido es rechazado')]
     public function testInvalidToken(): void
     {
         $this->get('/api/chat/inbox', ['Authorization' => 'Bearer fake']);
         $this->seeStatusCode(401);
-        $this->seeJson(['error' => 'Token inválido']);
+        $this->seeJson(['error' => 'Token invalido']);
     }
 
+    #[TestDox('Token expirado es rechazado')]
     public function testExpiredToken(): void
     {
         $token    = $this->generateToken(['exp' => time() - 100]);
@@ -73,6 +90,7 @@ class ChatTest extends TestCase
 
     // ── Endpoints ─────────────────────────────────────────────────────
 
+    #[TestDox('Enviar mensaje requiere receptor')]
     public function testSendRequiresReceiverId(): void
     {
         $token    = $this->generateToken();
@@ -80,6 +98,7 @@ class ChatTest extends TestCase
         $this->seeStatusCode(422);
     }
 
+    #[TestDox('Bandeja responde con JWT válido')]
     public function testInboxWithJwt(): void
     {
         $token    = $this->generateToken();
@@ -88,6 +107,7 @@ class ChatTest extends TestCase
         $this->seeJson(['error' => 'No se pudo validar la lista de amigos']);
     }
 
+    #[TestDox('Conversación responde con JWT válido')]
     public function testConversationWithJwt(): void
     {
         $token    = $this->generateToken();

@@ -1,10 +1,16 @@
-FROM php:8.2-cli
+FROM php:8.5.6RC1-cli-alpine3.23
 
-RUN apt-get update && apt-get install -y \
-    libzip-dev zip unzip curl \
-    && docker-php-ext-install pdo pdo_mysql zip \
-    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    libzip-dev \
+    zip \
+    unzip \
+    curl \
+    libpng-dev \
+    oniguruma-dev \
+    $PHPIZE_DEPS \
+    && docker-php-ext-install pdo pdo_mysql zip
+
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 WORKDIR /app
 
@@ -14,7 +20,6 @@ COPY php.ini /usr/local/etc/php/conf.d/uploads.ini
 RUN cp .env.example .env \
     && composer install --no-dev --optimize-autoloader
 
-# Crear carpeta de uploads con permisos de escritura
 RUN mkdir -p public/uploads storage/logs storage/framework/views \
     && chmod -R 775 public/uploads storage
 

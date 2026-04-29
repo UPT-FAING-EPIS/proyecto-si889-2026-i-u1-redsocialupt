@@ -89,6 +89,29 @@
     return String(url || '').replace(/'/g, '%27');
   }
 
+  function getVisibilityMeta(visibility) {
+    switch (visibility) {
+      case 'friends':
+        return {
+          icon: 'group',
+          label: 'Solo amigos',
+          tone: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+        };
+      case 'faculty':
+        return {
+          icon: 'school',
+          label: 'Solo mi facultad',
+          tone: 'bg-amber-50 text-amber-700 border border-amber-200',
+        };
+      default:
+        return {
+          icon: 'public',
+          label: 'Toda la UPT',
+          tone: 'bg-slate-100 text-slate-600 border border-slate-200',
+        };
+    }
+  }
+
   function displayName(user) {
     return window.getDisplayName ? window.getDisplayName(user) : (user?.full_name || user?.name || 'Usuario');
   }
@@ -417,11 +440,12 @@
       user_school: post.user_school,
       user_avatar: post.user_avatar,
     });
-    const authorCareer = careerLabel(author);
-    const authorMeta = [
-      authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
-      `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
-    ].filter(Boolean).join('<span>&middot;</span>');
+      const authorCareer = careerLabel(author);
+      const visibilityMeta = getVisibilityMeta(post.visibility);
+      const authorMeta = [
+        authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
+        `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
+      ].filter(Boolean).join('<span>&middot;</span>');
 
     return `
       <article class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow ${clickable ? 'cursor-pointer' : ''}" ${clickable ? `data-post-card="true" data-post-id="${post.id}"` : ''}>
@@ -433,17 +457,23 @@
                 <span class="font-bold text-sm text-slate-900">${escapeHtml(displayName(author))}</span>
                 <span class="text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1" style="background:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
               </div>
-              <div class="text-slate-500 text-xs mt-0.5">${authorMeta}</div>
-            </div>
-          </button>
-          ${canDelete ? `
+                <div class="text-slate-500 text-xs mt-0.5">${authorMeta}</div>
+              </div>
+            </button>
+            ${canDelete ? `
             <button type="button" data-action="delete-post" data-post-id="${post.id}" class="text-slate-400 hover:bg-slate-50 p-1 rounded-full">
               <span class="material-symbols-outlined">delete</span>
-            </button>
-          ` : ''}
-        </div>
-        <div class="text-sm text-slate-800 mb-4"><p class="content-break">${nl2br(post.content || '')}</p></div>
-        ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" onerror="this.parentElement.style.display='none'"/></div>` : ''}
+              </button>
+            ` : ''}
+          </div>
+          <div class="mb-3 flex items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
+              <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
+              ${escapeHtml(visibilityMeta.label)}
+            </span>
+          </div>
+          <div class="text-sm text-slate-800 mb-4"><p class="content-break">${nl2br(post.content || '')}</p></div>
+          ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" onerror="this.parentElement.style.display='none'"/></div>` : ''}
         ${interactive ? `
           <div class="pt-3 border-t border-slate-100 flex justify-start gap-6 items-center text-slate-500">
             <button type="button" data-action="like-post" data-post-id="${post.id}" class="flex items-center gap-1.5 transition-colors ${post.is_liked ? 'text-red-500 hover:text-red-600' : 'hover:text-slate-700'}">
@@ -469,17 +499,18 @@
       `;
     }
 
-    const author = resolveProfileData({
-      id: post.user_id,
-      user_name: post.user_name,
-      user_faculty: post.user_faculty,
-      user_school: post.user_school,
-      user_avatar: post.user_avatar,
-    });
-    const authorMeta = [
-      careerLabel(author) ? `<span>${escapeHtml(careerLabel(author))}</span>` : '',
-      `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
-    ].filter(Boolean).join('<span>&middot;</span>');
+      const author = resolveProfileData({
+        id: post.user_id,
+        user_name: post.user_name,
+        user_faculty: post.user_faculty,
+        user_school: post.user_school,
+        user_avatar: post.user_avatar,
+      });
+      const visibilityMeta = getVisibilityMeta(post.visibility);
+      const authorMeta = [
+        careerLabel(author) ? `<span>${escapeHtml(careerLabel(author))}</span>` : '',
+        `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
+      ].filter(Boolean).join('<span>&middot;</span>');
 
     return `
       <article class="post-modal-preview-card">
@@ -493,12 +524,18 @@
                   ${escapeHtml(author.faculty || 'UPT')}
                 </span>
               </div>
-              <div class="text-[11px] text-slate-500 mt-0.5">${authorMeta}</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">${authorMeta}</div>
+              </div>
             </div>
-          </div>
-          ${post.content ? `
-            <div class="post-modal-preview-copy content-break">${nl2br(post.content)}</div>
-          ` : ''}
+            <div class="mt-3">
+              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
+                <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
+                ${escapeHtml(visibilityMeta.label)}
+              </span>
+            </div>
+            ${post.content ? `
+              <div class="post-modal-preview-copy content-break">${nl2br(post.content)}</div>
+            ` : ''}
         </div>
         ${post.image_url ? `
           <div class="post-modal-preview-media">

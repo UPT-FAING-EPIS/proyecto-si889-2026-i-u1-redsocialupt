@@ -40,8 +40,6 @@ class JwtMiddleware
             return $errorResponse;
         }
 
-        $response = $next($request);
-        return $response;
+        return $next($request);
     }
 }
-

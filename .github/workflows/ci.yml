@@ -7,16 +7,196 @@ on:
     branches: [main]
 
 jobs:
-  # ── PHPUnit Tests (4 microservicios) ────────────────────────────────
+  test-auth:
+    name: Tests Auth Service
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: auth_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    defaults:
+      run:
+        working-directory: auth-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: pcov
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y mysql-client
+      - name: Crear base de datos de prueba
+        run: mysql -h 127.0.0.1 -uroot -prootpass -e "CREATE DATABASE IF NOT EXISTS auth_test;"
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Run PHPUnit
+        run: vendor/bin/phpunit --configuration phpunit.xml --testdox
+      - name: Upload auth coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-auth
+          path: auth-service/build/logs/clover.xml
+
+  test-posts:
+    name: Tests Posts Service
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: posts_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    defaults:
+      run:
+        working-directory: posts-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: pcov
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y mysql-client
+      - name: Crear base de datos de prueba
+        run: mysql -h 127.0.0.1 -uroot -prootpass -e "CREATE DATABASE IF NOT EXISTS posts_test;"
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Run PHPUnit
+        run: vendor/bin/phpunit --configuration phpunit.xml --testdox
+      - name: Upload posts coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-posts
+          path: posts-service/build/logs/clover.xml
+
+  test-social:
+    name: Tests Profile Social Service
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: social_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    defaults:
+      run:
+        working-directory: profile-social-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: pcov
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y mysql-client
+      - name: Crear base de datos de prueba
+        run: mysql -h 127.0.0.1 -uroot -prootpass -e "CREATE DATABASE IF NOT EXISTS social_test;"
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Run PHPUnit
+        run: vendor/bin/phpunit --configuration phpunit.xml --testdox
+      - name: Upload social coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-social
+          path: profile-social-service/build/logs/clover.xml
+
+  test-chat:
+    name: Tests Chat Service
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: chat_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -prootpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    defaults:
+      run:
+        working-directory: chat-service
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: pcov
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y mysql-client
+      - name: Crear base de datos de prueba
+        run: mysql -h 127.0.0.1 -uroot -prootpass -e "CREATE DATABASE IF NOT EXISTS chat_test;"
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Run PHPUnit
+        run: vendor/bin/phpunit --configuration phpunit.xml --testdox
+      - name: Upload chat coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-chat
+          path: chat-service/build/logs/clover.xml
+
   sonarcloud:
     name: SonarCloud Analysis
     runs-on: ubuntu-latest
+    needs: [test-auth, test-posts, test-social, test-chat]
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Download auth coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-auth
+          path: auth-service/build/logs
+      - name: Download posts coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-posts
+          path: posts-service/build/logs
+      - name: Download social coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-social
+          path: profile-social-service/build/logs
+      - name: Download chat coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-chat
+          path: chat-service/build/logs
       - name: Omitir SonarCloud si falta token
         if: ${{ env.SONAR_TOKEN == '' }}
         run: echo "SONAR_TOKEN no configurado en GitHub Secrets. Se omite el analisis para no bloquear el pipeline."
@@ -26,16 +206,16 @@ jobs:
         env:
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
 
-  # ── Snyk Security ───────────────────────────────────────────────────
   snyk:
     name: Snyk Security Scan
     runs-on: ubuntu-latest
+    needs: [test-auth, test-posts, test-social, test-chat]
     steps:
       - uses: actions/checkout@v4
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: "8.2"
       - name: Install auth-service deps
         run: composer install --no-interaction --prefer-dist
         working-directory: auth-service
@@ -77,10 +257,10 @@ jobs:
         with:
           args: --file=chat-service/composer.lock --severity-threshold=high
 
-  # ── Docker Build ────────────────────────────────────────────────────
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
+    needs: [test-auth, test-posts, test-social, test-chat]
     if: github.repository == 'UPT-FAING-EPIS/proyecto-si889-2026-i-u1-redsocialupt'
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +273,6 @@ jobs:
       - name: Build chat-service
         run: docker build -t chat-service ./chat-service
 
-  # ── Docker Publish (solo en Release) ────────────────────────────────
   docker-publish:
     name: Publish to GitHub Packages
     runs-on: ubuntu-latest

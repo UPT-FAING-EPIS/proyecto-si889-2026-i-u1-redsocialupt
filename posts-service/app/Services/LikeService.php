@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\PostsServiceException;
 use App\Models\Like;
 use App\Models\Post;
 
@@ -15,7 +16,7 @@ class LikeService
     {
         // Verificar que el post exista
         if (!Post::find($postId)) {
-            throw new \Exception('Publicación no encontrada', 404);
+            throw new PostsServiceException('Publicación no encontrada', 404);
         }
 
         $existing = Like::where('user_id', $userId)

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\FriendshipServiceException;
 use App\Models\FriendRequest;
 
 class FriendshipService
@@ -12,7 +13,7 @@ class FriendshipService
     public function sendRequest(int $senderId, int $receiverId): FriendRequest
     {
         if ($senderId === $receiverId) {
-            throw new \Exception('No puedes enviarte una solicitud a ti mismo', 422);
+            throw new FriendshipServiceException('No puedes enviarte una solicitud a ti mismo', 422);
         }
 
         // Verificar si ya existe una solicitud en cualquier dirección
@@ -24,10 +25,10 @@ class FriendshipService
 
         if ($existing) {
             if ($existing->status === 'accepted') {
-                throw new \Exception('Ya son compañeros', 409);
+                throw new FriendshipServiceException('Ya son compañeros', 409);
             }
             if ($existing->status === 'pending') {
-                throw new \Exception('Ya existe una solicitud pendiente', 409);
+                throw new FriendshipServiceException('Ya existe una solicitud pendiente', 409);
             }
             if ($existing->status === 'rejected') {
                 // Reenviar: actualizar la existente
@@ -55,10 +56,10 @@ class FriendshipService
         $request = $this->findOrFail($requestId);
 
         if ($request->receiver_id !== $userId) {
-            throw new \Exception('Solo el destinatario puede aceptar', 403);
+            throw new FriendshipServiceException('Solo el destinatario puede aceptar', 403);
         }
         if ($request->status !== 'pending') {
-            throw new \Exception('Esta solicitud ya fue procesada', 409);
+            throw new FriendshipServiceException('Esta solicitud ya fue procesada', 409);
         }
 
         $request->update(['status' => 'accepted']);
@@ -73,10 +74,10 @@ class FriendshipService
         $request = $this->findOrFail($requestId);
 
         if ($request->receiver_id !== $userId) {
-            throw new \Exception('Solo el destinatario puede rechazar', 403);
+            throw new FriendshipServiceException('Solo el destinatario puede rechazar', 403);
         }
         if ($request->status !== 'pending') {
-            throw new \Exception('Esta solicitud ya fue procesada', 409);
+            throw new FriendshipServiceException('Esta solicitud ya fue procesada', 409);
         }
 
         $request->update(['status' => 'rejected']);
@@ -98,7 +99,7 @@ class FriendshipService
             })->first();
 
         if (!$friendship) {
-            throw new \Exception('No son compañeros', 404);
+            throw new FriendshipServiceException('No son compañeros', 404);
         }
 
         $friendship->delete();
@@ -138,8 +139,9 @@ class FriendshipService
     {
         $request = FriendRequest::find($id);
         if (!$request) {
-            throw new \Exception('Solicitud no encontrada', 404);
+            throw new FriendshipServiceException('Solicitud no encontrada', 404);
         }
         return $request;
     }
 }
+

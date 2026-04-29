@@ -69,8 +69,8 @@ class AuthService
     {
         $user = $this->findOrFail($userId);
 
-        if (($data['user_type'] ?? 'student') === 'student' && !empty($data['student_code']) && !preg_match('/^\d+$/', (string) $data['student_code'])) {
-            throw new AuthServiceException('El codigo de estudiante solo debe contener numeros', 422);
+        if (($data['user_type'] ?? 'student') === 'student' && !empty($data['student_code']) && !preg_match('/^\d{1,10}$/', (string) $data['student_code'])) {
+            throw new AuthServiceException('El codigo de estudiante debe ser numerico y tener maximo 10 digitos', 422);
         }
 
         $user->update([
@@ -123,8 +123,7 @@ class AuthService
 
     public function touchPresence(int $userId): array
     {
-        $user = $this->markPresence($this->ensureUserIsActive($this->findOrFail($userId)));
-        return $this->formatUser($user);
+        return $this->getAuthenticatedUserProfile($userId);
     }
 
     /**
@@ -198,9 +197,14 @@ class AuthService
         }
 
         $user->is_active = !$user->is_active;
-        $user->blocked_reason = $user->is_active
-            ? null
-            : (($blockedReason !== null && trim($blockedReason) !== '') ? trim($blockedReason) : null);
+        $normalizedBlockedReason = null;
+        if ($blockedReason !== null) {
+            $trimmedReason = trim($blockedReason);
+            if ($trimmedReason !== '') {
+                $normalizedBlockedReason = $trimmedReason;
+            }
+        }
+        $user->blocked_reason = $user->is_active ? null : $normalizedBlockedReason;
         $user->save();
 
         return $user;
@@ -213,8 +217,8 @@ class AuthService
     {
         $user = $this->findOrFail($userId);
 
-        if (($data['user_type'] ?? $user->user_type) === 'student' && !empty($data['student_code']) && !preg_match('/^\d+$/', (string) $data['student_code'])) {
-            throw new AuthServiceException('El codigo de estudiante solo debe contener numeros', 422);
+        if (($data['user_type'] ?? $user->user_type) === 'student' && !empty($data['student_code']) && !preg_match('/^\d{1,10}$/', (string) $data['student_code'])) {
+            throw new AuthServiceException('El codigo de estudiante debe ser numerico y tener maximo 10 digitos', 422);
         }
 
         $user->update(array_filter([
