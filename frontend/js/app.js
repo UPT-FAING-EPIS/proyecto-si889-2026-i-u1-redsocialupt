@@ -786,17 +786,6 @@
     let conversations = [];
     let activeChat = params.user ? Number(params.user) : null;
     let activeUser = null;
-    let selectedImageFile = null;
-    let selectedImagePreviewUrl = '';
-
-    function clearSelectedImage() {
-      if (selectedImagePreviewUrl) {
-        URL.revokeObjectURL(selectedImagePreviewUrl);
-      }
-
-      selectedImageFile = null;
-      selectedImagePreviewUrl = '';
-    }
 
     function updateUrlForChat(userId) {
       window.history.replaceState(
@@ -955,7 +944,6 @@
 
       activeChat = numericUserId;
       activeUser = friendProfile;
-      clearSelectedImage();
       updateUrlForChat(numericUserId);
       renderInbox();
 
@@ -978,23 +966,7 @@
           <p class="text-center text-slate-400 text-sm">Cargando mensajes...</p>
         </div>
         <div class="p-4 bg-white border-t border-slate-200 shrink-0">
-          <div id="msg-image-preview-wrap" class="hidden mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <div class="flex items-start gap-3">
-              <img id="msg-image-preview" alt="Vista previa del mensaje" class="w-20 h-20 rounded-xl object-cover border border-slate-200"/>
-              <div class="min-w-0 flex-1">
-                <p class="text-xs font-semibold text-slate-700 uppercase tracking-wide">Imagen adjunta</p>
-                <p id="msg-image-name" class="text-sm text-slate-500 truncate mt-1"></p>
-              </div>
-              <button id="clear-msg-image-btn" type="button" class="w-8 h-8 rounded-full border border-slate-200 text-slate-500 hover:bg-white transition-colors inline-flex items-center justify-center">
-                <span class="material-symbols-outlined text-[18px]">close</span>
-              </button>
-            </div>
-          </div>
           <div class="flex items-end gap-3">
-            <input id="msg-image-input" type="file" class="hidden" accept="image/*"/>
-            <button id="pick-msg-image-btn" type="button" class="w-11 h-11 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors inline-flex items-center justify-center shrink-0">
-              <span class="material-symbols-outlined text-[20px]">image</span>
-            </button>
             <textarea id="msg-input" class="flex-1 bg-slate-100 border border-slate-200 rounded-[1.4rem] px-4 py-3 text-sm focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none min-h-[50px] max-h-36" placeholder="Escribe un mensaje para ${escapeHtml(displayName(friendProfile))}..." rows="1"></textarea>
             <button id="send-msg-btn" type="button" class="w-11 h-11 rounded-full bg-[#D4A017] flex items-center justify-center text-white hover:bg-[#b88a14] transition-colors shrink-0 shadow-sm">
               <span class="material-symbols-outlined text-[20px] ml-0.5">send</span>
@@ -1005,43 +977,20 @@
 
       const area = chatPanel.querySelector('#messages-area');
       const input = chatPanel.querySelector('#msg-input');
-      const imageInput = chatPanel.querySelector('#msg-image-input');
-      const pickImageButton = chatPanel.querySelector('#pick-msg-image-btn');
       const sendButton = chatPanel.querySelector('#send-msg-btn');
-      const imagePreviewWrap = chatPanel.querySelector('#msg-image-preview-wrap');
-      const imagePreview = chatPanel.querySelector('#msg-image-preview');
-      const imageName = chatPanel.querySelector('#msg-image-name');
-      const clearImageButton = chatPanel.querySelector('#clear-msg-image-btn');
-
-      function syncImagePreview() {
-        const hasPreview = Boolean(selectedImageFile && selectedImagePreviewUrl);
-        imagePreviewWrap.classList.toggle('hidden', !hasPreview);
-        if (!hasPreview) {
-          imagePreview.removeAttribute('src');
-          imageName.textContent = '';
-          imageInput.value = '';
-          return;
-        }
-
-        imagePreview.src = selectedImagePreviewUrl;
-        imageName.textContent = selectedImageFile.name || 'Imagen seleccionada';
-      }
 
       async function sendMessage() {
         const content = input.value.trim();
-        if (!activeChat || (!content && !selectedImageFile)) return;
+        if (!activeChat || !content) return;
 
         sendButton.disabled = true;
-        pickImageButton.disabled = true;
 
         const result = await ChatAPI.sendMessage({
           receiverId: activeChat,
           content,
-          imageFile: selectedImageFile,
         });
 
         sendButton.disabled = false;
-        pickImageButton.disabled = false;
 
         if (!result?.ok) {
           showToast(result?.data?.error || 'Error al enviar el mensaje', 'error');
@@ -1049,35 +998,11 @@
         }
 
         input.value = '';
-        clearSelectedImage();
-        syncImagePreview();
         await Promise.all([
           loadConversation(activeChat, friendProfile),
           loadInbox(false),
         ]);
       }
-
-      imageInput.addEventListener('change', (event) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        if (!String(file.type || '').startsWith('image/')) {
-          showToast('Selecciona una imagen valida', 'error');
-          imageInput.value = '';
-          return;
-        }
-
-        clearSelectedImage();
-        selectedImageFile = file;
-        selectedImagePreviewUrl = URL.createObjectURL(file);
-        syncImagePreview();
-      });
-
-      clearImageButton.addEventListener('click', () => {
-        clearSelectedImage();
-        syncImagePreview();
-      });
-
-      pickImageButton.addEventListener('click', () => imageInput.click());
       sendButton.addEventListener('click', sendMessage);
       input.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
@@ -1089,8 +1014,6 @@
         input.style.height = 'auto';
         input.style.height = `${Math.min(input.scrollHeight, 144)}px`;
       });
-
-      syncImagePreview();
 
       const result = await ChatAPI.getConversation(numericUserId);
       if (!result?.ok) {
