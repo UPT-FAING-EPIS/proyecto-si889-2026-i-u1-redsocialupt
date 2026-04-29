@@ -6,6 +6,9 @@ Dominio productivo usado:
 
 - [https://uptconnect.duckdns.org](https://uptconnect.duckdns.org)
 
+Video del proyecto:
+- [Haz clic aquí para ver el video en Google Drive](https://drive.google.com/file/d/1hWcbl7mvtPVNwvdhFDbXUcVjTS4Ixf0v/view?usp=sharing)
+
 ## 1. Objetivo del proyecto
 
 El sistema permite:
