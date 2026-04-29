@@ -17,6 +17,7 @@
       overflow: hidden;
       pointer-events: none;
       z-index: 0;
+      --wave-shift: 0px;
     }
     .login-wave-dot {
       position: absolute;
@@ -24,13 +25,12 @@
       height: 2.5px;
       border-radius: 50%;
       background: #c8c8c8;
-      animation: loginWave 2s ease-in-out infinite;
+      animation: loginWave var(--wave-duration, 2.4s) ease-in-out infinite;
       opacity: 0.3;
-      will-change: transform, opacity;
     }
     @keyframes loginWave {
-      0%, 100% { opacity: 0.3; transform: translateY(0); }
-      50% { opacity: 1; transform: translateY(-12px); }
+      0%, 100% { opacity: 0.24; transform: translate3d(0, 0, 0); }
+      50% { opacity: 0.9; transform: translate3d(0, calc(var(--wave-shift) * -1), 0); }
     }
   </style>
   <script id="tailwind-config">
@@ -121,6 +121,7 @@
 
     const loginDotWave = document.getElementById('login-dot-wave');
     let loginDotWaveResizeTimer = null;
+    let renderedWaveSignature = '';
 
     function renderBlockedState(reason) {
       const blockedSection = document.getElementById('blocked-section');
@@ -143,29 +144,43 @@
     function renderLoginDotWave() {
       if (!loginDotWave) return;
 
-      const spacing = 20;
       const width = window.innerWidth;
       const height = window.innerHeight;
+      const area = width * height;
+      const compactView = width < 768;
+      const spacing = compactView ? 28 : area > 1600000 ? 34 : area > 1000000 ? 30 : 24;
+      const shift = compactView ? 9 : area > 1600000 ? 8 : 11;
+      const columns = Math.ceil(width / spacing);
+      const rows = Math.ceil(height / spacing);
+      const signature = `${columns}x${rows}x${shift}`;
+
+      if (signature === renderedWaveSignature) return;
+
       const centerX = width / 2;
       const centerY = height / 2;
       const fragment = document.createDocumentFragment();
 
       loginDotWave.innerHTML = '';
+      loginDotWave.style.setProperty('--wave-shift', `${shift}px`);
 
       for (let y = 0; y < height; y += spacing) {
         for (let x = 0; x < width; x += spacing) {
           const dot = document.createElement('div');
           const distance = Math.max(Math.abs(x - centerX), Math.abs(y - centerY));
+          const duration = 2.25 + ((x + y) % 5) * 0.08;
 
           dot.className = 'login-wave-dot';
           dot.style.left = `${x}px`;
           dot.style.top = `${y}px`;
-          dot.style.animationDelay = `${(distance / 500) * 0.6}s`;
+          dot.style.opacity = distance < Math.min(width, height) * 0.18 ? '0.38' : '0.22';
+          dot.style.animationDelay = `${(distance / 520) * 0.42}s`;
+          dot.style.setProperty('--wave-duration', `${duration}s`);
           fragment.appendChild(dot);
         }
       }
 
       loginDotWave.appendChild(fragment);
+      renderedWaveSignature = signature;
     }
 
     window.addEventListener('resize', () => {
