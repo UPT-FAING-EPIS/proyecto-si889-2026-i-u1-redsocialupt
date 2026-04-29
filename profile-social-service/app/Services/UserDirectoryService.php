@@ -40,7 +40,7 @@ class UserDirectoryService
     private function fetchUsersFromAuth(string $jwt, array $query = []): array
     {
         try {
-            $baseUrl = rtrim(env('AUTH_SERVICE_URL', 'http://auth-service:8000'), '/');
+            $baseUrl = $this->getAuthServiceBaseUrl();
             $url = $baseUrl . '/api/auth/users';
 
             if (!empty($query)) {
@@ -70,5 +70,19 @@ class UserDirectoryService
         } catch (\Exception $e) {
             return [];
         }
+    }
+
+    private function getAuthServiceBaseUrl(): string
+    {
+        $configuredUrl = trim((string) env('AUTH_SERVICE_URL', ''));
+        if ($configuredUrl !== '') {
+            return rtrim($configuredUrl, '/');
+        }
+
+        $scheme = trim((string) env('AUTH_SERVICE_SCHEME', 'http'));
+        $host = trim((string) env('AUTH_SERVICE_HOST', 'auth-service'));
+        $port = trim((string) env('AUTH_SERVICE_PORT', '8000'));
+
+        return sprintf('%s://%s:%s', $scheme, $host, $port);
     }
 }

@@ -129,7 +129,7 @@ class MessageService
 
         $friendIds = null;
         if ($jwt !== '') {
-            $url = rtrim(env('SOCIAL_SERVICE_URL', 'http://profile-social-service:8000'), '/') . '/api/social/friends';
+            $url = $this->getSocialServiceBaseUrl() . '/api/social/friends';
             $context = stream_context_create([
                 'http' => [
                     'method' => 'GET',
@@ -155,5 +155,19 @@ class MessageService
 
         $this->friendIdsCache = $friendIds;
         return $this->friendIdsCache;
+    }
+
+    private function getSocialServiceBaseUrl(): string
+    {
+        $configuredUrl = trim((string) env('SOCIAL_SERVICE_URL', ''));
+        if ($configuredUrl !== '') {
+            return rtrim($configuredUrl, '/');
+        }
+
+        $scheme = trim((string) env('SOCIAL_SERVICE_SCHEME', 'http'));
+        $host = trim((string) env('SOCIAL_SERVICE_HOST', 'profile-social-service'));
+        $port = trim((string) env('SOCIAL_SERVICE_PORT', '8000'));
+
+        return sprintf('%s://%s:%s', $scheme, $host, $port);
     }
 }

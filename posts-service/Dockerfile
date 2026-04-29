@@ -1,6 +1,6 @@
 FROM php:8.5.6RC1-cli-alpine3.23
 
-RUN apk add --no-cache \
+RUN apk update && apk upgrade --no-cache && apk add --no-cache \
     libzip-dev \
     zip \
     unzip \
@@ -24,5 +24,6 @@ RUN mkdir -p public/uploads storage/logs storage/framework/views \
     && chmod -R 775 public/uploads storage
 
 EXPOSE 8000
+
 
 CMD php artisan migrate --force 2>/dev/null; php -S 0.0.0.0:8000 -t public

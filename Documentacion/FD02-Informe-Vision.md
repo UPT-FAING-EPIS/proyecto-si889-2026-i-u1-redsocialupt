@@ -488,7 +488,7 @@ El sistema está implementado con tres microservicios independientes (Auth, Post
 El sistema está publicado en una VPS con sistema operativo Debian, accesible públicamente desde cualquier navegador. La infraestructura es gestionada como código mediante Terraform, garantizando reproducibilidad y documentación del entorno.
 
 **Wiki de GitHub y Roadmap del Producto:**
-La Wiki del repositorio en GitHub documenta las características del producto por versión y el roadmap con las funcionalidades planificadas para versiones futuras, incluyendo sus fechas de liberación estimadas, en cumplimiento con los criterios del curso.
+La Wiki del repositorio en GitHub documenta las características del producto, sus módulos funcionales y el roadmap del sistema. En el estado final del proyecto, este roadmap quedó resumido en dos versiones principales: una versión base inicial y una versión final consolidada, ambas con sus respectivas fechas de liberación. Esto permite mantener una visión clara de la evolución real del producto dentro del alcance académico del curso.
 
 **Integración Continua y Análisis de Calidad:**
 Pipeline de CI/CD configurado en GitHub Actions que ejecuta automáticamente análisis de código estático con SonarQube (plugin SonarPHP) y escaneo de vulnerabilidades con Snyk o Semgrep en cada push al repositorio. Ambas herramientas tienen soporte oficial para proyectos PHP.

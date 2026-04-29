@@ -1,6 +1,6 @@
 FROM php:8.5.6RC1-cli-alpine3.23
 
-RUN apk add --no-cache \
+RUN apk update && apk upgrade --no-cache && apk add --no-cache \
     libzip-dev \
     zip \
     unzip \
