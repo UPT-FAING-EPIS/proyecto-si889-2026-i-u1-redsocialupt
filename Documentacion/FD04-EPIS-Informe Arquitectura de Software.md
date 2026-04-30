@@ -1,4 +1,4 @@
-<img src=".media/rfb3igdh.png"
+<img src="./media/rfb3igdh.png">
 style="width:1.0875in;height:1.46194in" />
 
 > **UNIVERSIDAD** **PRIVADA** **DE** **TACNA**
