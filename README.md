@@ -12,6 +12,12 @@ Video del proyecto:
 Fork con sonar y synk:
 - https://github.com/RicardoCutipa/Fork_proyecto-si889-2026-i-u1-redsocialupt
 
+## Herramientas de calidad y seguridad
+
+- **SonarCloud:** [Ver proyecto en SonarCloud](https://sonarcloud.io/project/overview?id=RicardoCutipa_Fork_proyecto-si889-2026-i-u1-redsocialupt)
+- **Snyk:** [Acceder a la invitación de Snyk](https://app.snyk.io/invite/link/accept?invite=5ffb203d-3053-4a2d-9791-6c92243a4f21&utm_source=link_invite&utm_medium=referral&utm_campaign=product-link-invite&from=link_invite)
+
+
 ## 1. Objetivo del proyecto
 
 El sistema permite:
