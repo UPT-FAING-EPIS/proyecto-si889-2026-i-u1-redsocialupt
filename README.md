@@ -10,7 +10,7 @@ Video del proyecto:
 - [Haz clic aquí para ver el video en Google Drive](https://drive.google.com/file/d/1hWcbl7mvtPVNwvdhFDbXUcVjTS4Ixf0v/view?usp=sharing)
 
 Fork con sonar y synk:
--https://github.com/RicardoCutipa/Fork_proyecto-si889-2026-i-u1-redsocialupt
+- https://github.com/RicardoCutipa/Fork_proyecto-si889-2026-i-u1-redsocialupt
 
 ## 1. Objetivo del proyecto
 
