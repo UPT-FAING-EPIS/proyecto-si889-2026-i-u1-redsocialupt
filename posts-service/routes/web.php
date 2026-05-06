@@ -5,29 +5,32 @@
 $router->get('/', function () {
     return response()->json([
         'service' => 'posts-service',
-        'status'  => 'running',
+        'status' => 'running',
         'version' => '1.0.0',
     ]);
 });
 
 $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($router) {
-
-    // ── Publicaciones (RF-02, RF-03) ──────────────────────────────────
-    $router->post('/posts',              'PostController@store');
-    $router->get('/posts',               'PostController@index');
-    $router->get('/posts/{id}',          'PostController@show');
-    $router->delete('/posts/{id}',       'PostController@destroy');
+    $router->post('/posts', 'PostController@store');
+    $router->get('/posts', 'PostController@index');
+    $router->get('/posts/{id}', 'PostController@show');
+    $router->delete('/posts/{id}', 'PostController@destroy');
     $router->delete('/posts/{id}/admin', 'PostController@adminDestroy');
 
-    // ── Likes (RF-04) ─────────────────────────────────────────────────
-    $router->post('/posts/{id}/like',    'LikeController@toggle');
-    $router->get('/posts/{id}/likes',    'LikeController@count');
+    $router->post('/posts/{id}/reaction', 'LikeController@react');
+    $router->post('/posts/{id}/like', 'LikeController@react');
+    $router->get('/posts/{id}/likes', 'LikeController@count');
 
-    // ── Comentarios (RF-05) ───────────────────────────────────────────
-    $router->post('/posts/{id}/comments',    'CommentController@store');
-    $router->get('/posts/{id}/comments',     'CommentController@index');
-    $router->delete('/comments/{id}',        'CommentController@destroy');
-    $router->delete('/comments/{id}/admin',  'CommentController@adminDestroy');
-    $router->post('/comments/{id}/like',     'CommentLikeController@toggle');
-    $router->get('/comments/{id}/likes',     'CommentLikeController@count');
+    $router->post('/posts/{id}/comments', 'CommentController@store');
+    $router->get('/posts/{id}/comments', 'CommentController@index');
+    $router->delete('/comments/{id}', 'CommentController@destroy');
+    $router->delete('/comments/{id}/admin', 'CommentController@adminDestroy');
+    $router->post('/comments/{id}/reaction', 'CommentLikeController@react');
+    $router->post('/comments/{id}/like', 'CommentLikeController@react');
+    $router->get('/comments/{id}/likes', 'CommentLikeController@count');
+
+    $router->post('/posts/{id}/report', 'ReportController@reportPost');
+    $router->post('/comments/{id}/report', 'ReportController@reportComment');
+    $router->get('/posts/admin/reports', 'ReportController@list');
+    $router->put('/posts/admin/reports/{id}', 'ReportController@updateStatus');
 });

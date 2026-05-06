@@ -98,6 +98,14 @@ class ChatTest extends TestCase
         $this->seeStatusCode(422);
     }
 
+    #[TestDox('Reportar mensaje requiere motivo')]
+    public function testReportMessageRequiresReason(): void
+    {
+        $token = $this->generateToken();
+        $this->post('/api/chat/messages/1/report', [], $this->authHeader($token));
+        $this->seeStatusCode(422);
+    }
+
     #[TestDox('Bandeja responde con JWT válido')]
     public function testInboxWithJwt(): void
     {
@@ -114,5 +122,14 @@ class ChatTest extends TestCase
         $this->get('/api/chat/messages/2', $this->authHeader($token));
         $this->seeStatusCode(503);
         $this->seeJson(['error' => 'No se pudo validar la amistad']);
+    }
+
+    #[TestDox('Listar reportes de mensajes como no admin es rechazado')]
+    public function testListMessageReportsAsNonAdmin(): void
+    {
+        $token = $this->generateToken();
+        $this->get('/api/chat/admin/reports', $this->authHeader($token));
+        $this->seeStatusCode(403);
+        $this->seeJson(['error' => 'No autorizado']);
     }
 }

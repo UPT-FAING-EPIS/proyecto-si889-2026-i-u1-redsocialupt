@@ -8,39 +8,65 @@ use App\Models\Post;
 
 class LikeService
 {
-    /**
-     * Alterna like/unlike en una publicación (RF-04).
-     * Retorna si quedó liked o unliked.
-     */
-    public function toggle(int $userId, int $postId): array
+    public const REACTION_TYPES = ['me_gusta', 'me_encanta', 'me_divierte', 'me_sorprende', 'me_enoja'];
+
+    public function react(int $userId, int $postId, string $reactionType = 'me_gusta'): array
     {
-        // Verificar que el post exista
         if (!Post::find($postId)) {
             throw new PostsServiceException('Publicación no encontrada', 404);
         }
 
-        $existing = Like::where('user_id', $userId)
-                        ->where('post_id', $postId)
-                        ->first();
-
-        if ($existing) {
-            $existing->delete();
-            $liked = false;
-        } else {
-            Like::create(['user_id' => $userId, 'post_id' => $postId]);
-            $liked = true;
+        if (!in_array($reactionType, self::REACTION_TYPES, true)) {
+            throw new PostsServiceException('Tipo de reacción inválido', 422);
         }
 
-        $count = Like::where('post_id', $postId)->count();
+        $existing = Like::where('user_id', $userId)
+            ->where('post_id', $postId)
+            ->first();
 
-        return ['liked' => $liked, 'count' => $count];
+        if ($existing && $existing->reaction_type === $reactionType) {
+            $existing->delete();
+            $currentReaction = null;
+        } else {
+            Like::updateOrCreate(
+                ['user_id' => $userId, 'post_id' => $postId],
+                ['reaction_type' => $reactionType]
+            );
+            $currentReaction = $reactionType;
+        }
+
+        return [
+            'current_reaction' => $currentReaction,
+            'reactions_count' => $this->getReactionSummary($postId),
+            'reactions_total' => $this->count($postId),
+        ];
     }
 
-    /**
-     * Conteo de likes de un post.
-     */
     public function count(int $postId): int
     {
         return Like::where('post_id', $postId)->count();
+    }
+
+    public function currentReaction(int $userId, int $postId): ?string
+    {
+        return Like::where('user_id', $userId)
+            ->where('post_id', $postId)
+            ->value('reaction_type');
+    }
+
+    public function getReactionSummary(int $postId): array
+    {
+        $counts = Like::where('post_id', $postId)
+            ->selectRaw('reaction_type, COUNT(*) as total')
+            ->groupBy('reaction_type')
+            ->pluck('total', 'reaction_type')
+            ->toArray();
+
+        $summary = [];
+        foreach (self::REACTION_TYPES as $type) {
+            $summary[$type] = (int) ($counts[$type] ?? 0);
+        }
+
+        return $summary;
     }
 }

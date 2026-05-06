@@ -19,6 +19,8 @@ class User extends Model
         'user_type',
         'faculty',
         'career',
+        'area',
+        'position_title',
         'academic_cycle',
         'student_code',
         'bio',

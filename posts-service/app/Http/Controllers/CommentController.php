@@ -37,8 +37,9 @@ class CommentController extends BaseController
                     'user_faculty' => $request->auth->faculty ?? '',
                 ]
             );
-            $comment->likes_count = 0;
-            $comment->is_liked = false;
+            $comment->reactions_count = array_fill_keys(\App\Services\LikeService::REACTION_TYPES, 0);
+            $comment->reactions_total = 0;
+            $comment->current_reaction = null;
             return response()->json($comment, 201);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);

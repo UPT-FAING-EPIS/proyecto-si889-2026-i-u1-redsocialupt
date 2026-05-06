@@ -8,9 +8,13 @@ use App\Models\Post;
 
 class CommentService
 {
-    /**
-     * Agrega un comentario a una publicacion (RF-05).
-     */
+    private CommentLikeService $commentReactionService;
+
+    public function __construct()
+    {
+        $this->commentReactionService = new CommentLikeService();
+    }
+
     public function store(int $userId, int $postId, string $content, array $meta = []): Comment
     {
         if (!Post::find($postId)) {
@@ -18,18 +22,15 @@ class CommentService
         }
 
         return Comment::create([
-            'user_id'      => $userId,
-            'post_id'      => $postId,
-            'content'      => $content,
-            'user_name'    => $meta['user_name'] ?? 'Usuario',
-            'user_avatar'  => $meta['user_avatar'] ?? null,
+            'user_id' => $userId,
+            'post_id' => $postId,
+            'content' => $content,
+            'user_name' => $meta['user_name'] ?? 'Usuario',
+            'user_avatar' => $meta['user_avatar'] ?? null,
             'user_faculty' => $meta['user_faculty'] ?? '',
         ]);
     }
 
-    /**
-     * Lista los comentarios de una publicacion.
-     */
     public function getByPost(int $postId, string $sort = 'oldest', ?int $userId = null): \Illuminate\Support\Collection
     {
         $direction = $sort === 'newest' ? 'desc' : 'asc';
@@ -40,16 +41,14 @@ class CommentService
             ->get();
 
         $comments->each(function (Comment $comment) use ($userId) {
-            $comment->likes_count = $comment->likes()->count();
-            $comment->is_liked = $userId ? $comment->likes()->where('user_id', $userId)->exists() : false;
+            $comment->reactions_total = $comment->reactions()->count();
+            $comment->reactions_count = $this->commentReactionService->getReactionSummary($comment->id);
+            $comment->current_reaction = $userId ? $this->commentReactionService->currentReaction($userId, $comment->id) : null;
         });
 
         return $comments;
     }
 
-    /**
-     * Elimina un comentario propio.
-     */
     public function destroy(int $userId, int $commentId): void
     {
         $comment = Comment::find($commentId);
@@ -62,9 +61,6 @@ class CommentService
         $comment->delete();
     }
 
-    /**
-     * Admin elimina cualquier comentario (RF-09).
-     */
     public function adminDestroy(int $commentId): void
     {
         $comment = Comment::find($commentId);

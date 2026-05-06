@@ -16,10 +16,14 @@ class CommentLikeController extends BaseController
         $this->commentLikeService = new CommentLikeService();
     }
 
-    public function toggle(Request $request, int $id): JsonResponse
+    public function react(Request $request, int $id): JsonResponse
     {
+        $this->validate($request, [
+            'reaction_type' => 'nullable|in:me_gusta,me_encanta,me_divierte,me_sorprende,me_enoja',
+        ]);
+
         try {
-            $result = $this->commentLikeService->toggle($request->auth->sub, $id);
+            $result = $this->commentLikeService->react((int) $request->auth->sub, $id, $request->input('reaction_type', 'me_gusta'));
             return response()->json($result, 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
@@ -28,6 +32,9 @@ class CommentLikeController extends BaseController
 
     public function count(int $id): JsonResponse
     {
-        return response()->json(['count' => $this->commentLikeService->count($id)], 200);
+        return response()->json([
+            'count' => $this->commentLikeService->count($id),
+            'reactions_count' => $this->commentLikeService->getReactionSummary($id),
+        ], 200);
     }
 }

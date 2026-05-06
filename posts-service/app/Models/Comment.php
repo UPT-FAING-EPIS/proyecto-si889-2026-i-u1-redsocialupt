@@ -11,8 +11,13 @@ class Comment extends Model
     public    $timestamps = false;
     protected $casts      = ['created_at' => 'datetime'];
 
-    public function likes()
+    public function reactions()
     {
         return $this->hasMany(CommentLike::class, 'comment_id');
+    }
+
+    public function likes()
+    {
+        return $this->reactions();
     }
 }

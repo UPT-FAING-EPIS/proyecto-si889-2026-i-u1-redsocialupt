@@ -114,6 +114,22 @@ class PostTest extends TestCase
         $this->seeStatusCode(422);
     }
 
+    #[TestDox('Reportar publicacion requiere motivo')]
+    public function testReportPostRequiresReason(): void
+    {
+        $token = $this->generateToken();
+        $this->post('/api/posts/1/report', [], $this->authHeader($token));
+        $this->seeStatusCode(422);
+    }
+
+    #[TestDox('Reportar comentario requiere motivo')]
+    public function testReportCommentRequiresReason(): void
+    {
+        $token = $this->generateToken();
+        $this->post('/api/comments/1/report', [], $this->authHeader($token));
+        $this->seeStatusCode(422);
+    }
+
     // ── Protección admin ──────────────────────────────────────────────
 
     #[TestDox('Eliminar publicación como admin requiere rol admin')]
@@ -130,6 +146,15 @@ class PostTest extends TestCase
     {
         $token    = $this->generateToken(['role' => 'user']);
         $this->delete('/api/comments/1/admin', [], $this->authHeader($token));
+        $this->seeStatusCode(403);
+        $this->seeJson(['error' => 'No autorizado']);
+    }
+
+    #[TestDox('Listar reportes como no admin es rechazado')]
+    public function testListReportsAsNonAdmin(): void
+    {
+        $token = $this->generateToken(['role' => 'user']);
+        $this->get('/api/posts/admin/reports', $this->authHeader($token));
         $this->seeStatusCode(403);
         $this->seeJson(['error' => 'No autorizado']);
     }

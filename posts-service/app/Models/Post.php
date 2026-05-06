@@ -13,9 +13,14 @@ class Post extends Model
         'updated_at' => 'datetime',
     ];
 
-    public function likes()
+    public function reactions()
     {
         return $this->hasMany(Like::class);
+    }
+
+    public function likes()
+    {
+        return $this->reactions();
     }
 
     public function comments()

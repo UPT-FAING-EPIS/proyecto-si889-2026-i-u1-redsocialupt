@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html class="light" lang="es"><head>
+<html class="light" lang="es">
+<head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>UPT Connect - Registro de Datos</title>
@@ -43,7 +44,6 @@
 </head>
 <body class="bg-white dot-grid min-h-screen flex items-center justify-center p-6 relative w-full text-gray-900 overflow-x-hidden">
 <div class="flex flex-col items-center w-full max-w-[540px] gap-8 z-10 relative">
-<!-- Header Branding -->
 <div class="flex flex-col items-center text-center">
 <div class="relative mb-4">
 <div class="w-14 h-14 bg-upt-blue rounded-2xl flex items-center justify-center">
@@ -57,38 +57,35 @@
 </div>
 <p class="text-on-surface-variant text-xs font-medium">Universidad Privada de Tacna</p>
 </div>
-<!-- Main Card -->
 <main class="w-full bg-white rounded-[32px] shadow-[0_20px_60px_rgba(0,0,0,0.05)] overflow-hidden">
 <div class="px-10 py-8 flex flex-col items-center w-full">
 <h1 class="text-upt-blue text-xl font-semibold mb-2">Registro de datos</h1>
-<p class="text-on-surface-variant text-sm mb-8 text-center">Por favor, completa tu información académica</p>
+<p class="text-on-surface-variant text-sm mb-8 text-center">Por favor, completa tu información institucional</p>
 <form id="onboarding-form" class="flex flex-col gap-5 w-full">
-<!-- Nombre Completo -->
 <div class="flex flex-col gap-1.5 w-full">
 <label class="text-sm font-semibold text-gray-900" for="fullName">Nombre Completo <span class="text-error">*</span></label>
-<input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="fullName" placeholder="Ej. Juan Pérez" required type="text"/>
+<input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="fullName" placeholder="Ej. Juan Perez" required type="text"/>
 </div>
-<!-- Tipo de Usuario -->
 <div class="flex flex-col gap-1.5 w-full">
 <label class="text-sm font-semibold text-gray-900" for="userType">Tipo de Usuario <span class="text-error">*</span></label>
 <div class="relative">
-<select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="userType" required onchange="toggleStudentFields()">
+<select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="userType" required>
 <option disabled selected value="">Selecciona tu tipo de usuario</option>
 <option value="student">Estudiante</option>
 <option value="teacher">Docente</option>
+<option value="administrativo">Administrativo</option>
 </select>
 <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">expand_more</span>
 </div>
 </div>
-<!-- Facultad -->
 <div class="flex flex-col gap-1.5 w-full">
-<label class="text-sm font-semibold text-gray-900" for="faculty">Facultad <span class="text-error">*</span></label>
+<label id="faculty-label" class="text-sm font-semibold text-gray-900" for="faculty">Facultad <span class="text-error">*</span></label>
 <div class="relative">
-<select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="faculty" required onchange="updateSchools()">
+<select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="faculty" required>
 <option disabled selected value="">Selecciona tu facultad</option>
 <option value="FAING">Facultad de Ingeniería (FAING)</option>
 <option value="FACEM">Facultad de Ciencias Empresariales (FACEM)</option>
-<option value="FAEDCOH">Facultad de Educación, Cs. de la Comunicación y Humanidades (FAEDCOH)</option>
+<option value="FAEDCOH">Facultad de Educación, Ciencias de la Comunicación y Humanidades (FAEDCOH)</option>
 <option value="FADE">Facultad de Derecho y Ciencias Políticas (FADE)</option>
 <option value="FACSA">Facultad de Ciencias de la Salud (FACSA)</option>
 <option value="FAU">Facultad de Arquitectura y Urbanismo (FAU)</option>
@@ -96,8 +93,7 @@
 <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">expand_more</span>
 </div>
 </div>
-<!-- Escuela -->
-<div class="flex flex-col gap-1.5 w-full">
+<div class="flex flex-col gap-1.5 w-full" id="school-container">
 <label class="text-sm font-semibold text-gray-900" for="school">Escuela Profesional <span class="text-error">*</span></label>
 <div class="relative">
 <select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="school" required disabled>
@@ -106,7 +102,16 @@
 <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">expand_more</span>
 </div>
 </div>
-<!-- Ciclo -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+  <div class="flex flex-col gap-1.5 w-full hidden" id="area-container">
+    <label class="text-sm font-semibold text-gray-900" for="area">Area <span class="text-error">*</span></label>
+    <input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="area" placeholder="Ej. Coordinacion academica" type="text"/>
+  </div>
+  <div class="flex flex-col gap-1.5 w-full hidden" id="position-container">
+    <label class="text-sm font-semibold text-gray-900" for="positionTitle">Cargo <span class="text-error">*</span></label>
+    <input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="positionTitle" placeholder="Ej. Docente, Asistente, Coordinador" type="text"/>
+  </div>
+</div>
 <div class="flex flex-col gap-1.5 w-full" id="cycle-container">
 <label class="text-sm font-semibold text-gray-900" for="cycle">Ciclo Académico <span class="text-error">*</span></label>
 <div class="relative">
@@ -126,17 +131,14 @@
 <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">expand_more</span>
 </div>
 </div>
-<!-- Código de Estudiante -->
 <div class="flex flex-col gap-1.5 w-full" id="code-container">
 <label class="text-sm font-semibold text-gray-900" for="studentCode">Código de Estudiante <span class="text-error">*</span></label>
 <input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="studentCode" placeholder="Ej. 2024001234" required type="text" inputmode="numeric" pattern="[0-9]{1,10}" maxlength="10"/>
 </div>
-<!-- Correo Institucional -->
 <div class="flex flex-col gap-1.5 w-full">
 <label class="text-sm font-semibold text-gray-900" for="email">Correo Institucional <span class="text-error">*</span></label>
 <input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="email" pattern=".*@virtual\.upt\.pe$" placeholder="usuario@virtual.upt.pe" required type="email"/>
 </div>
-<!-- Submit Button -->
 <button class="w-full mt-4 flex items-center justify-center gap-2 py-2.5 px-6 bg-upt-blue text-white rounded-xl font-semibold text-[14px] hover:bg-opacity-90 transition-colors duration-200 outline-none focus:ring-2 focus:ring-offset-2 focus:ring-upt-blue" type="submit" id="btn-submit">
     Siguiente
     <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
@@ -145,7 +147,6 @@
 </div>
 </main>
 </div>
-<!-- Footer -->
 <footer class="absolute bottom-8 w-full text-center left-0">
 <p class="text-on-surface-variant text-[10px] font-medium tracking-[0.2em] uppercase opacity-60">
     UPT Connect — Universidad Privada de Tacna
@@ -155,7 +156,7 @@
 <script src="../js/api.js"></script>
 <script>
   const FACULTY_SCHOOLS = {
-    'FAING': [
+    FAING: [
       'Ingeniería Civil',
       'Ingeniería de Sistemas',
       'Ingeniería Electrónica',
@@ -163,27 +164,27 @@
       'Ingeniería Ambiental',
       'Ingeniería Industrial'
     ],
-    'FACEM': [
+    FACEM: [
       'Ciencias Contables y Financieras',
       'Ingeniería Comercial',
       'Administración de Negocios Internacionales',
       'Administración Turística y Hotelera',
       'Economía y Microfinanzas'
     ],
-    'FAEDCOH': [
+    FAEDCOH: [
       'Educación',
       'Ciencias de la Comunicación',
       'Psicología',
       'Humanidades'
     ],
-    'FADE': ['Derecho'],
-    'FACSA': [
+    FADE: ['Derecho'],
+    FACSA: [
       'Medicina Humana',
       'Odontología',
       'Tecnología Médica: Laboratorio Clínico y Anatomía Patológica',
       'Tecnología Médica: Terapia Física y Rehabilitación'
     ],
-    'FAU': ['Arquitectura']
+    FAU: ['Arquitectura']
   };
 
   function updateSchools() {
@@ -191,36 +192,58 @@
     const schoolSel = document.getElementById('school');
     schoolSel.innerHTML = '<option disabled selected value="">Selecciona tu escuela</option>';
     const schools = FACULTY_SCHOOLS[faculty] || [];
-    schools.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s;
-      opt.textContent = s;
-      schoolSel.appendChild(opt);
+    schools.forEach((school) => {
+      const option = document.createElement('option');
+      option.value = school;
+      option.textContent = school;
+      schoolSel.appendChild(option);
     });
     schoolSel.disabled = schools.length === 0;
   }
 
   function toggleStudentFields() {
-    const isStudent = document.getElementById('userType').value === 'student';
+    const userType = document.getElementById('userType').value;
+    const isStudent = userType === 'student';
+    const isAdministrative = userType === 'administrativo';
+
+    document.getElementById('faculty-label').innerHTML = `${isAdministrative ? 'Dependencia / Facultad' : 'Facultad'} <span class="text-error">*</span>`;
+
+    document.getElementById('school-container').style.display = isStudent ? 'flex' : 'none';
+    document.getElementById('school').required = isStudent;
+    if (!isStudent) document.getElementById('school').value = '';
+
     document.getElementById('cycle-container').style.display = isStudent ? 'flex' : 'none';
     document.getElementById('cycle').required = isStudent;
     if (!isStudent) document.getElementById('cycle').value = '';
-    
+
     document.getElementById('code-container').style.display = isStudent ? 'flex' : 'none';
     document.getElementById('studentCode').required = isStudent;
     if (!isStudent) document.getElementById('studentCode').value = '';
+
+    document.getElementById('area-container').style.display = isStudent ? 'none' : 'flex';
+    document.getElementById('position-container').style.display = isStudent ? 'none' : 'flex';
+    document.getElementById('area').required = !isStudent;
+    document.getElementById('positionTitle').required = !isStudent;
+    if (isStudent) {
+      document.getElementById('area').value = '';
+      document.getElementById('positionTitle').value = '';
+    }
   }
 
   requireAuth();
   const user = getUser();
   if (user) {
     document.getElementById('email').value = user.email || '';
-    document.getElementById('fullName').value = user.name || '';
+    document.getElementById('fullName').value = user.full_name || user.name || '';
   }
 
+  document.getElementById('faculty').addEventListener('change', updateSchools);
+  document.getElementById('userType').addEventListener('change', toggleStudentFields);
   document.getElementById('studentCode').addEventListener('input', (event) => {
     event.target.value = event.target.value.replace(/\D+/g, '').slice(0, 10);
   });
+
+  toggleStudentFields();
 
   document.getElementById('onboarding-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -229,10 +252,12 @@
     btn.textContent = 'Guardando...';
 
     const data = {
-      full_name: document.getElementById('fullName').value,
+      full_name: document.getElementById('fullName').value.trim(),
       user_type: document.getElementById('userType').value,
       faculty: document.getElementById('faculty').value,
       career: document.getElementById('school').value,
+      area: document.getElementById('area').value.trim(),
+      position_title: document.getElementById('positionTitle').value.trim(),
       academic_cycle: document.getElementById('cycle').value,
       student_code: document.getElementById('studentCode').value.trim(),
     };
@@ -242,6 +267,15 @@
       btn.disabled = false;
       btn.innerHTML = 'Siguiente <span class="material-symbols-outlined text-[18px]">arrow_forward</span>';
       return;
+    }
+
+    if (data.user_type !== 'student') {
+      data.career = null;
+      data.academic_cycle = null;
+      data.student_code = null;
+    } else {
+      data.area = null;
+      data.position_title = null;
     }
 
     const result = await AuthAPI.completeProfile(data);
@@ -258,4 +292,5 @@
     }
   });
 </script>
-</body></html>
+</body>
+</html>

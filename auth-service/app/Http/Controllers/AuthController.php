@@ -60,9 +60,11 @@ class AuthController extends BaseController
     {
         $this->validate($request, [
             'full_name'      => 'required|string|max:150',
-            'user_type'      => 'required|in:student,teacher',
-            'faculty'        => 'nullable|string|max:150',
+            'user_type'      => 'required|in:student,teacher,administrativo',
+            'faculty'        => 'required|string|max:150',
             'career'         => 'nullable|string|max:150',
+            'area'           => 'nullable|string|max:150',
+            'position_title' => 'nullable|string|max:150',
             'academic_cycle' => 'nullable|string|max:20',
             'student_code'   => 'nullable|string|max:20',
         ]);
@@ -70,7 +72,7 @@ class AuthController extends BaseController
         try {
             $user = $this->authService->completeProfile(
                 $request->auth->sub,
-                $request->only(['full_name', 'user_type', 'faculty', 'career', 'academic_cycle', 'student_code'])
+                $request->only(['full_name', 'user_type', 'faculty', 'career', 'area', 'position_title', 'academic_cycle', 'student_code'])
             );
             return response()->json(['message' => 'Perfil completado', 'user' => $user['user'], 'token' => $user['token']], 200);
         } catch (\Exception $e) {
@@ -282,16 +284,18 @@ class AuthController extends BaseController
         }
 
         $this->validate($request, [
-            'user_type'      => 'nullable|in:student,teacher',
+            'user_type'      => 'nullable|in:student,teacher,administrativo',
             'faculty'        => 'nullable|string|max:150',
             'career'         => 'nullable|string|max:150',
+            'area'           => 'nullable|string|max:150',
+            'position_title' => 'nullable|string|max:150',
             'academic_cycle' => 'nullable|string|max:20',
             'student_code'   => 'nullable|string|max:20',
         ]);
 
         try {
             $user = $this->authService->updateAcademic($id, $request->only([
-                'user_type', 'faculty', 'career', 'academic_cycle', 'student_code',
+                'user_type', 'faculty', 'career', 'area', 'position_title', 'academic_cycle', 'student_code',
             ]));
             return response()->json(['message' => 'Datos académicos actualizados', 'user' => $user], 200);
         } catch (\Exception $e) {

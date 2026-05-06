@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Services\LikeService;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Laravel\Lumen\Routing\Controller as BaseController;
 
 class LikeController extends BaseController
@@ -16,26 +16,25 @@ class LikeController extends BaseController
         $this->likeService = new LikeService();
     }
 
-    /**
-     * POST /api/posts/{id}/like
-     * Dar o quitar like (toggle) (RF-04).
-     */
-    public function toggle(Request $request, int $id): JsonResponse
+    public function react(Request $request, int $id): JsonResponse
     {
+        $this->validate($request, [
+            'reaction_type' => 'nullable|in:me_gusta,me_encanta,me_divierte,me_sorprende,me_enoja',
+        ]);
+
         try {
-            $result = $this->likeService->toggle($request->auth->sub, $id);
+            $result = $this->likeService->react((int) $request->auth->sub, $id, $request->input('reaction_type', 'me_gusta'));
             return response()->json($result, 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
         }
     }
 
-    /**
-     * GET /api/posts/{id}/likes
-     * Conteo de likes de una publicación.
-     */
     public function count(int $id): JsonResponse
     {
-        return response()->json(['count' => $this->likeService->count($id)], 200);
+        return response()->json([
+            'count' => $this->likeService->count($id),
+            'reactions_count' => $this->likeService->getReactionSummary($id),
+        ], 200);
     }
 }

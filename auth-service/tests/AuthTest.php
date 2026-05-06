@@ -8,24 +8,17 @@ use PHPUnit\Framework\Attributes\TestDox;
 
 class AuthTest extends TestCase
 {
-    // ── Helpers ──────────────────────────────────────────────────────────
-
     private function generateTestToken(array $overrides = []): string
     {
         $payload = array_merge([
-            'sub'   => 1,
+            'sub' => 1,
             'email' => 'test@virtual.upt.pe',
-            'role'  => 'user',
-            'iat'   => time(),
-            'exp'   => time() + 3600,
+            'role' => 'user',
+            'iat' => time(),
+            'exp' => time() + 3600,
         ], $overrides);
 
         return JWT::encode($payload, env('JWT_SECRET'), 'HS256');
-    }
-
-    private function generateAdminToken(): string
-    {
-        return $this->generateTestToken(['role' => 'admin', 'sub' => 99]);
     }
 
     private function authHeader(string $token): array
@@ -49,8 +42,6 @@ class AuthTest extends TestCase
 
         return $user->fresh();
     }
-
-    // ── Tests públicos ────────────────────────────────────────────────────
 
     #[TestDox('Endpoint raíz')]
     public function testRootEndpoint(): void
@@ -77,8 +68,6 @@ class AuthTest extends TestCase
         $this->seeStatusCode(204);
     }
 
-    // ── Tests JWT middleware ──────────────────────────────────────────────
-
     #[TestDox('Perfil propio requiere JWT')]
     public function testMeWithoutJwt(): void
     {
@@ -98,32 +87,34 @@ class AuthTest extends TestCase
     #[TestDox('Token expirado es rechazado')]
     public function testExpiredToken(): void
     {
-        $token    = $this->generateTestToken(['exp' => time() - 100]);
+        $user = $this->createUser();
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email, 'exp' => time() - 100]);
         $this->get('/api/auth/verify', $this->authHeader($token));
         $this->seeStatusCode(401);
         $this->seeJson(['error' => 'Token expirado']);
     }
 
-    // ── Tests endpoints protegidos ────────────────────────────────────────
-
     #[TestDox('Verificación acepta JWT válido')]
     public function testVerifyWithValidJwt(): void
     {
-        $token    = $this->generateTestToken();
+        $user = $this->createUser();
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email]);
+
         $this->get('/api/auth/verify', $this->authHeader($token));
         $this->seeStatusCode(200);
         $this->seeJson([
-            'valid'   => true,
-            'user_id' => 1,
-            'email'   => 'test@virtual.upt.pe',
-            'role'    => 'user',
+            'valid' => true,
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'role' => 'user',
         ]);
     }
 
     #[TestDox('Cerrar sesión responde correctamente')]
     public function testLogout(): void
     {
-        $token    = $this->generateTestToken();
+        $user = $this->createUser();
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email]);
         $this->post('/api/auth/logout', [], $this->authHeader($token));
         $this->seeStatusCode(200);
         $this->seeJson(['message' => 'Sesión cerrada correctamente']);
@@ -133,8 +124,46 @@ class AuthTest extends TestCase
     public function testCompleteProfileRequiresFullName(): void
     {
         $user = $this->createUser();
-        $token = $this->generateTestToken(['sub' => $user->id]);
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email]);
         $this->post('/api/auth/complete-profile', [], $this->authHeader($token));
+        $this->seeStatusCode(422);
+    }
+
+    #[TestDox('Administrativo puede completar perfil con area y cargo')]
+    public function testAdministrativoCanCompleteProfile(): void
+    {
+        $user = $this->createUser();
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email]);
+
+        $this->post('/api/auth/complete-profile', [
+            'full_name' => 'Admin Institucional',
+            'user_type' => 'administrativo',
+            'faculty' => 'FACEM',
+            'area' => 'Tesoreria',
+            'position_title' => 'Asistente',
+        ], $this->authHeader($token));
+
+        $this->seeStatusCode(200);
+        $this->seeJson([
+            'message' => 'Perfil completado',
+            'user_type' => 'administrativo',
+            'area' => 'Tesoreria',
+            'position_title' => 'Asistente',
+        ]);
+    }
+
+    #[TestDox('Docente requiere area y cargo en onboarding')]
+    public function testTeacherRequiresAreaAndPosition(): void
+    {
+        $user = $this->createUser();
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email]);
+
+        $this->post('/api/auth/complete-profile', [
+            'full_name' => 'Docente Prueba',
+            'user_type' => 'teacher',
+            'faculty' => 'FAING',
+        ], $this->authHeader($token));
+
         $this->seeStatusCode(422);
     }
 
@@ -188,12 +217,11 @@ class AuthTest extends TestCase
         ]);
     }
 
-    // ── Tests admin ───────────────────────────────────────────────────────
-
     #[TestDox('Listar usuarios como no admin es rechazado')]
     public function testListUsersAsNonAdmin(): void
     {
-        $token    = $this->generateTestToken(['role' => 'user']);
+        $user = $this->createUser();
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email, 'role' => 'user']);
         $this->get('/api/auth/admin/users', $this->authHeader($token));
         $this->seeStatusCode(403);
         $this->seeJson(['error' => 'No autorizado']);
@@ -202,7 +230,8 @@ class AuthTest extends TestCase
     #[TestDox('Desactivar usuario como no admin es rechazado')]
     public function testToggleUserAsNonAdmin(): void
     {
-        $token    = $this->generateTestToken(['role' => 'user']);
+        $user = $this->createUser();
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email, 'role' => 'user']);
         $this->put('/api/auth/admin/users/1', [], $this->authHeader($token));
         $this->seeStatusCode(403);
     }
@@ -210,7 +239,8 @@ class AuthTest extends TestCase
     #[TestDox('Actualizar datos académicos como no admin es rechazado')]
     public function testUpdateAcademicAsNonAdmin(): void
     {
-        $token    = $this->generateTestToken(['role' => 'user']);
+        $user = $this->createUser();
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email, 'role' => 'user']);
         $this->put('/api/auth/admin/users/1/academic', [], $this->authHeader($token));
         $this->seeStatusCode(403);
     }

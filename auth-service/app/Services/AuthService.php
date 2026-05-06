@@ -68,18 +68,42 @@ class AuthService
     public function completeProfile(int $userId, array $data): array
     {
         $user = $this->findOrFail($userId);
+        $userType = $data['user_type'] ?? 'student';
 
-        if (($data['user_type'] ?? 'student') === 'student' && !empty($data['student_code']) && !preg_match('/^\d{1,10}$/', (string) $data['student_code'])) {
+        if (empty(trim((string) ($data['faculty'] ?? '')))) {
+            throw new AuthServiceException('La facultad o dependencia es obligatoria', 422);
+        }
+
+        if ($userType === 'student' && empty(trim((string) ($data['career'] ?? '')))) {
+            throw new AuthServiceException('La escuela profesional es obligatoria para estudiantes', 422);
+        }
+
+        if ($userType === 'student' && !preg_match('/^\d{1,10}$/', (string) ($data['student_code'] ?? ''))) {
             throw new AuthServiceException('El codigo de estudiante debe ser numerico y tener maximo 10 digitos', 422);
+        }
+
+        if ($userType === 'student' && empty(trim((string) ($data['academic_cycle'] ?? '')))) {
+            throw new AuthServiceException('El ciclo academico es obligatorio para estudiantes', 422);
+        }
+
+        if (in_array($userType, ['teacher', 'administrativo'], true)) {
+            if (empty(trim((string) ($data['area'] ?? '')))) {
+                throw new AuthServiceException('El area es obligatoria para este tipo de usuario', 422);
+            }
+            if (empty(trim((string) ($data['position_title'] ?? '')))) {
+                throw new AuthServiceException('El cargo es obligatorio para este tipo de usuario', 422);
+            }
         }
 
         $user->update([
             'full_name'      => $data['full_name'],
-            'user_type'      => $data['user_type']      ?? 'student',
-            'faculty'        => $data['faculty']         ?? null,
-            'career'         => $data['career']          ?? null,
-            'academic_cycle' => $data['academic_cycle']  ?? null,
-            'student_code'   => $data['student_code']    ?? null,
+            'user_type'      => $userType,
+            'faculty'        => $data['faculty'] ?? null,
+            'career'         => $userType === 'student' ? ($data['career'] ?? null) : null,
+            'area'           => $userType === 'student' ? null : ($data['area'] ?? null),
+            'position_title' => $userType === 'student' ? null : ($data['position_title'] ?? null),
+            'academic_cycle' => $userType === 'student' ? ($data['academic_cycle'] ?? null) : null,
+            'student_code'   => $userType === 'student' ? ($data['student_code'] ?? null) : null,
             'is_profile_complete' => true,
         ]);
 
@@ -158,6 +182,8 @@ class AuthService
                     ->where('name', 'like', $like)
                     ->orWhere('full_name', 'like', $like)
                     ->orWhere('career', 'like', $like)
+                    ->orWhere('area', 'like', $like)
+                    ->orWhere('position_title', 'like', $like)
                     ->orWhere('faculty', 'like', $like)
                     ->orWhere('student_code', 'like', $like);
             });
@@ -216,17 +242,41 @@ class AuthService
     public function updateAcademic(int $userId, array $data): User
     {
         $user = $this->findOrFail($userId);
+        $userType = $data['user_type'] ?? $user->user_type;
 
-        if (($data['user_type'] ?? $user->user_type) === 'student' && !empty($data['student_code']) && !preg_match('/^\d{1,10}$/', (string) $data['student_code'])) {
+        if (array_key_exists('faculty', $data) && trim((string) $data['faculty']) === '') {
+            throw new AuthServiceException('La facultad o dependencia es obligatoria', 422);
+        }
+
+        if ($userType === 'student' && array_key_exists('career', $data) && trim((string) $data['career']) === '') {
+            throw new AuthServiceException('La escuela profesional es obligatoria para estudiantes', 422);
+        }
+
+        if ($userType === 'student' && !empty($data['student_code']) && !preg_match('/^\d{1,10}$/', (string) $data['student_code'])) {
             throw new AuthServiceException('El codigo de estudiante debe ser numerico y tener maximo 10 digitos', 422);
+        }
+
+        if ($userType === 'student' && array_key_exists('academic_cycle', $data) && trim((string) $data['academic_cycle']) === '') {
+            throw new AuthServiceException('El ciclo academico es obligatorio para estudiantes', 422);
+        }
+
+        if (in_array($userType, ['teacher', 'administrativo'], true)) {
+            if (array_key_exists('area', $data) && trim((string) $data['area']) === '') {
+                throw new AuthServiceException('El area es obligatoria para este tipo de usuario', 422);
+            }
+            if (array_key_exists('position_title', $data) && trim((string) $data['position_title']) === '') {
+                throw new AuthServiceException('El cargo es obligatorio para este tipo de usuario', 422);
+            }
         }
 
         $user->update(array_filter([
             'faculty'        => $data['faculty']        ?? null,
-            'career'         => $data['career']         ?? null,
-            'academic_cycle' => $data['academic_cycle'] ?? null,
-            'student_code'   => $data['student_code']   ?? null,
-            'user_type'      => $data['user_type']      ?? null,
+            'career'         => $userType === 'student' ? ($data['career'] ?? null) : null,
+            'area'           => $userType === 'student' ? null : ($data['area'] ?? null),
+            'position_title' => $userType === 'student' ? null : ($data['position_title'] ?? null),
+            'academic_cycle' => $userType === 'student' ? ($data['academic_cycle'] ?? null) : null,
+            'student_code'   => $userType === 'student' ? ($data['student_code'] ?? null) : null,
+            'user_type'      => $userType,
         ], fn($v) => $v !== null));
 
         return $user->fresh();
@@ -298,6 +348,8 @@ class AuthService
             'full_name'  => $user->full_name,
             'school'     => $user->career,
             'career'     => $user->career,
+            'area'       => $user->area,
+            'position_title' => $user->position_title,
             'faculty'    => $user->faculty,
             'role'       => $user->role,
             'avatar_url' => $user->avatar_url,
@@ -320,6 +372,8 @@ class AuthService
             'faculty'             => $user->faculty,
             'career'              => $user->career,
             'school'              => $user->career,
+            'area'                => $user->area,
+            'position_title'      => $user->position_title,
             'student_code'        => $user->student_code,
             'academic_cycle'      => $user->academic_cycle,
             'bio'                 => $user->bio,

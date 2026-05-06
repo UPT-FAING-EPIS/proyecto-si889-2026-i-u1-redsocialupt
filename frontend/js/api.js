@@ -45,6 +45,8 @@ function buildUserFromToken(token) {
     faculty: payload.faculty || '',
     career: payload.career || payload.school || '',
     school: payload.school || payload.career || '',
+    area: payload.area || '',
+    position_title: payload.position_title || '',
     role: payload.role || 'user',
   };
 }
@@ -257,13 +259,34 @@ const PostsAPI = {
   deletePost: (id) => apiFetch(`${API.posts}/${id}`, { method: 'DELETE' }),
   adminDeletePost: (id) => apiFetch(`${API.posts}/${id}/admin`, { method: 'DELETE' }),
   likePost: (id) => apiFetch(`${API.posts}/${id}/like`, { method: 'POST' }),
+  reactPost: (id, reactionType = 'me_gusta') => apiFetch(`${API.posts}/${id}/reaction`, {
+    method: 'POST',
+    body: JSON.stringify({ reaction_type: reactionType }),
+  }),
   getComments: (postId, sort = 'oldest') => apiFetch(`${API.posts}/${postId}/comments?sort=${encodeURIComponent(sort)}`),
   addComment: (postId, content) => apiFetch(`${API.posts}/${postId}/comments`, {
     method: 'POST', body: JSON.stringify({ content })
   }),
   likeComment: (commentId) => apiFetch(`/api/comments/${commentId}/like`, { method: 'POST' }),
+  reactComment: (commentId, reactionType = 'me_gusta') => apiFetch(`/api/comments/${commentId}/reaction`, {
+    method: 'POST',
+    body: JSON.stringify({ reaction_type: reactionType }),
+  }),
   deleteComment: (postId, commentId) => apiFetch(`${API.posts}/${postId}/comments/${commentId}`, { method: 'DELETE' }),
   adminDeleteComment: (commentId) => apiFetch(`/api/comments/${commentId}/admin`, { method: 'DELETE' }),
+  reportPost: (id, reason) => apiFetch(`${API.posts}/${id}/report`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  }),
+  reportComment: (id, reason) => apiFetch(`/api/comments/${id}/report`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  }),
+  listReports: (status = '') => apiFetch(`${API.posts}/admin/reports${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  updateReportStatus: (reportId, payload) => apiFetch(`${API.posts}/admin/reports/${reportId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
 };
 
 /* ── Social Service ───────────────────────────────────────────── */
@@ -298,6 +321,15 @@ const ChatAPI = {
       body: JSON.stringify({ receiver_id: receiverId, content, image_url: imageUrl }),
     });
   },
+  reportMessage: (messageId, reason) => apiFetch(`${API.chat}/messages/${messageId}/report`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  }),
+  listReports: (status = '') => apiFetch(`${API.chat}/admin/reports${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  updateReportStatus: (reportId, payload) => apiFetch(`${API.chat}/admin/reports/${reportId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
 };
 
 /* ── Auth actions ─────────────────────────────────────────────── */
@@ -369,7 +401,7 @@ function getDisplayName(userOrName) {
 
 function getCareerLabel(user) {
   if (!user) return '';
-  return user.school || user.career || '';
+  return user.school || user.career || user.area || user.position_title || '';
 }
 
 function formatAcademicCycle(value, short = false) {

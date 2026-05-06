@@ -27,7 +27,7 @@
     return;
   }
 
-  if (isLoggedIn() && (!localStorage.getItem('upt_user') || !appState.user.id || appState.user.is_profile_complete == null)) {
+  if (isLoggedIn()) {
     AuthAPI.getProfile().then((bootstrapProfile) => {
       if (!bootstrapProfile?.ok || !bootstrapProfile.data) {
         return;
@@ -69,6 +69,14 @@
     '🐶': ['🐶', '🐱', '🐼', '🦊', '🐯', '🦁', '🐵', '🐸', '🐧', '🦄', '🐝', '🦋', '🌱', '🌸', '🌞', '🌙'],
     '🍕': ['🍕', '🍔', '🌮', '🍜', '🍣', '🍩', '🍪', '🍫', '☕', '🍵', '🥤', '🍎', '🍓', '🥑', '🍿', '🎂'],
     '⚽': ['⚽', '🏀', '🏐', '🎾', '🏓', '🥊', '🏃', '🏊', '🚴', '🎮', '🎧', '🎤', '🎸', '🎬', '📷', '💻'],
+  };
+
+  const REACTION_META = {
+    me_gusta: { emoji: '👍', label: 'Me gusta' },
+    me_encanta: { emoji: '❤️', label: 'Me encanta' },
+    me_divierte: { emoji: '😂', label: 'Me divierte' },
+    me_sorprende: { emoji: '😮', label: 'Me sorprende' },
+    me_enoja: { emoji: '😡', label: 'Me enoja' },
   };
 
   function escapeHtml(value) {
@@ -117,7 +125,7 @@
   }
 
   function careerLabel(user) {
-    return window.getCareerLabel ? window.getCareerLabel(user) : (user?.school || user?.career || '');
+    return window.getCareerLabel ? window.getCareerLabel(user) : (user?.school || user?.career || user?.area || user?.position_title || '');
   }
 
   function cycleLabel(value, short = false) {
@@ -299,6 +307,66 @@
     return requests.find((request) => numericId(request?.sender_id || request?.sender?.id || request?.sender?.user_id) === targetId) || null;
   }
 
+  function getUserTypeLabel(userType) {
+    switch (userType) {
+      case 'teacher':
+        return 'Docente';
+      case 'administrativo':
+        return 'Administrativo';
+      default:
+        return 'Estudiante';
+    }
+  }
+
+  function reactionCountSummary(reactionsCount = {}) {
+    return Object.entries(REACTION_META)
+      .map(([type, meta]) => ({ type, meta, total: Number(reactionsCount?.[type] || 0) }))
+      .filter((entry) => entry.total > 0)
+      .map((entry) => `${entry.meta.emoji} ${entry.total}`)
+      .join(' ');
+  }
+
+  function renderReactionButtons(targetType, targetId, currentReaction, interactive = true) {
+    const baseClass = 'inline-flex items-center justify-center w-8 h-8 rounded-full border text-sm transition-colors';
+    return Object.entries(REACTION_META).map(([type, meta]) => {
+      const active = currentReaction === type;
+      const tone = active
+        ? 'bg-[#1B2A6B] text-white border-[#1B2A6B]'
+        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50';
+      if (!interactive) {
+        return `<span class="${baseClass} ${tone}" title="${escapeHtml(meta.label)}">${meta.emoji}</span>`;
+      }
+      return `
+        <button type="button" data-action="react-${targetType}" data-${targetType}-id="${targetId}" data-reaction="${type}" class="${baseClass} ${tone}" title="${escapeHtml(meta.label)}">
+          ${meta.emoji}
+        </button>
+      `;
+    }).join('');
+  }
+
+  async function reportContent(kind, id) {
+    const reason = window.prompt(`Motivo del reporte para ${kind}:`);
+    if (reason === null) return;
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      showToast('Debes indicar un motivo para reportar', 'error');
+      return;
+    }
+
+    let result = null;
+    if (kind === 'publicacion') result = await PostsAPI.reportPost(id, trimmedReason);
+    if (kind === 'comentario') result = await PostsAPI.reportComment(id, trimmedReason);
+    if (kind === 'mensaje') result = await ChatAPI.reportMessage(id, trimmedReason);
+
+    if (result?.ok) {
+      showToast('Reporte enviado correctamente', 'success');
+      return;
+    }
+
+    showToast(result?.data?.error || 'No se pudo enviar el reporte', 'error');
+  }
+
   function renderCommentCard(comment, options = {}) {
     const interactive = options.interactive !== false;
     const compact = options.compact !== false;
@@ -325,18 +393,16 @@
               <span class="text-[11px] text-slate-500">${escapeHtml(timeAgo(comment.created_at))}</span>
             </div>
             <p class="content-break text-[13px] text-slate-700 ${compact ? 'leading-5' : 'leading-6'}">${nl2br(comment.content || '')}</p>
-            <div class="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
+            <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+              <div class="flex items-center gap-2">
+                ${renderReactionButtons('comment', comment.id, comment.current_reaction, interactive)}
+              </div>
+              <span class="font-medium text-slate-600">${escapeHtml(reactionCountSummary(comment.reactions_count)) || `${comment.reactions_total || 0} reacciones`}</span>
               ${interactive ? `
-                <button type="button" data-action="toggle-comment-like" data-comment-id="${comment.id}" class="flex items-center gap-1.5 transition-colors ${comment.is_liked ? 'text-red-500 hover:text-red-600' : 'hover:text-slate-700'}">
-                  <span class="material-symbols-outlined text-[14px] ${comment.is_liked ? 'fill' : ''}">favorite</span>
-                  <span>${comment.likes_count || 0} Me gusta</span>
+                <button type="button" data-action="report-comment" data-comment-id="${comment.id}" class="ml-auto text-[11px] font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+                  Reportar
                 </button>
-              ` : `
-                <div class="flex items-center gap-1.5">
-                  <span class="material-symbols-outlined text-[14px]">favorite</span>
-                  <span>${comment.likes_count || 0} Me gusta</span>
-                </div>
-              `}
+              ` : ''}
             </div>
             ${footerActions ? `<div class="mt-2 flex items-center justify-end gap-2">${footerActions}</div>` : ''}
           </div>
@@ -475,14 +541,17 @@
           <div class="text-sm text-slate-800 mb-4"><p class="content-break">${nl2br(post.content || '')}</p></div>
           ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" onerror="this.parentElement.style.display='none'"/></div>` : ''}
         ${interactive ? `
-          <div class="pt-3 border-t border-slate-100 flex justify-start gap-6 items-center text-slate-500">
-            <button type="button" data-action="like-post" data-post-id="${post.id}" class="flex items-center gap-1.5 transition-colors ${post.is_liked ? 'text-red-500 hover:text-red-600' : 'hover:text-slate-700'}">
-              <span class="material-symbols-outlined text-[18px] ${post.is_liked ? 'fill' : ''}">favorite</span>
-              <span class="text-sm">${post.likes_count || 0} Me gusta</span>
-            </button>
+          <div class="pt-3 border-t border-slate-100 flex flex-wrap justify-start gap-3 items-center text-slate-500">
+            <div class="flex items-center gap-2">
+              ${renderReactionButtons('post', post.id, post.current_reaction, true)}
+            </div>
+            <span class="text-sm font-medium text-slate-600">${escapeHtml(reactionCountSummary(post.reactions_count)) || `${post.reactions_total || 0} reacciones`}</span>
             <button type="button" data-action="comment-post" data-post-id="${post.id}" class="flex items-center gap-1.5 hover:text-slate-700 transition-colors">
               <span class="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
               <span class="text-sm">${post.comments_count || 0} Comentarios</span>
+            </button>
+            <button type="button" data-action="report-post" data-post-id="${post.id}" class="text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
+              Reportar
             </button>
           </div>
         ` : ''}
@@ -544,7 +613,7 @@
         ` : ''}
         <div class="post-modal-preview-stats">
           <div class="flex items-center gap-3">
-            <span>${post.likes_count || 0} Me gusta</span>
+            <span>${post.reactions_total || 0} Reacciones</span>
             <span>${post.comments_count || 0} Comentarios</span>
           </div>
         </div>
@@ -918,7 +987,14 @@
                   </div>
                 ` : ''}
               </div>
-              <span class="text-[11px] text-slate-500 mt-1 px-1">${escapeHtml(formatClock(message.created_at))}</span>
+              <div class="mt-1 px-1 flex items-center gap-2">
+                <span class="text-[11px] text-slate-500">${escapeHtml(formatClock(message.created_at))}</span>
+                ${!isMine ? `
+                  <button type="button" data-action="report-message" data-message-id="${message.id}" class="text-[11px] font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+                    Reportar
+                  </button>
+                ` : ''}
+              </div>
             </div>
           </div>
         `;
@@ -1013,6 +1089,11 @@
       input.addEventListener('input', () => {
         input.style.height = 'auto';
         input.style.height = `${Math.min(input.scrollHeight, 144)}px`;
+      });
+      area.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-action="report-message"]');
+        if (!button) return;
+        await reportContent('mensaje', Number(button.dataset.messageId));
       });
 
       const result = await ChatAPI.getConversation(numericUserId);
@@ -1598,13 +1679,17 @@
               router.navigate('profile', { id: actionTarget.dataset.userId });
               return;
             }
-            if (actionTarget.dataset.action === 'like-post') {
-              await PostsAPI.likePost(postId);
+            if (actionTarget.dataset.action === 'react-post') {
+              await PostsAPI.reactPost(postId, actionTarget.dataset.reaction);
               loadFeed();
               return;
             }
             if (actionTarget.dataset.action === 'comment-post') {
               openCommentModal(postId);
+              return;
+            }
+            if (actionTarget.dataset.action === 'report-post') {
+              await reportContent('publicacion', postId);
               return;
             }
             if (actionTarget.dataset.action === 'delete-post') {
@@ -1620,16 +1705,23 @@
         });
 
         commentList.addEventListener('click', async (event) => {
-          const button = event.target.closest('[data-action="toggle-comment-like"]');
+          const button = event.target.closest('[data-action]');
           if (!button || !pendingCommentId) return;
 
-          const result = await PostsAPI.likeComment(button.dataset.commentId);
-          if (result?.ok) {
-            await loadComments(pendingCommentId, currentCommentSort);
+          if (button.dataset.action === 'react-comment') {
+            const result = await PostsAPI.reactComment(button.dataset.commentId, button.dataset.reaction);
+            if (result?.ok) {
+              await loadComments(pendingCommentId, currentCommentSort);
+              return;
+            }
+
+            showToast(result?.data?.error || 'No se pudo reaccionar al comentario', 'error');
             return;
           }
 
-          showToast(result?.data?.error || 'No se pudo reaccionar al comentario', 'error');
+          if (button.dataset.action === 'report-comment') {
+            await reportContent('comentario', Number(button.dataset.commentId));
+          }
         });
 
         commentPostPreview.addEventListener('click', (event) => {
@@ -2564,7 +2656,7 @@
             ` : ''}
             ${profileData.user_type ? `
               <span class="bg-white text-gray-600 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-300 flex items-center gap-1.5">
-                ${escapeHtml(profileData.user_type === 'teacher' ? 'Docente' : 'Estudiante')}
+                ${escapeHtml(getUserTypeLabel(profileData.user_type))}
               </span>
             ` : ''}
           `;
@@ -2652,13 +2744,17 @@
               router.navigate('profile', { id: button.dataset.userId });
               return;
             }
-            if (button.dataset.action === 'like-post') {
-              await PostsAPI.likePost(Number(button.dataset.postId));
+            if (button.dataset.action === 'react-post') {
+              await PostsAPI.reactPost(Number(button.dataset.postId), button.dataset.reaction);
               await loadPosts(profileData.id);
               return;
             }
             if (button.dataset.action === 'comment-post') {
               openProfileCommentModal(button.dataset.postId);
+              return;
+            }
+            if (button.dataset.action === 'report-post') {
+              await reportContent('publicacion', Number(button.dataset.postId));
               return;
             }
           }
@@ -2670,16 +2766,23 @@
         });
 
         profileCommentList.addEventListener('click', async (event) => {
-          const button = event.target.closest('[data-action="toggle-comment-like"]');
+          const button = event.target.closest('[data-action]');
           if (!button || !pendingProfileCommentId) return;
 
-          const result = await PostsAPI.likeComment(button.dataset.commentId);
-          if (result?.ok) {
-            await loadProfileComments(pendingProfileCommentId, currentProfileCommentSort);
+          if (button.dataset.action === 'react-comment') {
+            const result = await PostsAPI.reactComment(button.dataset.commentId, button.dataset.reaction);
+            if (result?.ok) {
+              await loadProfileComments(pendingProfileCommentId, currentProfileCommentSort);
+              return;
+            }
+
+            showToast(result?.data?.error || 'No se pudo reaccionar al comentario', 'error');
             return;
           }
 
-          showToast(result?.data?.error || 'No se pudo reaccionar al comentario', 'error');
+          if (button.dataset.action === 'report-comment') {
+            await reportContent('comentario', Number(button.dataset.commentId));
+          }
         });
 
         profileCommentPostPreview.addEventListener('click', (event) => {
@@ -2815,6 +2918,7 @@
             <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
               <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Usuarios</button>
               <button id="go-admin-posts-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Publicaciones</button>
+              <button id="go-admin-reports-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Reportes</button>
             </div>
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div class="p-4 border-b border-slate-200">
@@ -2860,10 +2964,11 @@
                     <select id="edit-user-type" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
                       <option value="student">Estudiante</option>
                       <option value="teacher">Docente</option>
+                      <option value="administrativo">Administrativo</option>
                     </select>
                   </div>
                   <div class="flex flex-col gap-1.5">
-                    <label class="text-sm font-semibold text-gray-700">Facultad</label>
+                    <label id="edit-user-faculty-label" class="text-sm font-semibold text-gray-700">Facultad</label>
                     <select id="edit-user-faculty" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
                       <option value="FAING">FAING</option>
                       <option value="FACEM">FACEM</option>
@@ -2874,18 +2979,28 @@
                     </select>
                   </div>
                 </div>
-                <div class="flex flex-col gap-1.5">
+                <div class="flex flex-col gap-1.5" id="edit-user-career-group">
                   <label class="text-sm font-semibold text-gray-700">Carrera</label>
                   <input id="edit-user-career" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text"/>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5">
+                  <div class="flex flex-col gap-1.5" id="edit-user-cycle-group">
                     <label class="text-sm font-semibold text-gray-700">Ciclo</label>
                     <input id="edit-user-cycle" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text" placeholder="Ej. 8"/>
                   </div>
-                  <div class="flex flex-col gap-1.5">
+                  <div class="flex flex-col gap-1.5" id="edit-user-code-group">
                     <label class="text-sm font-semibold text-gray-700">Codigo</label>
                     <input id="edit-user-code" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text"/>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div class="flex flex-col gap-1.5" id="edit-user-area-group">
+                    <label class="text-sm font-semibold text-gray-700">Area</label>
+                    <input id="edit-user-area" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text"/>
+                  </div>
+                  <div class="flex flex-col gap-1.5" id="edit-user-position-group">
+                    <label class="text-sm font-semibold text-gray-700">Cargo</label>
+                    <input id="edit-user-position" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text"/>
                   </div>
                 </div>
                 <div class="flex justify-end gap-3 pt-2">
@@ -2934,6 +3049,17 @@
         const blockForm = container.querySelector('#block-user-form');
 
         let allUsers = [];
+
+        function syncAdminEditFields(userType) {
+          const isStudent = userType === 'student';
+          const isAdministrative = userType === 'administrativo';
+          container.querySelector('#edit-user-career-group').style.display = isStudent ? 'flex' : 'none';
+          container.querySelector('#edit-user-cycle-group').style.display = isStudent ? 'flex' : 'none';
+          container.querySelector('#edit-user-code-group').style.display = isStudent ? 'flex' : 'none';
+          container.querySelector('#edit-user-area-group').style.display = isStudent ? 'none' : 'flex';
+          container.querySelector('#edit-user-position-group').style.display = isStudent ? 'none' : 'flex';
+          container.querySelector('#edit-user-faculty-label').textContent = isAdministrative ? 'Dependencia / facultad' : 'Facultad';
+        }
 
         function openModal() {
           editModal.classList.remove('hidden');
@@ -3072,6 +3198,9 @@
             container.querySelector('#edit-user-career').value = careerLabel(listedUser);
             container.querySelector('#edit-user-cycle').value = listedUser.academic_cycle || '';
             container.querySelector('#edit-user-code').value = listedUser.student_code || '';
+            container.querySelector('#edit-user-area').value = listedUser.area || '';
+            container.querySelector('#edit-user-position').value = listedUser.position_title || '';
+            syncAdminEditFields(container.querySelector('#edit-user-type').value);
             openModal();
             return;
           }
@@ -3108,10 +3237,14 @@
         });
 
         container.querySelector('#go-admin-posts-btn').addEventListener('click', () => router.navigate('admin-posts'));
+        container.querySelector('#go-admin-reports-btn').addEventListener('click', () => router.navigate('admin-reports'));
         container.querySelector('#close-edit-user-modal-btn').addEventListener('click', closeModal);
         container.querySelector('#cancel-edit-user-btn').addEventListener('click', closeModal);
         container.querySelector('#close-block-user-modal-btn').addEventListener('click', closeBlockModal);
         container.querySelector('#cancel-block-user-btn').addEventListener('click', closeBlockModal);
+        container.querySelector('#edit-user-type').addEventListener('change', (event) => {
+          syncAdminEditFields(event.target.value);
+        });
         editModal.addEventListener('click', (event) => {
           if (event.target === editModal) closeModal();
         });
@@ -3126,6 +3259,8 @@
             user_type: container.querySelector('#edit-user-type').value,
             faculty: container.querySelector('#edit-user-faculty').value,
             career: container.querySelector('#edit-user-career').value,
+            area: container.querySelector('#edit-user-area').value,
+            position_title: container.querySelector('#edit-user-position').value,
             academic_cycle: container.querySelector('#edit-user-cycle').value,
             student_code: container.querySelector('#edit-user-code').value,
           });
@@ -3159,6 +3294,131 @@
         loadUsers();
       },
     },
+    'admin-reports': {
+      title: 'Admin reportes',
+      activeNav: 'admin',
+      adminOnly: true,
+      render() {
+        return `
+          <div class="flex flex-col w-full">
+            <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+              <div>
+                <h1 class="text-[28px] font-bold text-slate-900 tracking-tight leading-tight mb-1">Cola de reportes</h1>
+                <p class="text-[15px] text-slate-500">Revisa reportes de publicaciones, comentarios y mensajes.</p>
+              </div>
+              <button type="button" class="bg-[#D4A017] text-[#332200] font-bold text-[13px] px-4 py-2 rounded-full transition-colors flex items-center shadow-sm">
+                ACCESO ADMIN
+              </button>
+            </div>
+            <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
+              <button id="go-admin-users-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Usuarios</button>
+              <button id="go-admin-posts-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Publicaciones</button>
+              <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Reportes</button>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div class="p-4 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <h2 class="text-sm font-bold text-slate-900">Reportes recientes</h2>
+                  <p class="text-xs text-slate-500 mt-1">Puedes marcarlos como revisados, descartados o sancionados.</p>
+                </div>
+                <select id="admin-report-status" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none">
+                  <option value="">Todos</option>
+                  <option value="pending">Pendientes</option>
+                  <option value="reviewed">Revisados</option>
+                  <option value="dismissed">Descartados</option>
+                  <option value="sanctioned">Sancionados</option>
+                </select>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse min-w-[980px]">
+                  <thead>
+                    <tr class="bg-slate-100/50 border-b border-slate-200">
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Origen</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Objetivo</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Motivo</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Estado</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Fecha</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-reports-tbody" class="divide-y divide-slate-100">
+                    <tr><td colspan="6" class="py-8 text-center text-slate-400">Cargando reportes...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        `;
+      },
+      mount({ container, router }) {
+        const tbody = container.querySelector('#admin-reports-tbody');
+        const statusFilter = container.querySelector('#admin-report-status');
+
+        function formatReportRows(reports) {
+          if (!reports.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No hay reportes para mostrar.</td></tr>';
+            return;
+          }
+
+          tbody.innerHTML = reports.map((report) => `
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="py-4 px-5 text-sm font-semibold text-slate-700">${escapeHtml(report.service === 'chat' ? 'Chat' : 'Publicaciones')}</td>
+              <td class="py-4 px-5 text-sm text-slate-600">${escapeHtml(report.target_type || 'message')} #${escapeHtml(String(report.target_id ?? report.message_id ?? ''))}</td>
+              <td class="py-4 px-5 text-sm text-slate-700">${escapeHtml(report.reason || '')}</td>
+              <td class="py-4 px-5 text-sm text-slate-600">${escapeHtml(report.status || 'pending')}</td>
+              <td class="py-4 px-5 text-sm text-slate-500">${escapeHtml(timeAgo(report.created_at))}</td>
+              <td class="py-4 px-5">
+                <div class="flex justify-end gap-2 flex-wrap">
+                  <button type="button" data-report-action="reviewed" data-report-service="${report.service}" data-report-id="${report.id}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Revisar</button>
+                  <button type="button" data-report-action="dismissed" data-report-service="${report.service}" data-report-id="${report.id}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Descartar</button>
+                  <button type="button" data-report-action="sanctioned" data-report-service="${report.service}" data-report-id="${report.id}" class="px-3 py-1.5 rounded-lg bg-[#1B2A6B] text-xs font-semibold text-white hover:bg-[#15215a]">Sancionar</button>
+                </div>
+              </td>
+            </tr>
+          `).join('');
+        }
+
+        async function loadReports() {
+          const status = statusFilter.value;
+          const [postReports, chatReports] = await Promise.all([
+            PostsAPI.listReports(status),
+            ChatAPI.listReports(status),
+          ]);
+
+          const reports = [];
+          if (postReports?.ok) reports.push(...getList(postReports).map((item) => ({ ...item, service: 'posts' })));
+          if (chatReports?.ok) reports.push(...getList(chatReports).map((item) => ({ ...item, service: 'chat', target_type: 'message', target_id: item.message_id })));
+
+          reports.sort((left, right) => new Date(right.created_at || 0).getTime() - new Date(left.created_at || 0).getTime());
+          formatReportRows(reports);
+        }
+
+        container.querySelector('#go-admin-users-btn').addEventListener('click', () => router.navigate('admin'));
+        container.querySelector('#go-admin-posts-btn').addEventListener('click', () => router.navigate('admin-posts'));
+        statusFilter.addEventListener('change', loadReports);
+        tbody.addEventListener('click', async (event) => {
+          const button = event.target.closest('[data-report-action]');
+          if (!button) return;
+
+          const resolutionNotes = window.prompt('Notas de resolución (opcional):') || '';
+          const api = button.dataset.reportService === 'chat' ? ChatAPI : PostsAPI;
+          const result = await api.updateReportStatus(button.dataset.reportId, {
+            status: button.dataset.reportAction,
+            resolution_notes: resolutionNotes,
+          });
+
+          if (result?.ok) {
+            showToast('Reporte actualizado', 'success');
+            await loadReports();
+            return;
+          }
+
+          showToast(result?.data?.error || 'No se pudo actualizar el reporte', 'error');
+        });
+
+        loadReports();
+      },
+    },
     'admin-posts': {
       title: 'Admin publicaciones',
       activeNav: 'admin',
@@ -3179,6 +3439,7 @@
             <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
               <button id="go-admin-users-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Usuarios</button>
               <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Publicaciones</button>
+              <button id="go-admin-reports-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Reportes</button>
             </div>
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div class="overflow-x-auto">
@@ -3258,13 +3519,13 @@
           const total = posts.length;
           const withImages = posts.filter((item) => !!item.image_url).length;
           const comments = posts.reduce((sum, item) => sum + Number(item.comments_count || 0), 0);
-          const likes = posts.reduce((sum, item) => sum + Number(item.likes_count || 0), 0);
+          const reactions = posts.reduce((sum, item) => sum + Number(item.reactions_total || 0), 0);
 
           const cards = [
             { value: total, label: 'Publicaciones', color: '#4A6BFF', bg: '#EBF0FF', icon: 'article' },
             { value: withImages, label: 'Con imagen', color: '#ffffff', bg: '#D4A017', icon: 'image' },
             { value: comments, label: 'Comentarios', color: '#4A55A2', bg: '#F0F2FB', icon: 'chat_bubble' },
-            { value: likes, label: 'Likes', color: '#6B7280', bg: '#F3F4F6', icon: 'favorite' },
+            { value: reactions, label: 'Reacciones', color: '#6B7280', bg: '#F3F4F6', icon: 'favorite' },
           ];
 
           stats.innerHTML = cards.map((card) => `
@@ -3382,6 +3643,7 @@
         }
 
         container.querySelector('#go-admin-users-btn').addEventListener('click', () => router.navigate('admin'));
+        container.querySelector('#go-admin-reports-btn').addEventListener('click', () => router.navigate('admin-reports'));
         container.querySelector('#close-comments-modal-btn').addEventListener('click', closeCommentsModal);
         container.querySelector('#close-comments-modal-footer-btn').addEventListener('click', closeCommentsModal);
         commentsSort.addEventListener('change', () => {
