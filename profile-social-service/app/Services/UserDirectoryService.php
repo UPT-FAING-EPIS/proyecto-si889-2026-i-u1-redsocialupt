@@ -59,6 +59,22 @@ class UserDirectoryService
         }));
     }
 
+    public function listUsersByIds(string $jwt, array $userIds): array
+    {
+        $userIds = array_values(array_unique(array_map('intval', $userIds)));
+        if (empty($userIds)) {
+            return [];
+        }
+
+        $users = $this->fetchUsersFromAuth($jwt, [
+            'limit' => max(200, count($userIds) + 25),
+        ]);
+
+        return array_values(array_filter($users, function ($user) use ($userIds) {
+            return in_array((int) ($user['id'] ?? 0), $userIds, true);
+        }));
+    }
+
     /**
      * Obtiene la lista de usuarios desde auth-service.
      */
