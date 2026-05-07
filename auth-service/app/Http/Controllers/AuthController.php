@@ -39,15 +39,19 @@ class AuthController extends BaseController
                     'error' => 'Tu cuenta ha sido bloqueada',
                     'code' => 'ACCOUNT_BLOCKED',
                     'reason' => $result['reason'] ?? null,
+                    'blocked_until' => $result['blocked_until'] ?? null,
+                    'is_indefinite' => $result['is_indefinite'] ?? false,
                 ], 403);
             }
             return response()->json($result, 200);
         } catch (\Exception $e) {
-            [$message, $code, $reason] = $this->normalizeExceptionResponse($e);
+            [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
             return response()->json(array_filter([
                 'error' => $message,
                 'code' => $code,
                 'reason' => $reason,
+                'blocked_until' => $blockedUntil,
+                'is_indefinite' => $isIndefinite,
             ], fn ($value) => $value !== null), is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
@@ -76,11 +80,13 @@ class AuthController extends BaseController
             );
             return response()->json(['message' => 'Perfil completado', 'user' => $user['user'], 'token' => $user['token']], 200);
         } catch (\Exception $e) {
-            [$message, $code, $reason] = $this->normalizeExceptionResponse($e);
+            [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
             return response()->json(array_filter([
                 'error' => $message,
                 'code' => $code,
                 'reason' => $reason,
+                'blocked_until' => $blockedUntil,
+                'is_indefinite' => $isIndefinite,
             ], fn ($value) => $value !== null), is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
@@ -128,11 +134,13 @@ class AuthController extends BaseController
             );
             return response()->json(['message' => 'Perfil actualizado', 'user' => $user['user'], 'token' => $user['token']], 200);
         } catch (\Exception $e) {
-            [$message, $code, $reason] = $this->normalizeExceptionResponse($e);
+            [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
             return response()->json(array_filter([
                 'error' => $message,
                 'code' => $code,
                 'reason' => $reason,
+                'blocked_until' => $blockedUntil,
+                'is_indefinite' => $isIndefinite,
             ], fn ($value) => $value !== null), is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
@@ -156,11 +164,13 @@ class AuthController extends BaseController
             $user = $this->authService->getAuthenticatedUserProfile($request->auth->sub);
             return response()->json($user, 200);
         } catch (\Exception $e) {
-            [$message, $code, $reason] = $this->normalizeExceptionResponse($e);
+            [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
             return response()->json(array_filter([
                 'error' => $message,
                 'code' => $code,
                 'reason' => $reason,
+                'blocked_until' => $blockedUntil,
+                'is_indefinite' => $isIndefinite,
             ], fn ($value) => $value !== null), is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
@@ -175,11 +185,13 @@ class AuthController extends BaseController
             $user = $this->authService->touchPresence($request->auth->sub);
             return response()->json(['message' => 'Presencia actualizada', 'user' => $user], 200);
         } catch (\Exception $e) {
-            [$message, $code, $reason] = $this->normalizeExceptionResponse($e);
+            [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
             return response()->json(array_filter([
                 'error' => $message,
                 'code' => $code,
                 'reason' => $reason,
+                'blocked_until' => $blockedUntil,
+                'is_indefinite' => $isIndefinite,
             ], fn ($value) => $value !== null), is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
@@ -251,24 +263,30 @@ class AuthController extends BaseController
 
         $this->validate($request, [
             'blocked_reason' => 'nullable|string|max:1000',
+            'blocked_until' => 'nullable|date',
+            'is_indefinite' => 'nullable|boolean',
         ]);
 
         try {
             $user = $this->authService->toggleUser(
                 $id,
                 (int) $request->auth->sub,
-                $request->input('blocked_reason')
+                $request->input('blocked_reason'),
+                $request->input('blocked_until'),
+                (bool) $request->input('is_indefinite', false)
             );
             return response()->json([
-                'message' => $user->is_active ? 'Usuario activado' : 'Usuario desactivado',
-                'user'    => $user,
+                'message' => $user->is_active ? 'Usuario desbloqueado' : 'Usuario bloqueado',
+                'user'    => $this->authService->getUserById($user->id),
             ], 200);
         } catch (\Exception $e) {
-            [$message, $code, $reason] = $this->normalizeExceptionResponse($e);
+            [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
             return response()->json(array_filter([
                 'error' => $message,
                 'code' => $code,
                 'reason' => $reason,
+                'blocked_until' => $blockedUntil,
+                'is_indefinite' => $isIndefinite,
             ], fn ($value) => $value !== null), is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
         }
     }
@@ -330,15 +348,19 @@ class AuthController extends BaseController
 
     private function normalizeExceptionResponse(\Exception $e): array
     {
-        if (str_starts_with($e->getMessage(), 'ACCOUNT_BLOCKED|')) {
+        if (str_starts_with($e->getMessage(), 'ACCOUNT_BLOCKED::')) {
+            $payload = json_decode(substr($e->getMessage(), strlen('ACCOUNT_BLOCKED::')), true);
+            $payload = is_array($payload) ? $payload : [];
             return [
                 'Tu cuenta ha sido bloqueada',
                 'ACCOUNT_BLOCKED',
-                trim(substr($e->getMessage(), strlen('ACCOUNT_BLOCKED|'))) ?: null,
+                $payload['reason'] ?? null,
+                $payload['blocked_until'] ?? null,
+                $payload['is_indefinite'] ?? false,
             ];
         }
 
-        return [$e->getMessage(), null, null];
+        return [$e->getMessage(), null, null, null, null];
     }
 }
 

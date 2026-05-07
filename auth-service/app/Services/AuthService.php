@@ -11,6 +11,7 @@ use Google\Client as GoogleClient;
 class AuthService
 {
     private const ONLINE_WINDOW_SECONDS = 120;
+    private const ACCOUNT_BLOCKED_PREFIX = 'ACCOUNT_BLOCKED::';
 
     /**
      * Autentica con Google OAuth.
@@ -30,6 +31,8 @@ class AuthService
         $name     = $payload['name'] ?? '';
         $avatar   = $payload['picture'] ?? '';
 
+        $this->releaseExpiredBlocks();
+
         // Validar dominio
         if (substr(strrchr($email, '@'), 1) !== 'virtual.upt.pe') {
             throw new AuthServiceException('Solo se permiten cuentas @virtual.upt.pe', 403);
@@ -46,10 +49,33 @@ class AuthService
             ]
         );
 
+        $shouldRefreshGoogleAvatar = empty($user->avatar_url)
+            || str_contains((string) $user->avatar_url, 'googleusercontent.com');
+
+        $updates = [];
+        if ($user->email !== $email) {
+            $updates['email'] = $email;
+        }
+        if ($name !== '' && $user->name !== $name) {
+            $updates['name'] = $name;
+        }
+        if ($avatar !== '' && $shouldRefreshGoogleAvatar && $user->avatar_url !== $avatar) {
+            $updates['avatar_url'] = $avatar;
+        }
+
+        if ($updates !== []) {
+            $user->update($updates);
+            $user = $user->fresh();
+        }
+
+        $user = $this->refreshBlockState($user);
         if (!$user->is_active) {
+            $blocked = $this->buildBlockedPayload($user);
             return [
                 'blocked' => true,
-                'reason' => $user->blocked_reason,
+                'reason' => $blocked['reason'],
+                'blocked_until' => $blocked['blocked_until'],
+                'is_indefinite' => $blocked['is_indefinite'],
             ];
         }
 
@@ -155,6 +181,7 @@ class AuthService
      */
     public function listUsers()
     {
+        $this->releaseExpiredBlocks();
         return User::orderBy('created_at', 'desc')->get();
     }
 
@@ -163,6 +190,7 @@ class AuthService
      */
     public function getUserById(int $userId): array
     {
+        $this->releaseExpiredBlocks();
         $user = $this->findOrFail($userId);
         return $this->formatUser($user);
     }
@@ -172,6 +200,7 @@ class AuthService
      */
     public function listUsersPublic(?string $query = null, ?string $faculty = null, ?string $career = null, ?int $limit = null): array
     {
+        $this->releaseExpiredBlocks();
         $usersQuery = User::query()->where('is_active', true);
 
         $query = trim((string) $query);
@@ -214,26 +243,58 @@ class AuthService
     /**
      * Activa o desactiva un usuario (RF-09 — solo admin).
      */
-    public function toggleUser(int $userId, ?int $actorUserId = null, ?string $blockedReason = null): User
+    public function toggleUser(
+        int $userId,
+        ?int $actorUserId = null,
+        ?string $blockedReason = null,
+        ?string $blockedUntil = null,
+        bool $isIndefinite = false
+    ): User
     {
+        $this->releaseExpiredBlocks();
         $user = $this->findOrFail($userId);
+        $user = $this->refreshBlockState($user);
 
         if ($actorUserId !== null && $user->id === $actorUserId) {
-            throw new AuthServiceException('No puedes desactivar tu propia cuenta', 422);
+            throw new AuthServiceException('No puedes bloquear tu propia cuenta', 422);
         }
 
-        $user->is_active = !$user->is_active;
+        if (!$user->is_active) {
+            $user->forceFill([
+                'is_active' => true,
+                'blocked_reason' => null,
+                'blocked_until' => null,
+            ])->save();
+
+            return $user->fresh();
+        }
+
         $normalizedBlockedReason = null;
-        if ($blockedReason !== null) {
-            $trimmedReason = trim($blockedReason);
-            if ($trimmedReason !== '') {
-                $normalizedBlockedReason = $trimmedReason;
+        $trimmedReason = trim((string) $blockedReason);
+        if ($trimmedReason !== '') {
+            $normalizedBlockedReason = $trimmedReason;
+        }
+
+        $normalizedBlockedUntil = null;
+        if (!$isIndefinite && trim((string) $blockedUntil) !== '') {
+            try {
+                $normalizedBlockedUntil = Carbon::parse($blockedUntil);
+            } catch (\Throwable $e) {
+                throw new AuthServiceException('La fecha de fin del bloqueo es invalida', 422);
+            }
+
+            if ($normalizedBlockedUntil->lessThanOrEqualTo(Carbon::now())) {
+                throw new AuthServiceException('La fecha de fin del bloqueo debe ser futura', 422);
             }
         }
-        $user->blocked_reason = $user->is_active ? null : $normalizedBlockedReason;
-        $user->save();
 
-        return $user;
+        $user->forceFill([
+            'is_active' => false,
+            'blocked_reason' => $normalizedBlockedReason,
+            'blocked_until' => $isIndefinite ? null : $normalizedBlockedUntil,
+        ])->save();
+
+        return $user->fresh();
     }
 
     /**
@@ -353,6 +414,7 @@ class AuthService
             'faculty'    => $user->faculty,
             'role'       => $user->role,
             'avatar_url' => $user->avatar_url,
+            'blocked_until' => $user->blocked_until?->toIso8601String(),
             'iat'        => time(),
             'exp'        => time() + (env('JWT_EXPIRATION_MINUTES', 60) * 60),
         ];
@@ -383,17 +445,62 @@ class AuthService
             'role'                => $user->role,
             'is_active'           => (bool) $user->is_active,
             'blocked_reason'      => $user->blocked_reason,
+            'blocked_until'       => $user->blocked_until?->toIso8601String(),
+            'is_blocked_indefinitely' => !$user->is_active && $user->blocked_until === null,
             'is_profile_complete' => $user->is_profile_complete,
         ];
     }
 
     private function ensureUserIsActive(User $user): User
     {
+        $user = $this->refreshBlockState($user);
         if (!$user->is_active) {
-            throw new AuthServiceException('ACCOUNT_BLOCKED|' . ($user->blocked_reason ?? ''), 403);
+            throw new AuthServiceException(self::ACCOUNT_BLOCKED_PREFIX . json_encode($this->buildBlockedPayload($user)), 403);
         }
 
         return $user;
+    }
+
+    private function refreshBlockState(User $user): User
+    {
+        if ($user->is_active || !$user->blocked_until) {
+            return $user;
+        }
+
+        if ($user->blocked_until->greaterThan(Carbon::now())) {
+            return $user;
+        }
+
+        $user->forceFill([
+            'is_active' => true,
+            'blocked_reason' => null,
+            'blocked_until' => null,
+        ])->save();
+
+        return $user->fresh();
+    }
+
+    private function releaseExpiredBlocks(): void
+    {
+        User::query()
+            ->where('is_active', false)
+            ->whereNotNull('blocked_until')
+            ->where('blocked_until', '<=', Carbon::now())
+            ->update([
+                'is_active' => true,
+                'blocked_reason' => null,
+                'blocked_until' => null,
+                'updated_at' => Carbon::now(),
+            ]);
+    }
+
+    private function buildBlockedPayload(User $user): array
+    {
+        return [
+            'reason' => $user->blocked_reason ?: null,
+            'blocked_until' => $user->blocked_until?->toIso8601String(),
+            'is_indefinite' => $user->blocked_until === null,
+        ];
     }
 }
 

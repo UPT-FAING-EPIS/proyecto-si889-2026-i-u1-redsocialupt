@@ -84,6 +84,10 @@
             <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8A6A00] mb-2">Motivo registrado</p>
             <p id="blocked-reason-text" class="text-sm text-[#4A3B00] leading-6"></p>
           </div>
+          <div id="blocked-duration-card" class="hidden rounded-2xl border border-slate-200 bg-slate-50 p-4 mb-5">
+            <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Duracion del bloqueo</p>
+            <p id="blocked-duration-text" class="text-sm text-slate-700 leading-6"></p>
+          </div>
           <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-center text-sm text-slate-600">
             Si crees que esto fue un error, comunicate con un administrador.
           </div>
@@ -123,11 +127,29 @@
     let loginDotWaveResizeTimer = null;
     let renderedWaveSignature = '';
 
-    function renderBlockedState(reason) {
+    function formatBlockedDuration(blockedUntil, isIndefinite) {
+      if (isIndefinite || !blockedUntil) {
+        return 'Bloqueo indefinido';
+      }
+
+      const date = new Date(blockedUntil);
+      if (Number.isNaN(date.getTime())) {
+        return 'Bloqueo temporal activo';
+      }
+
+      return `Bloqueada hasta ${date.toLocaleString('es-PE', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })}`;
+    }
+
+    function renderBlockedState(reason, blockedUntil = null, isIndefinite = false) {
       const blockedSection = document.getElementById('blocked-section');
       const loginSection = document.getElementById('login-section');
       const reasonCard = document.getElementById('blocked-reason-card');
       const reasonText = document.getElementById('blocked-reason-text');
+      const durationCard = document.getElementById('blocked-duration-card');
+      const durationText = document.getElementById('blocked-duration-text');
 
       blockedSection.classList.remove('hidden');
       loginSection.classList.add('hidden');
@@ -139,6 +161,9 @@
         reasonText.textContent = '';
         reasonCard.classList.add('hidden');
       }
+
+      durationText.textContent = formatBlockedDuration(blockedUntil, isIndefinite);
+      durationCard.classList.remove('hidden');
     }
 
     function renderLoginDotWave() {
@@ -197,7 +222,7 @@
       });
       const blockedNotice = getBlockedNotice();
       if (blockedNotice) {
-        renderBlockedState(blockedNotice.reason);
+        renderBlockedState(blockedNotice.reason, blockedNotice.blocked_until, !!blockedNotice.is_indefinite);
         return;
       }
 
@@ -221,10 +246,10 @@
 
     async function handleCredentialResponse(response) {
       const result = await AuthAPI.googleLogin(response.credential);
-      if (!result || !result.ok) {
+        if (!result || !result.ok) {
         if (result?.status === 403 && result?.data?.code === 'ACCOUNT_BLOCKED') {
-          setBlockedNotice(result.data.reason || null);
-          renderBlockedState(result.data.reason || null);
+          setBlockedNotice(result.data.reason || null, result.data.blocked_until || null, !!result.data.is_indefinite);
+          renderBlockedState(result.data.reason || null, result.data.blocked_until || null, !!result.data.is_indefinite);
           return;
         }
 

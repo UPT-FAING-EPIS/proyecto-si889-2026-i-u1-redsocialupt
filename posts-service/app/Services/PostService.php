@@ -7,6 +7,13 @@ use App\Models\Post;
 
 class PostService
 {
+    private SocialBlockService $socialBlockService;
+
+    public function __construct()
+    {
+        $this->socialBlockService = new SocialBlockService();
+    }
+
     /**
      * Crea una publicación (RF-02).
      */
@@ -31,11 +38,17 @@ class PostService
      * - 'friends' → solo si el autor está en $friendIds
      * - 'faculty' → solo si el autor tiene la misma facultad ($userFaculty)
      */
-    public function getFeed(int $userId, array $friendIds, ?string $userFaculty): \Illuminate\Support\Collection
+    public function getFeed(int $userId, array $friendIds, ?string $userFaculty, string $jwt = ''): \Illuminate\Support\Collection
     {
+        $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
+
         return Post::orderBy('created_at', 'desc')
             ->get()
-            ->filter(function (Post $post) use ($userId, $friendIds, $userFaculty) {
+            ->filter(function (Post $post) use ($userId, $friendIds, $userFaculty, $hiddenIds) {
+                if (in_array((int) $post->user_id, $hiddenIds, true)) {
+                    return false;
+                }
+
                 if ($post->user_id === $userId) {
                     return true; // siempre ve sus propias publicaciones
                 }

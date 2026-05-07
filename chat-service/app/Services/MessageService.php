@@ -8,6 +8,12 @@ use App\Models\Message;
 class MessageService
 {
     private ?array $friendIdsCache = null;
+    private SocialBlockService $socialBlockService;
+
+    public function __construct()
+    {
+        $this->socialBlockService = new SocialBlockService();
+    }
 
     /**
      * Enviar mensaje a un companero (RF-08).
@@ -16,6 +22,10 @@ class MessageService
     {
         if ($senderId === $receiverId) {
             throw new MessageServiceException('No puedes enviarte un mensaje a ti mismo', 422);
+        }
+
+        if ($this->socialBlockService->isBlockedBetween($jwt, $receiverId)) {
+            throw new MessageServiceException('No puedes interactuar con este usuario', 403);
         }
 
         if (empty($content) && empty($imageUrl)) {
@@ -39,6 +49,10 @@ class MessageService
      */
     public function getConversation(int $userId, int $otherUserId, int $limit = 50, string $jwt = ''): array
     {
+        if ($this->socialBlockService->isBlockedBetween($jwt, $otherUserId)) {
+            throw new MessageServiceException('No puedes interactuar con este usuario', 403);
+        }
+
         $this->assertFriendship($otherUserId, $jwt);
 
         $messages = Message::where(function ($q) use ($userId, $otherUserId) {
@@ -68,6 +82,9 @@ class MessageService
         if ($friendIds === null) {
             throw new MessageServiceException('No se pudo validar la lista de amigos', 503);
         }
+
+        $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
+        $friendIds = array_values(array_filter($friendIds, fn($id) => !in_array((int) $id, $hiddenIds, true)));
 
         $sentTo = Message::where('sender_id', $userId)->pluck('receiver_id');
         $receivedFrom = Message::where('receiver_id', $userId)->pluck('sender_id');

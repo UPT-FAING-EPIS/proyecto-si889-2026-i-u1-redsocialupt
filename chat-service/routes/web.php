@@ -17,5 +17,6 @@ $router->group(['prefix' => 'api/chat', 'middleware' => 'jwt'], function () use 
 
     $router->post('/messages/{id}/report', 'MessageReportController@report');
     $router->get('/admin/reports', 'MessageReportController@list');
+    $router->get('/admin/reports/{id}', 'MessageReportController@show');
     $router->put('/admin/reports/{id}', 'MessageReportController@updateStatus');
 });

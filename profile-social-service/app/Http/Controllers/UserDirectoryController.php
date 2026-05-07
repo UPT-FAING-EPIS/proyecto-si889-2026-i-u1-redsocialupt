@@ -48,4 +48,12 @@ class UserDirectoryController extends BaseController
 
         return response()->json($users, 200);
     }
+
+    public function blocked(Request $request): JsonResponse
+    {
+        $jwt = $request->bearerToken();
+        $users = $this->directoryService->listBlockedUsers($jwt, (int) $request->auth->sub);
+
+        return response()->json($users, 200);
+    }
 }

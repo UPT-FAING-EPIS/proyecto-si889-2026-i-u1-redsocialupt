@@ -83,7 +83,8 @@ class PostController extends BaseController
         $posts = $this->postService->getFeed(
             (int) $request->auth->sub,
             $friendIds,
-            $userFaculty ?: null
+            $userFaculty ?: null,
+            $request->bearerToken() ?? ''
         );
 
         $userId = (int) $request->auth->sub;

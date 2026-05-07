@@ -10,14 +10,26 @@ class LikeService
 {
     public const REACTION_TYPES = ['me_gusta', 'me_encanta', 'me_divierte', 'me_sorprende', 'me_enoja'];
 
-    public function react(int $userId, int $postId, string $reactionType = 'me_gusta'): array
+    private SocialBlockService $socialBlockService;
+
+    public function __construct()
     {
-        if (!Post::find($postId)) {
-            throw new PostsServiceException('Publicación no encontrada', 404);
+        $this->socialBlockService = new SocialBlockService();
+    }
+
+    public function react(int $userId, int $postId, string $reactionType = 'me_gusta', string $jwt = ''): array
+    {
+        $post = Post::find($postId);
+        if (!$post) {
+            throw new PostsServiceException('Publicacion no encontrada', 404);
+        }
+
+        if ($this->socialBlockService->isBlockedBetween($jwt, (int) $post->user_id)) {
+            throw new PostsServiceException('No puedes interactuar con el contenido de este usuario', 403);
         }
 
         if (!in_array($reactionType, self::REACTION_TYPES, true)) {
-            throw new PostsServiceException('Tipo de reacción inválido', 422);
+            throw new PostsServiceException('Tipo de reaccion invalido', 422);
         }
 
         $existing = Like::where('user_id', $userId)

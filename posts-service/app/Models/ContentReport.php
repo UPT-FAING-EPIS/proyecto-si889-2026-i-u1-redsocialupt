@@ -19,6 +19,16 @@ class ContentReport extends Model
         'resolution_notes',
     ];
 
+    public function post()
+    {
+        return $this->belongsTo(Post::class, 'target_id');
+    }
+
+    public function comment()
+    {
+        return $this->belongsTo(Comment::class, 'target_id');
+    }
+
     protected $casts = [
         'reviewed_at' => 'datetime',
         'created_at' => 'datetime',

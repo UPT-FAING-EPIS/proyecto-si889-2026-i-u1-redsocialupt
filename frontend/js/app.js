@@ -146,6 +146,22 @@
     return `hace ${Math.floor(diff / 86400)} d`;
   }
 
+  function formatBlockedUntilLabel(blockedUntil, isIndefinite = false) {
+    if (isIndefinite || !blockedUntil) {
+      return 'Bloqueo indefinido';
+    }
+
+    const date = new Date(blockedUntil);
+    if (Number.isNaN(date.getTime())) {
+      return 'Bloqueo temporal activo';
+    }
+
+    return `Hasta ${date.toLocaleString('es-PE', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })}`;
+  }
+
   function formatClock(dateStr) {
     if (!dateStr) return '';
     try {
@@ -345,19 +361,15 @@
   }
 
   async function reportContent(kind, id) {
-    const reason = window.prompt(`Motivo del reporte para ${kind}:`);
-    if (reason === null) return;
-
-    const trimmedReason = reason.trim();
-    if (!trimmedReason) {
-      showToast('Debes indicar un motivo para reportar', 'error');
+    const confirmed = window.confirm(`Quieres reportar esta ${kind}?`);
+    if (!confirmed) {
       return;
     }
 
     let result = null;
-    if (kind === 'publicacion') result = await PostsAPI.reportPost(id, trimmedReason);
-    if (kind === 'comentario') result = await PostsAPI.reportComment(id, trimmedReason);
-    if (kind === 'mensaje') result = await ChatAPI.reportMessage(id, trimmedReason);
+    if (kind === 'publicacion') result = await PostsAPI.reportPost(id);
+    if (kind === 'comentario') result = await PostsAPI.reportComment(id);
+    if (kind === 'mensaje') result = await ChatAPI.reportMessage(id);
 
     if (result?.ok) {
       showToast('Reporte enviado correctamente', 'success');
@@ -1181,13 +1193,17 @@
       renderEmptyChatPanel('Selecciona un amigo para empezar a conversar.');
     }
 
-    async function handleFriendshipChanged() {
-      await loadInbox(Boolean(activeChat || activeUser));
-    }
+      async function handleFriendshipChanged() {
+        await loadInbox(Boolean(activeChat || activeUser));
+      }
 
-    async function handlePresenceUpdated() {
-      await loadInbox(Boolean(activeChat || activeUser));
-    }
+      async function handleBlocksChanged() {
+        await loadInbox(Boolean(activeChat || activeUser));
+      }
+
+      async function handlePresenceUpdated() {
+        await loadInbox(Boolean(activeChat || activeUser));
+      }
 
     inboxList.addEventListener('click', (event) => {
       const button = event.target.closest('[data-open-chat]');
@@ -1195,15 +1211,17 @@
       openChatByUserId(button.dataset.openChat);
     });
 
-    window.addEventListener('friendship:changed', handleFriendshipChanged);
-    window.addEventListener('presence:updated', handlePresenceUpdated);
-    loadInbox(Boolean(activeChat));
+      window.addEventListener('friendship:changed', handleFriendshipChanged);
+      window.addEventListener('blocks:changed', handleBlocksChanged);
+      window.addEventListener('presence:updated', handlePresenceUpdated);
+      loadInbox(Boolean(activeChat));
 
-    return () => {
-      clearSelectedImage();
-      window.removeEventListener('friendship:changed', handleFriendshipChanged);
-      window.removeEventListener('presence:updated', handlePresenceUpdated);
-    };
+      return () => {
+        clearSelectedImage();
+        window.removeEventListener('friendship:changed', handleFriendshipChanged);
+        window.removeEventListener('blocks:changed', handleBlocksChanged);
+        window.removeEventListener('presence:updated', handlePresenceUpdated);
+      };
   }
 
   const views = {
@@ -1746,17 +1764,26 @@
 
         setPostVisibility(postVisibility?.value || 'all');
         document.addEventListener('click', onDocumentClick);
-        window.addEventListener('presence:updated', loadFriends);
+          async function handleBlocksChanged() {
+            await Promise.all([
+              loadFeed(),
+              loadFriends(),
+            ]);
+          }
 
-        loadFeed();
-        loadFriends();
+          window.addEventListener('presence:updated', loadFriends);
+          window.addEventListener('blocks:changed', handleBlocksChanged);
 
-        return () => {
-          document.removeEventListener('click', onDocumentClick);
-          window.removeEventListener('presence:updated', loadFriends);
-        };
+          loadFeed();
+          loadFriends();
+
+          return () => {
+            document.removeEventListener('click', onDocumentClick);
+            window.removeEventListener('presence:updated', loadFriends);
+            window.removeEventListener('blocks:changed', handleBlocksChanged);
+          };
+        },
       },
-    },
     messages: {
       title: 'Mensajes',
       activeNav: 'messages',
@@ -1799,9 +1826,9 @@
               <div class="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div>
                   <h1 class="text-slate-900 mb-2 font-bold tracking-tight text-[28px]">Companeros</h1>
-                  <p class="text-slate-500 text-[16px]">Directorio de estudiantes y comunidad academica.</p>
+                  <p class="text-slate-500 text-[16px]">Gestiona el directorio social y las personas que bloqueaste.</p>
                 </div>
-                <div class="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+                <div id="companions-directory-filters" class="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
                   <div class="flex-1 sm:w-48">
                     <label class="block text-xs text-slate-500 mb-1 font-medium" for="filter-faculty">Facultad</label>
                     <select id="filter-faculty" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
@@ -1813,59 +1840,164 @@
                       <option value="FACSA">FACSA</option>
                       <option value="FAU">FAU</option>
                     </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div id="directory-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                <p class="text-slate-400 text-sm col-span-3 text-center py-8">Cargando companeros...</p>
+                <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
+                  <button type="button" data-companions-tab="directory" class="companions-tab-btn px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Directorio</button>
+                  <button type="button" data-companions-tab="blocked" class="companions-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Bloqueados</button>
+                </div>
+                <div id="companions-empty-state" class="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-400"></div>
+                <div id="directory-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  <p class="text-slate-400 text-sm col-span-3 text-center py-8">Cargando companeros...</p>
+                </div>
               </div>
             </div>
-          </div>
-        `;
-      },
-      mount({ container, router, user }) {
-        const grid = container.querySelector('#directory-grid');
-        const filterFaculty = container.querySelector('#filter-faculty');
+          `;
+        },
+        mount({ container, router, user }) {
+          const grid = container.querySelector('#directory-grid');
+          const filterFaculty = container.querySelector('#filter-faculty');
+          const emptyState = container.querySelector('#companions-empty-state');
+          const filtersWrap = container.querySelector('#companions-directory-filters');
+          const tabButtons = Array.from(container.querySelectorAll('[data-companions-tab]'));
+          let activeTab = 'directory';
 
-        async function loadDirectory() {
-          const faculty = filterFaculty.value;
-          const params = faculty ? `faculty=${faculty}` : '';
-          const result = await SocialAPI.getDirectory(params);
-          const users = getList(result).filter((directoryUser) => Number(directoryUser.id) !== Number(user.id));
-
-          if (!result?.ok) {
-            grid.innerHTML = '<p class="text-slate-400 text-sm col-span-3 text-center py-8">No se pudieron cargar los companeros.</p>';
-            return;
+          function setCompanionsTab(tab) {
+            activeTab = tab;
+            tabButtons.forEach((button) => {
+              const isActive = button.dataset.companionsTab === tab;
+              button.classList.toggle('bg-white', isActive);
+              button.classList.toggle('shadow-sm', isActive);
+              button.classList.toggle('text-slate-900', isActive);
+              button.classList.toggle('font-semibold', isActive);
+              button.classList.toggle('text-slate-600', !isActive);
+              button.classList.toggle('font-medium', !isActive);
+            });
+            filtersWrap.classList.toggle('hidden', tab !== 'directory');
           }
 
-          if (!users.length) {
-            grid.innerHTML = '<p class="text-slate-400 text-sm col-span-3 text-center py-8">No se encontraron companeros.</p>';
-            return;
-          }
+          function renderCards(users, options = {}) {
+            const {
+              emptyMessage = 'No hay usuarios para mostrar.',
+              blocked = false,
+            } = options;
 
-          grid.innerHTML = users.map((directoryUser) => `
-            <div class="bg-white rounded-xl border border-slate-200 p-5 flex flex-col items-center text-center hover:shadow-md transition-shadow relative">
-              <div class="absolute top-3 right-3">
-                <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold text-white" style="background:${userColor(directoryUser)}">${escapeHtml(directoryUser.faculty || 'UPT')}</span>
+            if (!users.length) {
+              grid.innerHTML = '';
+              emptyState.textContent = emptyMessage;
+              emptyState.classList.remove('hidden');
+              return;
+            }
+
+            emptyState.classList.add('hidden');
+            grid.innerHTML = users.map((directoryUser) => `
+              <div class="bg-white rounded-xl border border-slate-200 p-5 flex flex-col items-center text-center hover:shadow-md transition-shadow relative">
+                <div class="absolute top-3 right-3">
+                  <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold text-white" style="background:${userColor(directoryUser)}">${escapeHtml(directoryUser.faculty || 'UPT')}</span>
+                </div>
+                ${renderAvatar(directoryUser, { sizeClass: 'w-20 h-20', textClass: 'text-white font-bold text-2xl', extraClass: 'mb-3 border-2 border-slate-100' })}
+                <h3 class="font-bold text-[16px] leading-tight text-slate-900 mb-1">${escapeHtml(displayName(directoryUser))}</h3>
+                <p class="text-[13px] text-slate-500 mb-4">${escapeHtml(careerLabel(directoryUser) || getUserTypeLabel(directoryUser.user_type || 'student'))}</p>
+                <div class="w-full mt-auto flex flex-col gap-2">
+                  <button type="button" data-view-profile="${directoryUser.id}" class="w-full py-1.5 px-4 rounded-lg border border-[#1B2A6B] text-[#1B2A6B] font-medium text-sm hover:bg-[#1B2A6B] hover:text-white transition-colors">Ver perfil</button>
+                  ${blocked ? `
+                    <button type="button" data-unblock-user="${directoryUser.id}" class="w-full py-1.5 px-4 rounded-lg bg-slate-100 text-slate-700 font-medium text-sm hover:bg-slate-200 transition-colors">Desbloquear</button>
+                  ` : ''}
+                </div>
               </div>
-              ${renderAvatar(directoryUser, { sizeClass: 'w-20 h-20', textClass: 'text-white font-bold text-2xl', extraClass: 'mb-3 border-2 border-slate-100' })}
-              <h3 class="font-bold text-[16px] leading-tight text-slate-900 mb-1">${escapeHtml(displayName(directoryUser))}</h3>
-              <p class="text-[13px] text-slate-500 mb-4">${escapeHtml(careerLabel(directoryUser))}</p>
-              <button type="button" data-view-profile="${directoryUser.id}" class="w-full py-1.5 px-4 rounded-lg border border-[#1B2A6B] text-[#1B2A6B] font-medium text-sm hover:bg-[#1B2A6B] hover:text-white transition-colors mt-auto">Ver perfil</button>
-            </div>
-          `).join('');
-        }
+            `).join('');
+          }
 
-        filterFaculty.addEventListener('change', loadDirectory);
-        grid.addEventListener('click', (event) => {
-          const button = event.target.closest('[data-view-profile]');
-          if (!button) return;
-          router.navigate('profile', { id: button.dataset.viewProfile });
-        });
+          async function loadDirectory() {
+            const faculty = filterFaculty.value;
+            const params = faculty ? `faculty=${faculty}` : '';
+            const result = await SocialAPI.getDirectory(params);
+            const users = getList(result).filter((directoryUser) => Number(directoryUser.id) !== Number(user.id));
 
-        loadDirectory();
+            if (!result?.ok) {
+              grid.innerHTML = '';
+              emptyState.textContent = 'No se pudieron cargar los companeros.';
+              emptyState.classList.remove('hidden');
+              return;
+            }
+
+            renderCards(users, {
+              emptyMessage: 'No se encontraron companeros.',
+            });
+          }
+
+          async function loadBlockedUsers() {
+            const result = await SocialAPI.getBlockedDirectory();
+            const users = getList(result).filter((blockedUser) => Number(blockedUser.id) !== Number(user.id));
+
+            if (!result?.ok) {
+              grid.innerHTML = '';
+              emptyState.textContent = 'No se pudo cargar la lista de bloqueados.';
+              emptyState.classList.remove('hidden');
+              return;
+            }
+
+            renderCards(users, {
+              blocked: true,
+              emptyMessage: 'No tienes usuarios bloqueados.',
+            });
+          }
+
+          async function loadActiveTab() {
+            grid.innerHTML = '<p class="text-slate-400 text-sm col-span-3 text-center py-8">Cargando...</p>';
+            emptyState.classList.add('hidden');
+
+            if (activeTab === 'blocked') {
+              await loadBlockedUsers();
+              return;
+            }
+
+            await loadDirectory();
+          }
+
+          async function handleBlocksChanged() {
+            await loadActiveTab();
+          }
+
+          filterFaculty.addEventListener('change', loadActiveTab);
+          tabButtons.forEach((button) => {
+            button.addEventListener('click', async () => {
+              setCompanionsTab(button.dataset.companionsTab);
+              await loadActiveTab();
+            });
+          });
+          grid.addEventListener('click', async (event) => {
+            const button = event.target.closest('[data-view-profile]');
+            if (button) {
+              router.navigate('profile', { id: button.dataset.viewProfile });
+              return;
+            }
+
+            const unblockButton = event.target.closest('[data-unblock-user]');
+            if (!unblockButton) return;
+
+            const result = await SocialAPI.unblockUser(unblockButton.dataset.unblockUser);
+            if (result?.ok) {
+              showToast('Usuario desbloqueado', 'success');
+              window.dispatchEvent(new CustomEvent('blocks:changed'));
+              await loadActiveTab();
+              return;
+            }
+
+            showToast(result?.data?.error || 'No se pudo desbloquear al usuario', 'error');
+          });
+
+          setCompanionsTab('directory');
+          loadActiveTab();
+
+          window.addEventListener('blocks:changed', handleBlocksChanged);
+
+          return () => {
+            window.removeEventListener('blocks:changed', handleBlocksChanged);
+          };
+        },
       },
-    },
     profile: {
       title: 'Perfil',
       activeNav: 'profile',
@@ -2614,13 +2746,21 @@
           isOwnProfile = Number(profileData.id) === Number(appState.user.id);
           incomingRequestId = null;
 
-          const [friendsResult, pendingResult] = isOwnProfile
-            ? [null, null]
-            : await Promise.all([SocialAPI.getFriends(), SocialAPI.getPendingRequests()]);
+          const [friendsResult, pendingResult, blockContextResult] = isOwnProfile
+            ? [null, null, null]
+            : await Promise.all([SocialAPI.getFriends(), SocialAPI.getPendingRequests(), SocialAPI.getBlockContext()]);
 
           const friends = friendsResult ? normalizeFriendEntries(getList(friendsResult)) : [];
           const pending = pendingResult ? getList(pendingResult) : [];
           const isFriend = friends.some((friend) => Number(friend.id) === Number(profileData.id));
+          const blockedIds = blockContextResult?.ok && Array.isArray(blockContextResult.data?.blocked_ids)
+            ? blockContextResult.data.blocked_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+            : [];
+          const hiddenIds = blockContextResult?.ok && Array.isArray(blockContextResult.data?.hidden_user_ids)
+            ? blockContextResult.data.hidden_user_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+            : [];
+          const isBlockedByMe = blockedIds.includes(Number(profileData.id));
+          const isBlockedByOther = hiddenIds.includes(Number(profileData.id)) && !isBlockedByMe;
           const incoming = findIncomingRequest(pending, profileData.id);
           if (incoming) incomingRequestId = incoming.id;
 
@@ -2669,32 +2809,57 @@
 
           if (isOwnProfile) {
             profileActions.innerHTML = '';
+          } else if (isBlockedByOther) {
+            profileActions.innerHTML = `
+              <div class="bg-slate-100 text-slate-600 font-medium text-sm px-5 py-2.5 rounded-lg border border-slate-200">
+                Este usuario no esta disponible
+              </div>
+            `;
+          } else if (isBlockedByMe) {
+            profileActions.innerHTML = `
+              <button type="button" data-profile-action="unblock-user" class="bg-white border border-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2 hover:bg-slate-50">
+                <span class="material-symbols-outlined text-[20px]">undo</span>
+                Desbloquear
+              </button>
+            `;
           } else if (isFriend) {
             profileActions.innerHTML = `
-              <button type="button" disabled class="bg-[#1B2A6B] text-white font-semibold text-sm px-6 py-2.5 rounded-lg shadow-sm flex items-center gap-2 cursor-not-allowed opacity-95">
+                <button type="button" disabled class="bg-[#1B2A6B] text-white font-semibold text-sm px-6 py-2.5 rounded-lg shadow-sm flex items-center gap-2 cursor-not-allowed opacity-95">
                 <span class="material-symbols-outlined text-[20px]">group</span>
                 Ya son amigos
               </button>
-              <button type="button" data-profile-action="message" class="bg-white border border-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2 hover:bg-slate-50">
-                <span class="material-symbols-outlined text-[20px]">chat</span>
-                Mensaje
-              </button>
-            `;
-          } else if (incomingRequestId) {
-            profileActions.innerHTML = `
-              <button type="button" data-profile-action="accept-request" class="bg-[#1B2A6B] hover:bg-[#152259] text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
-                <span class="material-symbols-outlined text-[20px]">how_to_reg</span>
-                Aceptar solicitud
-              </button>
-            `;
-          } else {
-            profileActions.innerHTML = `
-              <button type="button" data-profile-action="send-request" class="bg-[#D4A017] hover:bg-[#C19015] text-black font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
-                <span class="material-symbols-outlined text-[20px]">person_add</span>
-                Enviar solicitud
-              </button>
-            `;
-          }
+                <button type="button" data-profile-action="message" class="bg-white border border-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2 hover:bg-slate-50">
+                  <span class="material-symbols-outlined text-[20px]">chat</span>
+                  Mensaje
+                </button>
+                <button type="button" data-profile-action="block-user" class="bg-white border border-red-200 text-red-600 font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2 hover:bg-red-50">
+                  <span class="material-symbols-outlined text-[20px]">block</span>
+                  Bloquear
+                </button>
+              `;
+            } else if (incomingRequestId) {
+              profileActions.innerHTML = `
+                <button type="button" data-profile-action="accept-request" class="bg-[#1B2A6B] hover:bg-[#152259] text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
+                  <span class="material-symbols-outlined text-[20px]">how_to_reg</span>
+                  Aceptar solicitud
+                </button>
+                <button type="button" data-profile-action="block-user" class="bg-white border border-red-200 text-red-600 font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2 hover:bg-red-50">
+                  <span class="material-symbols-outlined text-[20px]">block</span>
+                  Bloquear
+                </button>
+              `;
+            } else {
+              profileActions.innerHTML = `
+                <button type="button" data-profile-action="send-request" class="bg-[#D4A017] hover:bg-[#C19015] text-black font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
+                  <span class="material-symbols-outlined text-[20px]">person_add</span>
+                  Enviar solicitud
+                </button>
+                <button type="button" data-profile-action="block-user" class="bg-white border border-red-200 text-red-600 font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2 hover:bg-red-50">
+                  <span class="material-symbols-outlined text-[20px]">block</span>
+                  Bloquear
+                </button>
+              `;
+            }
 
           await loadPosts(profileData.id);
         }
@@ -2703,14 +2868,45 @@
           const button = event.target.closest('[data-profile-action]');
           if (!button || !profileData) return;
 
-          if (button.dataset.profileAction === 'message') {
-            router.navigate('messages', { user: profileData.id });
-            return;
-          }
+            if (button.dataset.profileAction === 'message') {
+              router.navigate('messages', { user: profileData.id });
+              return;
+            }
 
-          if (button.dataset.profileAction === 'send-request') {
-            const result = await SocialAPI.sendRequest(profileData.id);
-            if (result?.ok) {
+            if (button.dataset.profileAction === 'block-user') {
+              const confirmed = window.confirm('Quieres bloquear a este usuario? Se cortara la amistad, el chat y las interacciones sociales entre ambos.');
+              if (!confirmed) return;
+
+              const result = await SocialAPI.blockUser(profileData.id);
+              if (result?.ok) {
+                showToast('Usuario bloqueado', 'success');
+                window.dispatchEvent(new CustomEvent('friendship:changed'));
+                window.dispatchEvent(new CustomEvent('blocks:changed'));
+                if (window.loadNotifications) window.loadNotifications();
+                loadProfile();
+                return;
+              }
+
+              showToast(result?.data?.error || 'No se pudo bloquear al usuario', 'error');
+              return;
+            }
+
+            if (button.dataset.profileAction === 'unblock-user') {
+              const result = await SocialAPI.unblockUser(profileData.id);
+              if (result?.ok) {
+                showToast('Usuario desbloqueado', 'success');
+                window.dispatchEvent(new CustomEvent('blocks:changed'));
+                loadProfile();
+                return;
+              }
+
+              showToast(result?.data?.error || 'No se pudo desbloquear al usuario', 'error');
+              return;
+            }
+
+            if (button.dataset.profileAction === 'send-request') {
+              const result = await SocialAPI.sendRequest(profileData.id);
+              if (result?.ok) {
               showToast('Solicitud enviada', 'success');
               window.dispatchEvent(new CustomEvent('friendship:changed'));
               button.disabled = true;
@@ -3015,7 +3211,7 @@
               <div class="flex justify-between items-center p-6 border-b border-slate-200">
                 <div>
                   <h2 class="text-lg font-bold text-slate-900">Bloquear usuario</h2>
-                  <p class="text-sm text-slate-500 mt-1">Puedes registrar un motivo opcional para el bloqueo.</p>
+                  <p class="text-sm text-slate-500 mt-1">Define la duración del bloqueo y una razón opcional visible para el usuario.</p>
                 </div>
                 <button id="close-block-user-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
               </div>
@@ -3026,8 +3222,34 @@
                   <p id="block-user-name" class="text-sm font-semibold text-slate-900"></p>
                   <p id="block-user-email" class="text-xs text-slate-500 mt-1"></p>
                 </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="flex flex-col gap-1.5">
+                    <label class="text-sm font-semibold text-gray-700" for="block-user-duration">Duracion</label>
+                    <select id="block-user-duration" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                      <option value="24h">24 horas</option>
+                      <option value="48h">48 horas</option>
+                      <option value="1w">1 semana</option>
+                      <option value="custom">Manual</option>
+                      <option value="indefinite">Indefinido</option>
+                    </select>
+                  </div>
+                  <div id="block-user-custom-group" class="hidden grid grid-cols-[1fr_120px] gap-2 items-end">
+                    <div class="flex flex-col gap-1.5">
+                      <label class="text-sm font-semibold text-gray-700" for="block-user-custom-value">Tiempo</label>
+                      <input id="block-user-custom-value" min="1" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <label class="text-sm font-semibold text-gray-700" for="block-user-custom-unit">Unidad</label>
+                      <select id="block-user-custom-unit" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                        <option value="hours">Horas</option>
+                        <option value="days">Dias</option>
+                        <option value="weeks">Semanas</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
                 <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-semibold text-gray-700" for="block-user-reason">Motivo del bloqueo</label>
+                  <label class="text-sm font-semibold text-gray-700" for="block-user-reason">Razon del bloqueo</label>
                   <textarea id="block-user-reason" class="w-full min-h-[120px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Ej.: Incumplimiento de normas de la comunidad."></textarea>
                 </div>
                 <div class="flex justify-end gap-3 pt-2">
@@ -3049,6 +3271,36 @@
         const blockForm = container.querySelector('#block-user-form');
 
         let allUsers = [];
+
+        function toggleCustomBlockFields(durationValue) {
+          const customGroup = container.querySelector('#block-user-custom-group');
+          customGroup.classList.toggle('hidden', durationValue !== 'custom');
+        }
+
+        function buildBlockedUntilIso(durationValue, customValue, customUnit) {
+          if (durationValue === 'indefinite') {
+            return { blockedUntil: null, isIndefinite: true };
+          }
+
+          const future = new Date();
+
+          if (durationValue === '24h') future.setHours(future.getHours() + 24);
+          if (durationValue === '48h') future.setHours(future.getHours() + 48);
+          if (durationValue === '1w') future.setDate(future.getDate() + 7);
+
+          if (durationValue === 'custom') {
+            const amount = Number(customValue);
+            if (!Number.isFinite(amount) || amount <= 0) {
+              throw new Error('Ingresa una duracion manual valida');
+            }
+
+            if (customUnit === 'hours') future.setHours(future.getHours() + amount);
+            if (customUnit === 'days') future.setDate(future.getDate() + amount);
+            if (customUnit === 'weeks') future.setDate(future.getDate() + (amount * 7));
+          }
+
+          return { blockedUntil: future.toISOString(), isIndefinite: false };
+        }
 
         function syncAdminEditFields(userType) {
           const isStudent = userType === 'student';
@@ -3076,6 +3328,10 @@
           container.querySelector('#block-user-name').textContent = displayName(listedUser);
           container.querySelector('#block-user-email').textContent = listedUser.email || '-';
           container.querySelector('#block-user-reason').value = '';
+          container.querySelector('#block-user-duration').value = '24h';
+          container.querySelector('#block-user-custom-value').value = '1';
+          container.querySelector('#block-user-custom-unit').value = 'hours';
+          toggleCustomBlockFields('24h');
           blockModal.classList.remove('hidden');
           blockModal.classList.add('flex');
         }
@@ -3138,7 +3394,7 @@
                 <td class="py-3 px-5">
                   ${active
                     ? '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold text-[#16A34A] bg-[#DCFCE7]"><span class="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span> Activo</span>'
-                    : '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold text-[#DC2626] bg-[#FEE2E2]"><span class="w-1.5 h-1.5 rounded-full bg-[#DC2626]"></span> Inactivo</span>'
+                    : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold text-[#DC2626] bg-[#FEE2E2]"><span class="w-1.5 h-1.5 rounded-full bg-[#DC2626]"></span> ${escapeHtml(formatBlockedUntilLabel(listedUser.blocked_until, listedUser.is_blocked_indefinitely))}</span>`
                   }
                 </td>
                 <td class="py-3 px-5">
@@ -3156,7 +3412,7 @@
                       <span class="material-symbols-outlined text-[16px]">admin_panel_settings</span> ${isAdmin ? 'Quitar admin' : 'Hacer admin'}
                     </button>
                     <button type="button" data-toggle-user="${listedUser.id}" data-active="${active ? '1' : '0'}" ${isSelf ? 'disabled' : ''} class="flex items-center gap-1.5 px-3 py-1.5 ${active ? 'bg-white text-slate-700 border border-slate-200' : 'bg-[#1B2A6B] text-white'} rounded-lg text-xs font-medium ${isSelf ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50'} transition-colors shadow-sm">
-                      <span class="material-symbols-outlined text-[16px]">power_settings_new</span> ${active ? 'Desactivar' : 'Activar'}
+                      <span class="material-symbols-outlined text-[16px]">power_settings_new</span> ${active ? 'Bloquear' : 'Desbloquear'}
                     </button>
                   </div>
                 </td>
@@ -3242,6 +3498,9 @@
         container.querySelector('#cancel-edit-user-btn').addEventListener('click', closeModal);
         container.querySelector('#close-block-user-modal-btn').addEventListener('click', closeBlockModal);
         container.querySelector('#cancel-block-user-btn').addEventListener('click', closeBlockModal);
+        container.querySelector('#block-user-duration').addEventListener('change', (event) => {
+          toggleCustomBlockFields(event.target.value);
+        });
         container.querySelector('#edit-user-type').addEventListener('change', (event) => {
           syncAdminEditFields(event.target.value);
         });
@@ -3279,16 +3538,32 @@
           event.preventDefault();
           const userId = container.querySelector('#block-user-id').value;
           const blockedReason = container.querySelector('#block-user-reason').value.trim();
-          const result = await AuthAPI.toggleUser(userId, { blocked_reason: blockedReason || null });
+          const durationValue = container.querySelector('#block-user-duration').value;
+          const customValue = container.querySelector('#block-user-custom-value').value;
+          const customUnit = container.querySelector('#block-user-custom-unit').value;
+
+          let blockWindow;
+          try {
+            blockWindow = buildBlockedUntilIso(durationValue, customValue, customUnit);
+          } catch (error) {
+            showToast(error.message || 'No se pudo calcular la duracion del bloqueo', 'error');
+            return;
+          }
+
+          const result = await AuthAPI.toggleUser(userId, {
+            blocked_reason: blockedReason || null,
+            blocked_until: blockWindow.blockedUntil,
+            is_indefinite: blockWindow.isIndefinite,
+          });
 
           if (result?.ok) {
-            showToast(result.data?.message || 'Usuario desactivado', 'success');
+            showToast(result.data?.message || 'Usuario bloqueado', 'success');
             closeBlockModal();
             loadUsers();
             return;
           }
 
-          showToast(result?.data?.error || 'No se pudo desactivar la cuenta', 'error');
+          showToast(result?.data?.error || 'No se pudo bloquear la cuenta', 'error');
         });
 
         loadUsers();
@@ -3303,8 +3578,8 @@
           <div class="flex flex-col w-full">
             <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
               <div>
-                <h1 class="text-[28px] font-bold text-slate-900 tracking-tight leading-tight mb-1">Cola de reportes</h1>
-                <p class="text-[15px] text-slate-500">Revisa reportes de publicaciones, comentarios y mensajes.</p>
+                <h1 class="text-[28px] font-bold text-slate-900 tracking-tight leading-tight mb-1">Reportes pendientes</h1>
+                <p class="text-[15px] text-slate-500">Resuelve casos pendientes de publicaciones, comentarios y mensajes.</p>
               </div>
               <button type="button" class="bg-[#D4A017] text-[#332200] font-bold text-[13px] px-4 py-2 rounded-full transition-colors flex items-center shadow-sm">
                 ACCESO ADMIN
@@ -3316,62 +3591,267 @@
               <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Reportes</button>
             </div>
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div class="p-4 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 class="text-sm font-bold text-slate-900">Reportes recientes</h2>
-                  <p class="text-xs text-slate-500 mt-1">Puedes marcarlos como revisados, descartados o sancionados.</p>
-                </div>
-                <select id="admin-report-status" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none">
-                  <option value="">Todos</option>
-                  <option value="pending">Pendientes</option>
-                  <option value="reviewed">Revisados</option>
-                  <option value="dismissed">Descartados</option>
-                  <option value="sanctioned">Sancionados</option>
-                </select>
+              <div class="p-4 border-b border-slate-200">
+                <h2 class="text-sm font-bold text-slate-900">Bandeja de reportes</h2>
+                <p class="text-xs text-slate-500 mt-1">Los casos se retiran de esta lista cuando se descartan o se sancionan.</p>
               </div>
               <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse min-w-[980px]">
                   <thead>
                     <tr class="bg-slate-100/50 border-b border-slate-200">
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Origen</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Objetivo</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Motivo</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Estado</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Usuario</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Contenido</th>
                       <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Fecha</th>
                       <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody id="admin-reports-tbody" class="divide-y divide-slate-100">
-                    <tr><td colspan="6" class="py-8 text-center text-slate-400">Cargando reportes...</td></tr>
+                    <tr><td colspan="5" class="py-8 text-center text-slate-400">Cargando reportes...</td></tr>
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+          <div id="review-report-modal" class="fixed inset-0 z-[120] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
+              <div class="flex justify-between items-center p-6 border-b border-slate-200">
+                <div>
+                  <h2 class="text-lg font-bold text-slate-900">Revisar reporte</h2>
+                  <p class="text-sm text-slate-500 mt-1">Visualiza el contenido denunciado antes de decidir.</p>
+                </div>
+                <button id="close-review-report-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
+              </div>
+              <div class="p-6 space-y-5">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario</p>
+                    <p id="review-report-user" class="text-sm font-semibold text-slate-900"></p>
+                  </div>
+                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Tipo</p>
+                    <p id="review-report-type" class="text-sm font-semibold text-slate-900"></p>
+                  </div>
+                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Fecha</p>
+                    <p id="review-report-date" class="text-sm font-semibold text-slate-900"></p>
+                  </div>
+                </div>
+                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Contenido denunciado</p>
+                  <p id="review-report-content" class="text-sm text-slate-700 leading-6 whitespace-pre-wrap"></p>
+                  <img id="review-report-image" class="hidden mt-4 w-full max-h-[320px] rounded-2xl object-cover border border-slate-200" alt="Contenido adjunto"/>
+                </div>
+                <div class="flex justify-end">
+                  <button id="close-review-report-footer-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cerrar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="sanction-report-modal" class="fixed inset-0 z-[130] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
+              <div class="flex justify-between items-center p-6 border-b border-slate-200">
+                <div>
+                  <h2 class="text-lg font-bold text-slate-900">Sancionar reporte</h2>
+                  <p class="text-sm text-slate-500 mt-1">Aplica bloqueo y acciones adicionales según el contenido denunciado.</p>
+                </div>
+                <button id="close-sanction-report-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
+              </div>
+              <form id="sanction-report-form" class="p-6 space-y-5">
+                <input id="sanction-report-id" type="hidden"/>
+                <input id="sanction-report-service" type="hidden"/>
+                <input id="sanction-report-target-type" type="hidden"/>
+                <input id="sanction-report-target-id" type="hidden"/>
+                <input id="sanction-report-user-id" type="hidden"/>
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario denunciado</p>
+                  <p id="sanction-report-user" class="text-sm font-semibold text-slate-900"></p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="flex flex-col gap-1.5">
+                    <label class="text-sm font-semibold text-gray-700" for="sanction-duration">Duracion del bloqueo</label>
+                    <select id="sanction-duration" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                      <option value="24h">24 horas</option>
+                      <option value="48h">48 horas</option>
+                      <option value="1w">1 semana</option>
+                      <option value="custom">Manual</option>
+                      <option value="indefinite">Indefinido</option>
+                    </select>
+                  </div>
+                  <div id="sanction-custom-group" class="hidden grid grid-cols-[1fr_120px] gap-2 items-end">
+                    <div class="flex flex-col gap-1.5">
+                      <label class="text-sm font-semibold text-gray-700" for="sanction-custom-value">Tiempo</label>
+                      <input id="sanction-custom-value" min="1" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <label class="text-sm font-semibold text-gray-700" for="sanction-custom-unit">Unidad</label>
+                      <select id="sanction-custom-unit" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                        <option value="hours">Horas</option>
+                        <option value="days">Dias</option>
+                        <option value="weeks">Semanas</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-sm font-semibold text-gray-700" for="sanction-reason">Razon de la sancion</label>
+                  <textarea id="sanction-reason" class="w-full min-h-[120px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Esta razón se mostrará cuando el usuario bloqueado intente volver a entrar."></textarea>
+                </div>
+                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Acciones adicionales</p>
+                  <div id="sanction-actions" class="space-y-3"></div>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                  <button id="cancel-sanction-report-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Aplicar sancion</button>
+                </div>
+              </form>
             </div>
           </div>
         `;
       },
       mount({ container, router }) {
         const tbody = container.querySelector('#admin-reports-tbody');
-        const statusFilter = container.querySelector('#admin-report-status');
+        const reviewModal = container.querySelector('#review-report-modal');
+        const sanctionModal = container.querySelector('#sanction-report-modal');
+        const sanctionForm = container.querySelector('#sanction-report-form');
+        let reportRows = [];
+
+        function toggleSanctionCustomFields(durationValue) {
+          const customGroup = container.querySelector('#sanction-custom-group');
+          customGroup.classList.toggle('hidden', durationValue !== 'custom');
+        }
+
+        function formatReportType(report) {
+          if (report.service === 'chat') return 'Mensaje';
+          return report.target_type === 'comment' ? 'Comentario' : 'Publicacion';
+        }
+
+        function closeReviewModal() {
+          reviewModal.classList.add('hidden');
+          reviewModal.classList.remove('flex');
+        }
+
+        function closeSanctionModal() {
+          sanctionModal.classList.add('hidden');
+          sanctionModal.classList.remove('flex');
+          sanctionForm.reset();
+        }
+
+        async function fetchReportDetails(report) {
+          const api = report.service === 'chat' ? ChatAPI : PostsAPI;
+          const result = await api.getReportDetails(report.id);
+          if (!result?.ok) {
+            throw new Error(result?.data?.error || 'No se pudo cargar el reporte');
+          }
+
+          return { ...report, ...result.data };
+        }
+
+        function renderSanctionActions(report) {
+          const actions = [`
+            <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <input id="sanction-action-block" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]" checked/>
+              <span>
+                <span class="block text-sm font-semibold text-slate-900">Bloquear usuario</span>
+                <span class="block text-xs text-slate-500 mt-1">Aplica bloqueo con la duración y razón definidas en este formulario.</span>
+              </span>
+            </label>
+          `];
+
+          if (report.service === 'posts' && report.target_type === 'post') {
+            actions.push(`
+              <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <input id="sanction-action-delete-post" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]"/>
+                <span>
+                  <span class="block text-sm font-semibold text-slate-900">Eliminar publicacion</span>
+                  <span class="block text-xs text-slate-500 mt-1">Quita la publicación denunciada del feed.</span>
+                </span>
+              </label>
+            `);
+          }
+
+          if (report.service === 'posts' && report.target_type === 'comment') {
+            actions.push(`
+              <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <input id="sanction-action-delete-comment" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]"/>
+                <span>
+                  <span class="block text-sm font-semibold text-slate-900">Eliminar comentario</span>
+                  <span class="block text-xs text-slate-500 mt-1">Quita el comentario denunciado de la publicación.</span>
+                </span>
+              </label>
+            `);
+          }
+
+          container.querySelector('#sanction-actions').innerHTML = actions.join('');
+        }
+
+        async function openReviewModal(report) {
+          try {
+            const details = await fetchReportDetails(report);
+            container.querySelector('#review-report-user').textContent = details.reported_user_name || `Usuario #${details.reported_user_id ?? '-'}`;
+            container.querySelector('#review-report-type').textContent = formatReportType(details);
+            container.querySelector('#review-report-date').textContent = details.created_at
+              ? new Date(details.created_at).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' })
+              : '-';
+            container.querySelector('#review-report-content').textContent = details.content || details.content_preview || 'Sin contenido disponible';
+            const reviewImage = container.querySelector('#review-report-image');
+            if (details.image_url) {
+              reviewImage.src = details.image_url;
+              reviewImage.classList.remove('hidden');
+            } else {
+              reviewImage.src = '';
+              reviewImage.classList.add('hidden');
+            }
+            reviewModal.classList.remove('hidden');
+            reviewModal.classList.add('flex');
+          } catch (error) {
+            showToast(error.message || 'No se pudo cargar el contenido denunciado', 'error');
+          }
+        }
+
+        async function openSanctionModal(report) {
+          try {
+            const details = await fetchReportDetails(report);
+            container.querySelector('#sanction-report-id').value = details.id;
+            container.querySelector('#sanction-report-service').value = details.service;
+            container.querySelector('#sanction-report-target-type').value = details.target_type || 'message';
+            container.querySelector('#sanction-report-target-id').value = details.target_id || details.message_id || '';
+            container.querySelector('#sanction-report-user-id').value = details.reported_user_id || '';
+            container.querySelector('#sanction-report-user').textContent = details.reported_user_name || `Usuario #${details.reported_user_id ?? '-'}`;
+            container.querySelector('#sanction-duration').value = '24h';
+            container.querySelector('#sanction-custom-value').value = '1';
+            container.querySelector('#sanction-custom-unit').value = 'hours';
+            container.querySelector('#sanction-reason').value = '';
+            toggleSanctionCustomFields('24h');
+            renderSanctionActions(details);
+            sanctionModal.classList.remove('hidden');
+            sanctionModal.classList.add('flex');
+          } catch (error) {
+            showToast(error.message || 'No se pudo preparar la sancion', 'error');
+          }
+        }
 
         function formatReportRows(reports) {
           if (!reports.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No hay reportes para mostrar.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-slate-400">No hay reportes pendientes.</td></tr>';
             return;
           }
 
           tbody.innerHTML = reports.map((report) => `
             <tr class="hover:bg-slate-50 transition-colors">
-              <td class="py-4 px-5 text-sm font-semibold text-slate-700">${escapeHtml(report.service === 'chat' ? 'Chat' : 'Publicaciones')}</td>
-              <td class="py-4 px-5 text-sm text-slate-600">${escapeHtml(report.target_type || 'message')} #${escapeHtml(String(report.target_id ?? report.message_id ?? ''))}</td>
-              <td class="py-4 px-5 text-sm text-slate-700">${escapeHtml(report.reason || '')}</td>
-              <td class="py-4 px-5 text-sm text-slate-600">${escapeHtml(report.status || 'pending')}</td>
+              <td class="py-4 px-5">
+                <div class="font-semibold text-sm text-slate-900">${escapeHtml(report.reported_user_name || `Usuario #${report.reported_user_id ?? '-'}`)}</div>
+                <div class="text-xs text-slate-500">${escapeHtml(report.service === 'chat' ? 'Mensajes' : 'Publicaciones')}</div>
+              </td>
+              <td class="py-4 px-5 text-sm text-slate-600">${escapeHtml(formatReportType(report))}</td>
+              <td class="py-4 px-5 text-sm text-slate-700">${escapeHtml(report.content_preview || 'Sin contenido')}</td>
               <td class="py-4 px-5 text-sm text-slate-500">${escapeHtml(timeAgo(report.created_at))}</td>
               <td class="py-4 px-5">
                 <div class="flex justify-end gap-2 flex-wrap">
-                  <button type="button" data-report-action="reviewed" data-report-service="${report.service}" data-report-id="${report.id}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Revisar</button>
-                  <button type="button" data-report-action="dismissed" data-report-service="${report.service}" data-report-id="${report.id}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Descartar</button>
-                  <button type="button" data-report-action="sanctioned" data-report-service="${report.service}" data-report-id="${report.id}" class="px-3 py-1.5 rounded-lg bg-[#1B2A6B] text-xs font-semibold text-white hover:bg-[#15215a]">Sancionar</button>
+                  <button type="button" data-report-review="${report.id}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Revisar</button>
+                  <button type="button" data-report-dismiss="${report.id}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Descartar</button>
+                  <button type="button" data-report-sanction="${report.id}" class="px-3 py-1.5 rounded-lg bg-[#1B2A6B] text-xs font-semibold text-white hover:bg-[#15215a]">Sancionar</button>
                 </div>
               </td>
             </tr>
@@ -3379,41 +3859,155 @@
         }
 
         async function loadReports() {
-          const status = statusFilter.value;
+          await ensurePublicUsersLoaded();
           const [postReports, chatReports] = await Promise.all([
-            PostsAPI.listReports(status),
-            ChatAPI.listReports(status),
+            PostsAPI.listReports('pending'),
+            ChatAPI.listReports('pending'),
           ]);
 
           const reports = [];
           if (postReports?.ok) reports.push(...getList(postReports).map((item) => ({ ...item, service: 'posts' })));
-          if (chatReports?.ok) reports.push(...getList(chatReports).map((item) => ({ ...item, service: 'chat', target_type: 'message', target_id: item.message_id })));
+          if (chatReports?.ok) {
+            reports.push(...getList(chatReports).map((item) => {
+              const relatedUser = publicUsersState.map.get(Number(item.reported_user_id));
+              return {
+                ...item,
+                service: 'chat',
+                target_type: 'message',
+                target_id: item.message_id,
+                reported_user_name: relatedUser ? displayName(relatedUser) : (item.reported_user_name || `Usuario #${item.reported_user_id ?? '-'}`),
+              };
+            }));
+          }
 
           reports.sort((left, right) => new Date(right.created_at || 0).getTime() - new Date(left.created_at || 0).getTime());
+          reportRows = reports;
           formatReportRows(reports);
         }
 
         container.querySelector('#go-admin-users-btn').addEventListener('click', () => router.navigate('admin'));
         container.querySelector('#go-admin-posts-btn').addEventListener('click', () => router.navigate('admin-posts'));
-        statusFilter.addEventListener('change', loadReports);
+        container.querySelector('#close-review-report-modal-btn').addEventListener('click', closeReviewModal);
+        container.querySelector('#close-review-report-footer-btn').addEventListener('click', closeReviewModal);
+        container.querySelector('#close-sanction-report-modal-btn').addEventListener('click', closeSanctionModal);
+        container.querySelector('#cancel-sanction-report-btn').addEventListener('click', closeSanctionModal);
+        container.querySelector('#sanction-duration').addEventListener('change', (event) => {
+          toggleSanctionCustomFields(event.target.value);
+        });
+        reviewModal.addEventListener('click', (event) => {
+          if (event.target === reviewModal) closeReviewModal();
+        });
+        sanctionModal.addEventListener('click', (event) => {
+          if (event.target === sanctionModal) closeSanctionModal();
+        });
         tbody.addEventListener('click', async (event) => {
-          const button = event.target.closest('[data-report-action]');
-          if (!button) return;
+          const reviewButton = event.target.closest('[data-report-review]');
+          if (reviewButton) {
+            const report = reportRows.find((item) => Number(item.id) === Number(reviewButton.dataset.reportReview));
+            if (report) await openReviewModal(report);
+            return;
+          }
 
-          const resolutionNotes = window.prompt('Notas de resolución (opcional):') || '';
-          const api = button.dataset.reportService === 'chat' ? ChatAPI : PostsAPI;
-          const result = await api.updateReportStatus(button.dataset.reportId, {
-            status: button.dataset.reportAction,
-            resolution_notes: resolutionNotes,
+          const dismissButton = event.target.closest('[data-report-dismiss]');
+          if (dismissButton) {
+            const report = reportRows.find((item) => Number(item.id) === Number(dismissButton.dataset.reportDismiss));
+            if (!report) return;
+            const api = report.service === 'chat' ? ChatAPI : PostsAPI;
+            const result = await api.updateReportStatus(report.id, {
+              status: 'dismissed',
+              resolution_notes: null,
+            });
+
+            if (result?.ok) {
+              showToast('Reporte descartado', 'success');
+              await loadReports();
+              return;
+            }
+
+            showToast(result?.data?.error || 'No se pudo descartar el reporte', 'error');
+            return;
+          }
+
+          const sanctionButton = event.target.closest('[data-report-sanction]');
+          if (sanctionButton) {
+            const report = reportRows.find((item) => Number(item.id) === Number(sanctionButton.dataset.reportSanction));
+            if (report) await openSanctionModal(report);
+          }
+        });
+
+        sanctionForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+
+          const reportId = container.querySelector('#sanction-report-id').value;
+          const service = container.querySelector('#sanction-report-service').value;
+          const targetId = container.querySelector('#sanction-report-target-id').value;
+          const reportedUserId = container.querySelector('#sanction-report-user-id').value;
+          const durationValue = container.querySelector('#sanction-duration').value;
+          const customValue = container.querySelector('#sanction-custom-value').value;
+          const customUnit = container.querySelector('#sanction-custom-unit').value;
+          const sanctionReason = container.querySelector('#sanction-reason').value.trim();
+          const shouldBlock = container.querySelector('#sanction-action-block')?.checked ?? false;
+          const shouldDeletePost = container.querySelector('#sanction-action-delete-post')?.checked ?? false;
+          const shouldDeleteComment = container.querySelector('#sanction-action-delete-comment')?.checked ?? false;
+
+          if (!shouldBlock && !shouldDeletePost && !shouldDeleteComment) {
+            showToast('Selecciona al menos una accion para sancionar', 'error');
+            return;
+          }
+
+          let blockWindow = { blockedUntil: null, isIndefinite: false };
+          if (shouldBlock) {
+            try {
+              blockWindow = buildBlockedUntilIso(durationValue, customValue, customUnit);
+            } catch (error) {
+              showToast(error.message || 'No se pudo calcular la duracion del bloqueo', 'error');
+              return;
+            }
+          }
+
+          if (shouldDeletePost) {
+            const deletePostResult = await PostsAPI.adminDeletePost(targetId);
+            if (!deletePostResult?.ok) {
+              showToast(deletePostResult?.data?.error || 'No se pudo eliminar la publicacion', 'error');
+              return;
+            }
+          }
+
+          if (shouldDeleteComment) {
+            const deleteCommentResult = await PostsAPI.adminDeleteComment(targetId);
+            if (!deleteCommentResult?.ok) {
+              showToast(deleteCommentResult?.data?.error || 'No se pudo eliminar el comentario', 'error');
+              return;
+            }
+          }
+
+          if (shouldBlock) {
+            const blockResult = await AuthAPI.toggleUser(reportedUserId, {
+              blocked_reason: sanctionReason || null,
+              blocked_until: blockWindow.blockedUntil,
+              is_indefinite: blockWindow.isIndefinite,
+            });
+
+            if (!blockResult?.ok) {
+              showToast(blockResult?.data?.error || 'No se pudo bloquear al usuario', 'error');
+              return;
+            }
+          }
+
+          const api = service === 'chat' ? ChatAPI : PostsAPI;
+          const resolveResult = await api.updateReportStatus(reportId, {
+            status: 'sanctioned',
+            resolution_notes: sanctionReason || null,
           });
 
-          if (result?.ok) {
-            showToast('Reporte actualizado', 'success');
+          if (resolveResult?.ok) {
+            showToast('Sancion aplicada correctamente', 'success');
+            closeSanctionModal();
             await loadReports();
             return;
           }
 
-          showToast(result?.data?.error || 'No se pudo actualizar el reporte', 'error');
+          showToast(resolveResult?.data?.error || 'No se pudo cerrar el reporte como sancionado', 'error');
         });
 
         loadReports();

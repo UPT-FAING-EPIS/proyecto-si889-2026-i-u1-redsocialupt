@@ -9,16 +9,23 @@ use App\Models\Post;
 class CommentService
 {
     private CommentLikeService $commentReactionService;
+    private SocialBlockService $socialBlockService;
 
     public function __construct()
     {
         $this->commentReactionService = new CommentLikeService();
+        $this->socialBlockService = new SocialBlockService();
     }
 
-    public function store(int $userId, int $postId, string $content, array $meta = []): Comment
+    public function store(int $userId, int $postId, string $content, array $meta = [], string $jwt = ''): Comment
     {
-        if (!Post::find($postId)) {
+        $post = Post::find($postId);
+        if (!$post) {
             throw new PostsServiceException('Publicacion no encontrada', 404);
+        }
+
+        if ($this->socialBlockService->isBlockedBetween($jwt, (int) $post->user_id)) {
+            throw new PostsServiceException('No puedes interactuar con el contenido de este usuario', 403);
         }
 
         return Comment::create([
@@ -31,11 +38,13 @@ class CommentService
         ]);
     }
 
-    public function getByPost(int $postId, string $sort = 'oldest', ?int $userId = null): \Illuminate\Support\Collection
+    public function getByPost(int $postId, string $sort = 'oldest', ?int $userId = null, string $jwt = ''): \Illuminate\Support\Collection
     {
         $direction = $sort === 'newest' ? 'desc' : 'asc';
+        $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
 
         $comments = Comment::where('post_id', $postId)
+            ->when(!empty($hiddenIds), fn($query) => $query->whereNotIn('user_id', $hiddenIds))
             ->orderBy('created_at', $direction)
             ->orderBy('id', $direction)
             ->get();

@@ -63,9 +63,11 @@ function getBlockedNotice() {
     return null;
   }
 }
-function setBlockedNotice(reason = null) {
+function setBlockedNotice(reason = null, blockedUntil = null, isIndefinite = false) {
   localStorage.setItem('upt_blocked_notice', JSON.stringify({
     reason: reason || null,
+    blocked_until: blockedUntil || null,
+    is_indefinite: !!isIndefinite,
     created_at: new Date().toISOString(),
   }));
 }
@@ -140,7 +142,7 @@ async function apiFetch(url, options = {}) {
     const text = await res.text();
     const data = buildResponseData(res, text);
     if (res.status === 403 && data?.code === 'ACCOUNT_BLOCKED') {
-      setBlockedNotice(data.reason || null);
+      setBlockedNotice(data.reason || null, data.blocked_until || null, !!data.is_indefinite);
       clearSession();
       window.location.href = '/index.html';
       return { ok: false, status: 403, data };
@@ -171,7 +173,7 @@ async function apiFetchForm(url, formData, options = {}) {
     const text = await res.text();
     const data = buildResponseData(res, text);
     if (res.status === 403 && data?.code === 'ACCOUNT_BLOCKED') {
-      setBlockedNotice(data.reason || null);
+      setBlockedNotice(data.reason || null, data.blocked_until || null, !!data.is_indefinite);
       clearSession();
       window.location.href = '/index.html';
       return { ok: false, status: 403, data };
@@ -274,15 +276,16 @@ const PostsAPI = {
   }),
   deleteComment: (postId, commentId) => apiFetch(`${API.posts}/${postId}/comments/${commentId}`, { method: 'DELETE' }),
   adminDeleteComment: (commentId) => apiFetch(`/api/comments/${commentId}/admin`, { method: 'DELETE' }),
-  reportPost: (id, reason) => apiFetch(`${API.posts}/${id}/report`, {
+  reportPost: (id, reason = null) => apiFetch(`${API.posts}/${id}/report`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   }),
-  reportComment: (id, reason) => apiFetch(`/api/comments/${id}/report`, {
+  reportComment: (id, reason = null) => apiFetch(`/api/comments/${id}/report`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   }),
   listReports: (status = '') => apiFetch(`${API.posts}/admin/reports${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  getReportDetails: (reportId) => apiFetch(`${API.posts}/admin/reports/${reportId}`),
   updateReportStatus: (reportId, payload) => apiFetch(`${API.posts}/admin/reports/${reportId}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
@@ -293,6 +296,7 @@ const PostsAPI = {
 const SocialAPI = {
   getDirectory: (params = '') => apiFetch(`/api/directory?${params}`),
   searchDirectory: (query) => apiFetch(`/api/directory/search?q=${encodeURIComponent(query)}`),
+  getBlockedDirectory: () => apiFetch(`/api/directory/blocked`),
   getFriends: () => apiFetch(`/api/friends`),
   getPendingRequests: () => apiFetch(`/api/friends/pending`),
   sendRequest: (receiverId) => apiFetch(`/api/friends/request`, {
@@ -301,6 +305,10 @@ const SocialAPI = {
   acceptRequest: (requestId) => apiFetch(`/api/friends/${requestId}/accept`, { method: 'PUT' }),
   rejectRequest: (requestId) => apiFetch(`/api/friends/${requestId}/reject`, { method: 'PUT' }),
   removeFriend: (friendId) => apiFetch(`/api/friends/${friendId}`, { method: 'DELETE' }),
+  getBlockedUsers: () => apiFetch(`/api/blocks`),
+  getBlockContext: () => apiFetch(`/api/blocks/context`),
+  blockUser: (userId) => apiFetch(`/api/blocks/${userId}`, { method: 'POST' }),
+  unblockUser: (userId) => apiFetch(`/api/blocks/${userId}`, { method: 'DELETE' }),
 };
 
 /* ── Chat Service ─────────────────────────────────────────────── */
@@ -321,11 +329,12 @@ const ChatAPI = {
       body: JSON.stringify({ receiver_id: receiverId, content, image_url: imageUrl }),
     });
   },
-  reportMessage: (messageId, reason) => apiFetch(`${API.chat}/messages/${messageId}/report`, {
+  reportMessage: (messageId, reason = null) => apiFetch(`${API.chat}/messages/${messageId}/report`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   }),
   listReports: (status = '') => apiFetch(`${API.chat}/admin/reports${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  getReportDetails: (reportId) => apiFetch(`${API.chat}/admin/reports/${reportId}`),
   updateReportStatus: (reportId, payload) => apiFetch(`${API.chat}/admin/reports/${reportId}`, {
     method: 'PUT',
     body: JSON.stringify(payload),

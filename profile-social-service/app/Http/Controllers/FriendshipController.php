@@ -98,4 +98,34 @@ class FriendshipController extends BaseController
         $pending = $this->friendshipService->pending($request->auth->sub);
         return response()->json($pending, 200);
     }
+
+    public function listBlocked(Request $request): JsonResponse
+    {
+        return response()->json($this->friendshipService->listBlockedIds((int) $request->auth->sub), 200);
+    }
+
+    public function blockContext(Request $request): JsonResponse
+    {
+        return response()->json($this->friendshipService->getBlockContext((int) $request->auth->sub), 200);
+    }
+
+    public function block(Request $request, int $id): JsonResponse
+    {
+        try {
+            $block = $this->friendshipService->blockUser((int) $request->auth->sub, $id);
+            return response()->json(['message' => 'Usuario bloqueado', 'block' => $block], 201);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+        }
+    }
+
+    public function unblock(Request $request, int $id): JsonResponse
+    {
+        try {
+            $this->friendshipService->unblockUser((int) $request->auth->sub, $id);
+            return response()->json(['message' => 'Usuario desbloqueado'], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+        }
+    }
 }

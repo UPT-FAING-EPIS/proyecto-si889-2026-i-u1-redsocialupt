@@ -23,7 +23,12 @@ class LikeController extends BaseController
         ]);
 
         try {
-            $result = $this->likeService->react((int) $request->auth->sub, $id, $request->input('reaction_type', 'me_gusta'));
+            $result = $this->likeService->react(
+                (int) $request->auth->sub,
+                $id,
+                $request->input('reaction_type', 'me_gusta'),
+                $request->bearerToken() ?? ''
+            );
             return response()->json($result, 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);

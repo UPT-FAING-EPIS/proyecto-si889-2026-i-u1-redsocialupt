@@ -18,8 +18,6 @@ class ReportController extends BaseController
 
     public function reportPost(Request $request, int $id): JsonResponse
     {
-        $this->validate($request, ['reason' => 'required|string|max:255']);
-
         try {
             $report = $this->reportService->createPostReport((int) $request->auth->sub, $id, $request->input('reason'));
             return response()->json(['message' => 'Publicacion reportada', 'report' => $report], 201);
@@ -30,8 +28,6 @@ class ReportController extends BaseController
 
     public function reportComment(Request $request, int $id): JsonResponse
     {
-        $this->validate($request, ['reason' => 'required|string|max:255']);
-
         try {
             $report = $this->reportService->createCommentReport((int) $request->auth->sub, $id, $request->input('reason'));
             return response()->json(['message' => 'Comentario reportado', 'report' => $report], 201);
@@ -47,6 +43,19 @@ class ReportController extends BaseController
         }
 
         return response()->json($this->reportService->listReports($request->query('status')), 200);
+    }
+
+    public function show(Request $request, int $id): JsonResponse
+    {
+        if ($request->auth->role !== 'admin') {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        try {
+            return response()->json($this->reportService->getReportDetail($id), 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+        }
     }
 
     public function updateStatus(Request $request, int $id): JsonResponse

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\FriendshipServiceException;
 use App\Models\FriendRequest;
+use App\Models\UserBlock;
 
 class FriendshipService
 {
@@ -14,6 +15,10 @@ class FriendshipService
     {
         if ($senderId === $receiverId) {
             throw new FriendshipServiceException('No puedes enviarte una solicitud a ti mismo', 422);
+        }
+
+        if ($this->isBlockedBetween($senderId, $receiverId)) {
+            throw new FriendshipServiceException('No puedes enviar solicitudes a este usuario', 403);
         }
 
         // Verificar si ya existe una solicitud en cualquier dirección
@@ -54,6 +59,10 @@ class FriendshipService
     public function accept(int $userId, int $requestId): FriendRequest
     {
         $request = $this->findOrFail($requestId);
+
+        if ($this->isBlockedBetween($userId, (int) $request->sender_id)) {
+            throw new FriendshipServiceException('No puedes aceptar solicitudes de este usuario', 403);
+        }
 
         if ($request->receiver_id !== $userId) {
             throw new FriendshipServiceException('Solo el destinatario puede aceptar', 403);
@@ -121,7 +130,13 @@ class FriendshipService
             ->pluck('sender_id')
             ->toArray();
 
-        return array_values(array_unique(array_merge($sent, $received)));
+        $friendIds = array_values(array_unique(array_merge($sent, $received)));
+        $hiddenIds = $this->getHiddenUserIds($userId);
+
+        return array_values(array_filter(
+            $friendIds,
+            fn($friendId) => !in_array((int) $friendId, $hiddenIds, true)
+        ));
     }
 
     /**
@@ -129,10 +144,91 @@ class FriendshipService
      */
     public function pending(int $userId)
     {
+        $hiddenIds = $this->getHiddenUserIds($userId);
+
         return FriendRequest::where('receiver_id', $userId)
             ->where('status', 'pending')
+            ->when(!empty($hiddenIds), fn($query) => $query->whereNotIn('sender_id', $hiddenIds))
             ->orderBy('created_at', 'desc')
             ->get();
+    }
+
+    public function blockUser(int $blockerId, int $blockedId): UserBlock
+    {
+        if ($blockerId === $blockedId) {
+            throw new FriendshipServiceException('No puedes bloquearte a ti mismo', 422);
+        }
+
+        FriendRequest::where(function ($query) use ($blockerId, $blockedId) {
+            $query->where('sender_id', $blockerId)->where('receiver_id', $blockedId);
+        })->orWhere(function ($query) use ($blockerId, $blockedId) {
+            $query->where('sender_id', $blockedId)->where('receiver_id', $blockerId);
+        })->delete();
+
+        return UserBlock::firstOrCreate([
+            'blocker_id' => $blockerId,
+            'blocked_id' => $blockedId,
+        ]);
+    }
+
+    public function unblockUser(int $blockerId, int $blockedId): void
+    {
+        $block = UserBlock::where('blocker_id', $blockerId)
+            ->where('blocked_id', $blockedId)
+            ->first();
+
+        if (!$block) {
+            throw new FriendshipServiceException('Este usuario no esta bloqueado', 404);
+        }
+
+        $block->delete();
+    }
+
+    public function listBlockedIds(int $userId): array
+    {
+        return UserBlock::where('blocker_id', $userId)
+            ->pluck('blocked_id')
+            ->map(fn($id) => (int) $id)
+            ->values()
+            ->toArray();
+    }
+
+    public function getBlockedByIds(int $userId): array
+    {
+        return UserBlock::where('blocked_id', $userId)
+            ->pluck('blocker_id')
+            ->map(fn($id) => (int) $id)
+            ->values()
+            ->toArray();
+    }
+
+    public function getHiddenUserIds(int $userId): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->listBlockedIds($userId),
+            $this->getBlockedByIds($userId)
+        )));
+    }
+
+    public function getBlockContext(int $userId): array
+    {
+        $blockedIds = $this->listBlockedIds($userId);
+        $blockedByIds = $this->getBlockedByIds($userId);
+
+        return [
+            'blocked_ids' => $blockedIds,
+            'blocked_by_ids' => $blockedByIds,
+            'hidden_user_ids' => array_values(array_unique(array_merge($blockedIds, $blockedByIds))),
+        ];
+    }
+
+    public function isBlockedBetween(int $userId, int $otherUserId): bool
+    {
+        return UserBlock::where(function ($query) use ($userId, $otherUserId) {
+            $query->where('blocker_id', $userId)->where('blocked_id', $otherUserId);
+        })->orWhere(function ($query) use ($userId, $otherUserId) {
+            $query->where('blocker_id', $otherUserId)->where('blocked_id', $userId);
+        })->exists();
     }
 
     private function findOrFail(int $id): FriendRequest

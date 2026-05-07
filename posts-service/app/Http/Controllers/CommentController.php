@@ -35,7 +35,8 @@ class CommentController extends BaseController
                     'user_name'    => $request->auth->full_name ?? $request->auth->name ?? 'Usuario',
                     'user_avatar'  => $request->auth->avatar_url ?? null,
                     'user_faculty' => $request->auth->faculty ?? '',
-                ]
+                ],
+                $request->bearerToken() ?? ''
             );
             $comment->reactions_count = array_fill_keys(\App\Services\LikeService::REACTION_TYPES, 0);
             $comment->reactions_total = 0;
@@ -57,7 +58,7 @@ class CommentController extends BaseController
             $sort = 'oldest';
         }
 
-        return response()->json($this->commentService->getByPost($id, $sort, $request->auth->sub), 200);
+        return response()->json($this->commentService->getByPost($id, $sort, $request->auth->sub, $request->bearerToken() ?? ''), 200);
     }
 
     /**

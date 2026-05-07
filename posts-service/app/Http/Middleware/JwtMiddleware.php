@@ -9,6 +9,8 @@ use Firebase\JWT\Key;
 
 class JwtMiddleware
 {
+    private const ACCOUNT_BLOCKED_PREFIX = 'ACCOUNT_BLOCKED::';
+
     public function handle($request, Closure $next)
     {
         $token = $request->bearerToken();
@@ -24,11 +26,15 @@ class JwtMiddleware
                 );
                 $request->auth = $this->hydrateAuthPayload($decoded, $token);
             } catch (\RuntimeException $e) {
-                if (str_starts_with($e->getMessage(), 'ACCOUNT_BLOCKED|')) {
+                if (str_starts_with($e->getMessage(), self::ACCOUNT_BLOCKED_PREFIX)) {
+                    $payload = json_decode(substr($e->getMessage(), strlen(self::ACCOUNT_BLOCKED_PREFIX)), true);
+                    $payload = is_array($payload) ? $payload : [];
                     $errorResponse = response()->json(array_filter([
                         'error' => 'Tu cuenta ha sido bloqueada',
                         'code' => 'ACCOUNT_BLOCKED',
-                        'reason' => trim(substr($e->getMessage(), strlen('ACCOUNT_BLOCKED|'))) ?: null,
+                        'reason' => $payload['reason'] ?? null,
+                        'blocked_until' => $payload['blocked_until'] ?? null,
+                        'is_indefinite' => $payload['is_indefinite'] ?? false,
                     ], fn ($value) => $value !== null), 403);
                 } else {
                     $errorResponse = response()->json(['error' => 'No autorizado'], 401);
@@ -51,10 +57,12 @@ class JwtMiddleware
     {
         $basePayload = (array) $decoded;
         $profileLookup = $this->fetchProfileFromAuthService($token);
-        if ($profileLookup['status'] === 'error') {
-            $errorCode = $profileLookup['code'] ?? 'UNAUTHORIZED';
-            $errorReason = trim((string) ($profileLookup['data']['reason'] ?? ''));
-            throw new \RuntimeException($errorCode === 'ACCOUNT_BLOCKED' ? 'ACCOUNT_BLOCKED|' . $errorReason : $errorCode);
+        if ($profileLookup['status'] === 'blocked') {
+            throw new \RuntimeException(self::ACCOUNT_BLOCKED_PREFIX . json_encode([
+                'reason' => $profileLookup['data']['reason'] ?? null,
+                'blocked_until' => $profileLookup['data']['blocked_until'] ?? null,
+                'is_indefinite' => $profileLookup['data']['is_indefinite'] ?? false,
+            ]));
         }
 
         $freshProfile = $profileLookup['data'];
@@ -104,10 +112,10 @@ class JwtMiddleware
 
         $code = $decoded['code'] ?? null;
         if ($code === 'ACCOUNT_BLOCKED') {
-            return ['status' => 'error', 'code' => 'ACCOUNT_BLOCKED', 'data' => $decoded];
+            return ['status' => 'blocked', 'code' => 'ACCOUNT_BLOCKED', 'data' => $decoded];
         }
 
-        return ['status' => 'error', 'code' => 'UNAUTHORIZED', 'data' => $decoded];
+        return ['status' => 'fallback', 'code' => 'UNAUTHORIZED', 'data' => null];
     }
 
     private function getAuthServiceBaseUrl(): string

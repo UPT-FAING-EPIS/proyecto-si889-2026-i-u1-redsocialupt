@@ -25,6 +25,7 @@ class User extends Model
         'student_code',
         'bio',
         'blocked_reason',
+        'blocked_until',
         'last_seen_at',
         // Control
         'role',
@@ -39,6 +40,7 @@ class User extends Model
     protected $casts = [
         'is_active'           => 'boolean',
         'is_profile_complete' => 'boolean',
+        'blocked_until'       => 'datetime',
         'last_seen_at'        => 'datetime',
         'created_at'          => 'datetime',
         'updated_at'          => 'datetime',

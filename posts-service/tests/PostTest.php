@@ -12,8 +12,8 @@ class PostTest extends TestCase
     private function generateToken(array $overrides = []): string
     {
         $payload = array_merge([
-            'sub'   => 1,
-            'email' => 'test@virtual.upt.pe',
+            'sub'   => 999999,
+            'email' => 'posts-test@virtual.upt.pe',
             'role'  => 'user',
             'iat'   => time(),
             'exp'   => time() + 3600,
@@ -62,7 +62,7 @@ class PostTest extends TestCase
     {
         $this->get('/api/posts', ['Authorization' => 'Bearer invalid']);
         $this->seeStatusCode(401);
-        $this->seeJson(['error' => 'Token invalido']);
+        $this->seeJson(['error' => 'No autorizado']);
     }
 
     #[TestDox('Token expirado es rechazado')]
@@ -71,7 +71,7 @@ class PostTest extends TestCase
         $token    = $this->generateToken(['exp' => time() - 100]);
         $this->get('/api/posts', $this->authHeader($token));
         $this->seeStatusCode(401);
-        $this->seeJson(['error' => 'Token expirado']);
+        $this->seeJson(['error' => 'No autorizado']);
     }
 
     // ── Validación de creación de post ────────────────────────────────
@@ -114,20 +114,22 @@ class PostTest extends TestCase
         $this->seeStatusCode(422);
     }
 
-    #[TestDox('Reportar publicacion requiere motivo')]
-    public function testReportPostRequiresReason(): void
+    #[TestDox('Reportar publicacion sin motivo sigue validando el contenido')]
+    public function testReportPostWithoutReasonStillValidatesTarget(): void
     {
         $token = $this->generateToken();
         $this->post('/api/posts/1/report', [], $this->authHeader($token));
-        $this->seeStatusCode(422);
+        $this->seeStatusCode(404);
+        $this->seeJson(['error' => 'Publicacion no encontrada']);
     }
 
-    #[TestDox('Reportar comentario requiere motivo')]
-    public function testReportCommentRequiresReason(): void
+    #[TestDox('Reportar comentario sin motivo sigue validando el contenido')]
+    public function testReportCommentWithoutReasonStillValidatesTarget(): void
     {
         $token = $this->generateToken();
         $this->post('/api/comments/1/report', [], $this->authHeader($token));
-        $this->seeStatusCode(422);
+        $this->seeStatusCode(404);
+        $this->seeJson(['error' => 'Comentario no encontrado']);
     }
 
     // ── Protección admin ──────────────────────────────────────────────

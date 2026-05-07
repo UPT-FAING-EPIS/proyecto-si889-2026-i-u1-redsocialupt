@@ -9,16 +9,13 @@ use Carbon\Carbon;
 
 class MessageReportService
 {
-    public function create(int $reporterId, int $messageId, string $reason): MessageReport
+    public function create(int $reporterId, int $messageId, ?string $reason = null): MessageReport
     {
         if (!Message::find($messageId)) {
             throw new MessageServiceException('Mensaje no encontrado', 404);
         }
 
-        $trimmedReason = trim($reason);
-        if ($trimmedReason === '') {
-            throw new MessageServiceException('El motivo del reporte es obligatorio', 422);
-        }
+        $trimmedReason = trim((string) $reason);
 
         return MessageReport::updateOrCreate(
             [
@@ -42,17 +39,17 @@ class MessageReportService
             $query->where('status', $status);
         }
 
-        return $query->get()->map(fn (MessageReport $report) => [
-            'id' => $report->id,
-            'reporter_id' => $report->reporter_id,
-            'message_id' => $report->message_id,
-            'reason' => $report->reason,
-            'status' => $report->status,
-            'reviewed_by' => $report->reviewed_by,
-            'reviewed_at' => $report->reviewed_at?->toIso8601String(),
-            'resolution_notes' => $report->resolution_notes,
-            'created_at' => $report->created_at?->toIso8601String(),
-        ])->all();
+        return $query->get()->map(fn (MessageReport $report) => $this->formatReport($report))->all();
+    }
+
+    public function getReportDetail(int $reportId): array
+    {
+        $report = MessageReport::find($reportId);
+        if (!$report) {
+            throw new MessageServiceException('Reporte no encontrado', 404);
+        }
+
+        return $this->formatReport($report, true);
     }
 
     public function updateStatus(int $reportId, int $reviewerId, string $status, ?string $notes = null): MessageReport
@@ -73,5 +70,29 @@ class MessageReportService
         $report->save();
 
         return $report->fresh();
+    }
+
+    private function formatReport(MessageReport $report, bool $full = false): array
+    {
+        $message = Message::find($report->message_id);
+        $content = trim((string) ($message->content ?? ''));
+        $preview = mb_strimwidth($content !== '' ? $content : 'Sin contenido de texto', 0, 140, '...');
+
+        return [
+            'id' => $report->id,
+            'reporter_id' => $report->reporter_id,
+            'message_id' => $report->message_id,
+            'reason' => $report->reason,
+            'status' => $report->status,
+            'reviewed_by' => $report->reviewed_by,
+            'reviewed_at' => $report->reviewed_at?->toIso8601String(),
+            'resolution_notes' => $report->resolution_notes,
+            'created_at' => $report->created_at?->toIso8601String(),
+            'reported_user_id' => $message->sender_id ?? null,
+            'content_preview' => $preview,
+            'content' => $full ? $content : null,
+            'image_url' => $full ? ($message->image_url ?? null) : null,
+            'receiver_id' => $message->receiver_id ?? null,
+        ];
     }
 }

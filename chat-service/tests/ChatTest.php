@@ -76,7 +76,7 @@ class ChatTest extends TestCase
     {
         $this->get('/api/chat/inbox', ['Authorization' => 'Bearer fake']);
         $this->seeStatusCode(401);
-        $this->seeJson(['error' => 'Token invalido']);
+        $this->seeJson(['error' => 'No autorizado']);
     }
 
     #[TestDox('Token expirado es rechazado')]
@@ -85,7 +85,7 @@ class ChatTest extends TestCase
         $token    = $this->generateToken(['exp' => time() - 100]);
         $this->get('/api/chat/inbox', $this->authHeader($token));
         $this->seeStatusCode(401);
-        $this->seeJson(['error' => 'Token expirado']);
+        $this->seeJson(['error' => 'No autorizado']);
     }
 
     // ── Endpoints ─────────────────────────────────────────────────────
@@ -98,12 +98,13 @@ class ChatTest extends TestCase
         $this->seeStatusCode(422);
     }
 
-    #[TestDox('Reportar mensaje requiere motivo')]
-    public function testReportMessageRequiresReason(): void
+    #[TestDox('Reportar mensaje sin motivo sigue validando el contenido')]
+    public function testReportMessageWithoutReasonStillValidatesTarget(): void
     {
         $token = $this->generateToken();
         $this->post('/api/chat/messages/1/report', [], $this->authHeader($token));
-        $this->seeStatusCode(422);
+        $this->seeStatusCode(404);
+        $this->seeJson(['error' => 'Mensaje no encontrado']);
     }
 
     #[TestDox('Bandeja responde con JWT válido')]

@@ -14,8 +14,8 @@ $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($rou
     $router->post('/posts', 'PostController@store');
     $router->get('/posts', 'PostController@index');
     $router->get('/posts/{id}', 'PostController@show');
-    $router->delete('/posts/{id}', 'PostController@destroy');
     $router->delete('/posts/{id}/admin', 'PostController@adminDestroy');
+    $router->delete('/posts/{id}', 'PostController@destroy');
 
     $router->post('/posts/{id}/reaction', 'LikeController@react');
     $router->post('/posts/{id}/like', 'LikeController@react');
@@ -23,8 +23,8 @@ $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($rou
 
     $router->post('/posts/{id}/comments', 'CommentController@store');
     $router->get('/posts/{id}/comments', 'CommentController@index');
-    $router->delete('/comments/{id}', 'CommentController@destroy');
     $router->delete('/comments/{id}/admin', 'CommentController@adminDestroy');
+    $router->delete('/comments/{id}', 'CommentController@destroy');
     $router->post('/comments/{id}/reaction', 'CommentLikeController@react');
     $router->post('/comments/{id}/like', 'CommentLikeController@react');
     $router->get('/comments/{id}/likes', 'CommentLikeController@count');
@@ -32,5 +32,6 @@ $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($rou
     $router->post('/posts/{id}/report', 'ReportController@reportPost');
     $router->post('/comments/{id}/report', 'ReportController@reportComment');
     $router->get('/posts/admin/reports', 'ReportController@list');
+    $router->get('/posts/admin/reports/{id}', 'ReportController@show');
     $router->put('/posts/admin/reports/{id}', 'ReportController@updateStatus');
 });

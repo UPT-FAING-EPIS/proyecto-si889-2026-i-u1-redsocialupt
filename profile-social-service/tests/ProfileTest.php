@@ -62,7 +62,7 @@ class ProfileTest extends TestCase
     {
         $this->get('/api/social/friends', ['Authorization' => 'Bearer invalid']);
         $this->seeStatusCode(401);
-        $this->seeJson(['error' => 'Token invalido']);
+        $this->seeJson(['error' => 'No autorizado']);
     }
 
     #[TestDox('Token expirado es rechazado')]
@@ -71,7 +71,7 @@ class ProfileTest extends TestCase
         $token    = $this->generateToken(['exp' => time() - 100]);
         $this->get('/api/social/friends', $this->authHeader($token));
         $this->seeStatusCode(401);
-        $this->seeJson(['error' => 'Token expirado']);
+        $this->seeJson(['error' => 'No autorizado']);
     }
 
     // ── Friendship endpoints ──────────────────────────────────────────

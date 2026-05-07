@@ -8,14 +8,26 @@ use App\Models\CommentLike;
 
 class CommentLikeService
 {
-    public function react(int $userId, int $commentId, string $reactionType = 'me_gusta'): array
+    private SocialBlockService $socialBlockService;
+
+    public function __construct()
     {
-        if (!Comment::find($commentId)) {
+        $this->socialBlockService = new SocialBlockService();
+    }
+
+    public function react(int $userId, int $commentId, string $reactionType = 'me_gusta', string $jwt = ''): array
+    {
+        $comment = Comment::find($commentId);
+        if (!$comment) {
             throw new PostsServiceException('Comentario no encontrado', 404);
         }
 
+        if ($this->socialBlockService->isBlockedBetween($jwt, (int) $comment->user_id)) {
+            throw new PostsServiceException('No puedes interactuar con el contenido de este usuario', 403);
+        }
+
         if (!in_array($reactionType, LikeService::REACTION_TYPES, true)) {
-            throw new PostsServiceException('Tipo de reacción inválido', 422);
+            throw new PostsServiceException('Tipo de reaccion invalido', 422);
         }
 
         $existing = CommentLike::where('user_id', $userId)

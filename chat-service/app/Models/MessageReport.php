@@ -18,6 +18,11 @@ class MessageReport extends Model
         'resolution_notes',
     ];
 
+    public function message()
+    {
+        return $this->belongsTo(Message::class, 'message_id');
+    }
+
     protected $casts = [
         'reviewed_at' => 'datetime',
         'created_at' => 'datetime',

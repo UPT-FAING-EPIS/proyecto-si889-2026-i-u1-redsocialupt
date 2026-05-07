@@ -19,6 +19,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        DB::table('users')
+            ->where('user_type', 'administrativo')
+            ->update(['user_type' => 'teacher']);
+
         DB::statement("ALTER TABLE users MODIFY user_type ENUM('student','teacher') NOT NULL DEFAULT 'student'");
 
         Schema::table('users', function (Blueprint $table) {
