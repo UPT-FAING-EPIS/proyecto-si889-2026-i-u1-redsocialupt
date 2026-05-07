@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-05-07T20:36:26.390Z",
+  "google_language": "es",
+  "sources": [
+    "npm:@coffeeandfun/google-profanity-words (es)",
+    "spanlp:ARG",
+    "spanlp:BOL",
+    "spanlp:CHL",
+    "spanlp:COL",
+    "spanlp:CRI",
+    "spanlp:CUB",
+    "spanlp:DOM",
+    "spanlp:ECU",
+    "spanlp:ESP",
+    "spanlp:GTM",
+    "spanlp:HND",
+    "spanlp:MEX",
+    "spanlp:NIC",
+    "spanlp:PAN",
+    "spanlp:PER",
+    "spanlp:PRI",
+    "spanlp:PRY",
+    "spanlp:SLV",
+    "spanlp:URY",
+    "spanlp:VEN"
+  ],
+  "counts": {
+    "google_words": 564,
+    "country_words": 1185,
+    "merged_words": 1344
+  }
+}

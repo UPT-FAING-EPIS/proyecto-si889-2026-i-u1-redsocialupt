@@ -1,0 +1,11 @@
+{
+  "name": "upt-moderation-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build-dictionary": "node build-dictionary.js"
+  },
+  "dependencies": {
+    "@coffeeandfun/google-profanity-words": "^3.0.7"
+  }
+}
