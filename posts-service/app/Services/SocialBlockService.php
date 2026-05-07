@@ -4,6 +4,15 @@ namespace App\Services;
 
 class SocialBlockService
 {
+    public function getGroupAccess(string $jwt, int $groupId): array
+    {
+        if ($jwt === '' || $groupId <= 0) {
+            return [];
+        }
+
+        return $this->fetchJson($this->getSocialServiceBaseUrl() . "/api/social/groups/{$groupId}/access", $jwt);
+    }
+
     public function getHiddenUserIds(string $jwt): array
     {
         $context = $this->fetchBlockContext($jwt);
@@ -17,13 +26,32 @@ class SocialBlockService
         return in_array($otherUserId, $this->getHiddenUserIds($jwt), true);
     }
 
+    public function canViewGroupConversation(string $jwt, int $groupId): bool
+    {
+        return (bool) ($this->getGroupAccess($jwt, $groupId)['can_view_conversation'] ?? false);
+    }
+
+    public function canPostInGroup(string $jwt, int $groupId): bool
+    {
+        return (bool) ($this->getGroupAccess($jwt, $groupId)['can_post'] ?? false);
+    }
+
+    public function canManageGroup(string $jwt, int $groupId): bool
+    {
+        return (bool) ($this->getGroupAccess($jwt, $groupId)['can_manage'] ?? false);
+    }
+
     private function fetchBlockContext(string $jwt): array
+    {
+        return $this->fetchJson($this->getSocialServiceBaseUrl() . '/api/social/blocks/context', $jwt);
+    }
+
+    private function fetchJson(string $url, string $jwt): array
     {
         if ($jwt === '') {
             return [];
         }
 
-        $url = $this->getSocialServiceBaseUrl() . '/api/social/blocks/context';
         $context = stream_context_create([
             'http' => [
                 'method' => 'GET',

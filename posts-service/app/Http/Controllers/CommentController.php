@@ -68,7 +68,7 @@ class CommentController extends BaseController
     public function destroy(Request $request, int $id): JsonResponse
     {
         try {
-            $this->commentService->destroy($request->auth->sub, $id);
+            $this->commentService->destroyWithAccess((int) $request->auth->sub, $id, $request->bearerToken() ?? '');
             return response()->json(['message' => 'Comentario eliminado'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);

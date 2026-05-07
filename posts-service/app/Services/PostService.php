@@ -14,30 +14,22 @@ class PostService
         $this->socialBlockService = new SocialBlockService();
     }
 
-    /**
-     * Crea una publicación (RF-02).
-     */
     public function create(int $userId, array $data): Post
     {
         return Post::create([
-            'user_id'      => $userId,
-            'user_name'    => $data['user_name']    ?? 'Usuario',
-            'user_school'  => $data['user_school']  ?? '',
+            'user_id' => $userId,
+            'group_id' => $data['group_id'] ?? null,
+            'user_name' => $data['user_name'] ?? 'Usuario',
+            'user_school' => $data['user_school'] ?? '',
             'user_faculty' => $data['user_faculty'] ?? '',
-            'user_avatar'  => $data['user_avatar']  ?? null,
-            'content'      => $data['content']      ?? null,
-            'image_url'    => $data['image_url']    ?? null,
-            'visibility'   => $data['visibility']   ?? 'all',
+            'user_avatar' => $data['user_avatar'] ?? null,
+            'group_name' => $data['group_name'] ?? null,
+            'content' => $data['content'] ?? null,
+            'image_url' => $data['image_url'] ?? null,
+            'visibility' => $data['visibility'] ?? 'all',
         ]);
     }
 
-    /**
-     * Feed filtrado por visibilidad (RF-03).
-     *
-     * - 'all'     → cualquier usuario lo ve
-     * - 'friends' → solo si el autor está en $friendIds
-     * - 'faculty' → solo si el autor tiene la misma facultad ($userFaculty)
-     */
     public function getFeed(int $userId, array $friendIds, ?string $userFaculty, string $jwt = ''): \Illuminate\Support\Collection
     {
         $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
@@ -45,53 +37,98 @@ class PostService
         return Post::orderBy('created_at', 'desc')
             ->get()
             ->filter(function (Post $post) use ($userId, $friendIds, $userFaculty, $hiddenIds) {
+                if ($post->group_id !== null) {
+                    return false;
+                }
+
                 if (in_array((int) $post->user_id, $hiddenIds, true)) {
                     return false;
                 }
 
                 if ($post->user_id === $userId) {
-                    return true; // siempre ve sus propias publicaciones
+                    return true;
                 }
+
                 return match ($post->visibility) {
-                    'all'     => true,
+                    'all' => true,
                     'friends' => in_array($post->user_id, $friendIds),
                     'faculty' => $userFaculty !== null
                         && trim((string) $userFaculty) !== ''
                         && trim((string) $post->user_faculty) !== ''
                         && trim((string) $post->user_faculty) === trim((string) $userFaculty),
-                    default   => false,
+                    default => false,
                 };
             })
             ->values();
     }
 
-    /**
-     * Obtiene una publicación por ID.
-     */
+    public function getGroupPosts(int $groupId, int $userId, string $jwt): \Illuminate\Support\Collection
+    {
+        if (!$this->socialBlockService->canViewGroupConversation($jwt, $groupId)) {
+            throw new PostsServiceException('No tienes acceso a la conversacion de este grupo', 403);
+        }
+
+        $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
+
+        return Post::where('group_id', $groupId)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->filter(fn (Post $post) => !in_array((int) $post->user_id, $hiddenIds, true))
+            ->values();
+    }
+
+    public function getGroupMedia(int $groupId, int $userId, string $jwt): \Illuminate\Support\Collection
+    {
+        return $this->getGroupPosts($groupId, $userId, $jwt)
+            ->filter(fn (Post $post) => !empty($post->image_url))
+            ->values();
+    }
+
+    public function createGroupPost(int $userId, int $groupId, array $data, string $jwt): Post
+    {
+        $access = $this->socialBlockService->getGroupAccess($jwt, $groupId);
+        if (!(bool) ($access['can_post'] ?? false)) {
+            throw new PostsServiceException('No puedes publicar en este grupo', 403);
+        }
+
+        return $this->create($userId, array_merge($data, [
+            'group_id' => $groupId,
+            'group_name' => $access['group_name'] ?? null,
+            'visibility' => 'all',
+        ]));
+    }
+
     public function findOrFail(int $postId): Post
     {
         $post = Post::find($postId);
         if (!$post) {
-            throw new PostsServiceException('Publicación no encontrada', 404);
+            throw new PostsServiceException('Publicacion no encontrada', 404);
         }
+
         return $post;
     }
 
-    /**
-     * Elimina una publicación propia.
-     */
     public function destroy(int $userId, int $postId): void
     {
-        $post = $this->findOrFail($postId);
-        if ($post->user_id !== $userId) {
-            throw new PostsServiceException('No autorizado para eliminar esta publicación', 403);
-        }
-        $post->delete();
+        $this->destroyWithAccess($userId, $postId);
     }
 
-    /**
-     * Admin elimina cualquier publicación (RF-09).
-     */
+    public function destroyWithAccess(int $userId, int $postId, string $jwt = ''): void
+    {
+        $post = $this->findOrFail($postId);
+        if ($post->user_id === $userId) {
+            $post->delete();
+            return;
+        }
+
+        if ($post->group_id !== null && $this->socialBlockService->canManageGroup($jwt, (int) $post->group_id)) {
+            $post->delete();
+            return;
+        }
+
+        throw new PostsServiceException('No autorizado para eliminar esta publicacion', 403);
+    }
+
     public function adminDestroy(int $postId): void
     {
         $post = $this->findOrFail($postId);

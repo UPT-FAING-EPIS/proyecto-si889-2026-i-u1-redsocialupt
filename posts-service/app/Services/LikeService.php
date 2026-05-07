@@ -28,6 +28,10 @@ class LikeService
             throw new PostsServiceException('No puedes interactuar con el contenido de este usuario', 403);
         }
 
+        if ($post->group_id !== null && !$this->socialBlockService->canPostInGroup($jwt, (int) $post->group_id)) {
+            throw new PostsServiceException('No puedes reaccionar en este grupo', 403);
+        }
+
         if (!in_array($reactionType, self::REACTION_TYPES, true)) {
             throw new PostsServiceException('Tipo de reaccion invalido', 422);
         }

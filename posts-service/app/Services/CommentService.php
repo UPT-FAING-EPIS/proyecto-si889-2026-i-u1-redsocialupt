@@ -28,6 +28,10 @@ class CommentService
             throw new PostsServiceException('No puedes interactuar con el contenido de este usuario', 403);
         }
 
+        if ($post->group_id !== null && !$this->socialBlockService->canPostInGroup($jwt, (int) $post->group_id)) {
+            throw new PostsServiceException('No puedes comentar en este grupo', 403);
+        }
+
         return Comment::create([
             'user_id' => $userId,
             'post_id' => $postId,
@@ -40,6 +44,15 @@ class CommentService
 
     public function getByPost(int $postId, string $sort = 'oldest', ?int $userId = null, string $jwt = ''): \Illuminate\Support\Collection
     {
+        $post = Post::find($postId);
+        if (!$post) {
+            throw new PostsServiceException('Publicacion no encontrada', 404);
+        }
+
+        if ($post->group_id !== null && !$this->socialBlockService->canViewGroupConversation($jwt, (int) $post->group_id)) {
+            throw new PostsServiceException('No tienes acceso a la conversacion de este grupo', 403);
+        }
+
         $direction = $sort === 'newest' ? 'desc' : 'asc';
         $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
 
@@ -60,14 +73,27 @@ class CommentService
 
     public function destroy(int $userId, int $commentId): void
     {
+        $this->destroyWithAccess($userId, $commentId);
+    }
+
+    public function destroyWithAccess(int $userId, int $commentId, string $jwt = ''): void
+    {
         $comment = Comment::find($commentId);
         if (!$comment) {
             throw new PostsServiceException('Comentario no encontrado', 404);
         }
-        if ($comment->user_id !== $userId) {
-            throw new PostsServiceException('No autorizado para eliminar este comentario', 403);
+        if ($comment->user_id === $userId) {
+            $comment->delete();
+            return;
         }
-        $comment->delete();
+
+        $post = Post::find($comment->post_id);
+        if ($post && $post->group_id !== null && $this->socialBlockService->canManageGroup($jwt, (int) $post->group_id)) {
+            $comment->delete();
+            return;
+        }
+
+        throw new PostsServiceException('No autorizado para eliminar este comentario', 403);
     }
 
     public function adminDestroy(int $commentId): void

@@ -14,6 +14,9 @@ $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($rou
     $router->post('/posts', 'PostController@store');
     $router->get('/posts', 'PostController@index');
     $router->get('/posts/{id}', 'PostController@show');
+    $router->get('/group-posts/{groupId}', 'PostController@groupIndex');
+    $router->post('/group-posts/{groupId}', 'PostController@storeGroup');
+    $router->get('/group-posts/{groupId}/media', 'PostController@groupMedia');
     $router->delete('/posts/{id}/admin', 'PostController@adminDestroy');
     $router->delete('/posts/{id}', 'PostController@destroy');
 

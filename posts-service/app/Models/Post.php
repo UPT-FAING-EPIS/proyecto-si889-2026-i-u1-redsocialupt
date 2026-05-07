@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Post extends Model
 {
     protected $table    = 'posts';
-    protected $fillable = ['user_id', 'user_name', 'user_school', 'user_faculty', 'user_avatar', 'content', 'image_url', 'visibility'];
+    protected $fillable = ['user_id', 'group_id', 'user_name', 'user_school', 'user_faculty', 'user_avatar', 'group_name', 'content', 'image_url', 'visibility'];
     protected $casts    = [
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

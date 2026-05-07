@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\PostsServiceException;
 use App\Models\Comment;
 use App\Models\CommentLike;
+use App\Models\Post;
 
 class CommentLikeService
 {
@@ -24,6 +25,11 @@ class CommentLikeService
 
         if ($this->socialBlockService->isBlockedBetween($jwt, (int) $comment->user_id)) {
             throw new PostsServiceException('No puedes interactuar con el contenido de este usuario', 403);
+        }
+
+        $post = Post::find($comment->post_id);
+        if ($post && $post->group_id !== null && !$this->socialBlockService->canPostInGroup($jwt, (int) $post->group_id)) {
+            throw new PostsServiceException('No puedes reaccionar en este grupo', 403);
         }
 
         if (!in_array($reactionType, LikeService::REACTION_TYPES, true)) {
