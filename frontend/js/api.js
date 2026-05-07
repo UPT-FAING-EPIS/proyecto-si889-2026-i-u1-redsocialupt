@@ -274,7 +274,7 @@ const PostsAPI = {
     method: 'POST',
     body: JSON.stringify({ reaction_type: reactionType }),
   }),
-  deleteComment: (postId, commentId) => apiFetch(`${API.posts}/${postId}/comments/${commentId}`, { method: 'DELETE' }),
+  deleteComment: (_postId, commentId) => apiFetch(`/api/comments/${commentId}`, { method: 'DELETE' }),
   adminDeleteComment: (commentId) => apiFetch(`/api/comments/${commentId}/admin`, { method: 'DELETE' }),
   reportPost: (id, reason = null) => apiFetch(`${API.posts}/${id}/report`, {
     method: 'POST',
@@ -290,6 +290,21 @@ const PostsAPI = {
     method: 'PUT',
     body: JSON.stringify(payload),
   }),
+  getGroupPosts: (groupId) => apiFetch(`/api/group-posts/${groupId}`),
+  createGroupPost: (groupId, { content, imageFile }) => {
+    if (imageFile) {
+      const fd = new FormData();
+      if (content) fd.append('content', content);
+      fd.append('image', imageFile);
+      return apiFetchForm(`/api/group-posts/${groupId}`, fd);
+    }
+
+    return apiFetch(`/api/group-posts/${groupId}`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+  getGroupMedia: (groupId) => apiFetch(`/api/group-posts/${groupId}/media`),
 };
 
 /* ── Social Service ───────────────────────────────────────────── */
@@ -309,6 +324,50 @@ const SocialAPI = {
   getBlockContext: () => apiFetch(`/api/blocks/context`),
   blockUser: (userId) => apiFetch(`/api/blocks/${userId}`, { method: 'POST' }),
   unblockUser: (userId) => apiFetch(`/api/blocks/${userId}`, { method: 'DELETE' }),
+  discoverGroups: (query = '') => apiFetch(`/api/groups/discover${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+  getMyGroups: () => apiFetch(`/api/groups/mine`),
+  createGroup: ({ name, description, privacy, coverFile = null }) => {
+    if (coverFile) {
+      const fd = new FormData();
+      fd.append('name', name);
+      fd.append('description', description || '');
+      fd.append('privacy', privacy);
+      fd.append('cover', coverFile);
+      return apiFetchForm(`/api/groups`, fd);
+    }
+
+    return apiFetch(`/api/groups`, {
+      method: 'POST',
+      body: JSON.stringify({ name, description, privacy }),
+    });
+  },
+  getGroup: (groupId) => apiFetch(`/api/groups/${groupId}`),
+  joinGroup: (groupId) => apiFetch(`/api/groups/${groupId}/join`, { method: 'POST' }),
+  leaveGroup: (groupId) => apiFetch(`/api/groups/${groupId}/leave`, { method: 'POST' }),
+  updateGroup: (groupId, { name, description, privacy, coverFile = null }) => {
+    if (coverFile) {
+      const fd = new FormData();
+      if (name !== undefined) fd.append('name', name);
+      if (description !== undefined) fd.append('description', description);
+      if (privacy !== undefined) fd.append('privacy', privacy);
+      fd.append('cover', coverFile);
+      return apiFetchForm(`/api/groups/${groupId}`, fd, { method: 'PUT' });
+    }
+
+    return apiFetch(`/api/groups/${groupId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, description, privacy }),
+    });
+  },
+  getGroupMembers: (groupId) => apiFetch(`/api/groups/${groupId}/members`),
+  getGroupRequests: (groupId) => apiFetch(`/api/groups/${groupId}/requests`),
+  approveGroupRequest: (groupId, requestId) => apiFetch(`/api/groups/${groupId}/requests/${requestId}/approve`, { method: 'PUT' }),
+  rejectGroupRequest: (groupId, requestId) => apiFetch(`/api/groups/${groupId}/requests/${requestId}/reject`, { method: 'PUT' }),
+  updateGroupMemberRole: (groupId, userId, role) => apiFetch(`/api/groups/${groupId}/members/${userId}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  }),
+  removeGroupMember: (groupId, userId) => apiFetch(`/api/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
 };
 
 /* ── Chat Service ─────────────────────────────────────────────── */

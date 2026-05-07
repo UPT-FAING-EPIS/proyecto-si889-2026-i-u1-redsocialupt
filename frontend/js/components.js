@@ -100,6 +100,9 @@ class AppSidebar extends HTMLElement {
         <a class="${navClass('companions')}" href="#companions" id="nav-companions">
           <span class="material-symbols-outlined text-[20px]">groups</span><span class="text-sm">Companeros</span>
         </a>
+        <a class="${navClass('groups')}" href="#groups" id="nav-groups">
+          <span class="material-symbols-outlined text-[20px]">diversity_3</span><span class="text-sm">Grupos</span>
+        </a>
         <a class="${navClass('admin')}" href="#admin" id="nav-admin" style="display:none">
           <span class="material-symbols-outlined text-[20px]">admin_panel_settings</span><span class="text-sm">Admin</span>
         </a>

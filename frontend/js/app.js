@@ -520,6 +520,17 @@
     });
       const authorCareer = careerLabel(author);
       const visibilityMeta = getVisibilityMeta(post.visibility);
+      const audienceMarkup = post.group_id ? `
+        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+          <span class="material-symbols-outlined text-[14px]">diversity_3</span>
+          ${escapeHtml(post.group_name || 'Grupo')}
+        </span>
+      ` : `
+        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
+          <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
+          ${escapeHtml(visibilityMeta.label)}
+        </span>
+      `;
       const authorMeta = [
         authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
         `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
@@ -545,10 +556,7 @@
             ` : ''}
           </div>
           <div class="mb-3 flex items-center gap-2">
-            <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
-              <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
-              ${escapeHtml(visibilityMeta.label)}
-            </span>
+            ${audienceMarkup}
           </div>
           <div class="text-sm text-slate-800 mb-4"><p class="content-break">${nl2br(post.content || '')}</p></div>
           ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" onerror="this.parentElement.style.display='none'"/></div>` : ''}
@@ -588,6 +596,17 @@
         user_avatar: post.user_avatar,
       });
       const visibilityMeta = getVisibilityMeta(post.visibility);
+      const audienceMarkup = post.group_id ? `
+        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+          <span class="material-symbols-outlined text-[14px]">diversity_3</span>
+          ${escapeHtml(post.group_name || 'Grupo')}
+        </span>
+      ` : `
+        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
+          <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
+          ${escapeHtml(visibilityMeta.label)}
+        </span>
+      `;
       const authorMeta = [
         careerLabel(author) ? `<span>${escapeHtml(careerLabel(author))}</span>` : '',
         `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
@@ -609,10 +628,7 @@
               </div>
             </div>
             <div class="mt-3">
-              <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
-                <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
-                ${escapeHtml(visibilityMeta.label)}
-              </span>
+              ${audienceMarkup}
             </div>
             ${post.content ? `
               <div class="post-modal-preview-copy content-break">${nl2br(post.content)}</div>
@@ -1996,8 +2012,1679 @@
           return () => {
             window.removeEventListener('blocks:changed', handleBlocksChanged);
           };
-        },
       },
+    },
+    groups: {
+      title: 'Grupos',
+      activeNav: 'groups',
+      render() {
+        return `
+          <div class="flex flex-col gap-6 w-full">
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-5 mb-6">
+                <div>
+                  <h1 class="text-slate-900 mb-2 font-bold tracking-tight text-[28px]">Grupos</h1>
+                  <p class="text-slate-500 text-[16px]">Descubre comunidades, crea la tuya y gestiona tus espacios.</p>
+                </div>
+                <div class="w-full lg:w-80">
+                  <label class="block text-xs text-slate-500 mb-1 font-medium" for="groups-search">Buscar grupo</label>
+                  <input id="groups-search" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" placeholder="Nombre o descripcion"/>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
+                <button type="button" data-groups-tab="discover" class="groups-tab-btn px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Descubrir</button>
+                <button type="button" data-groups-tab="mine" class="groups-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Mis grupos</button>
+                <button type="button" data-groups-tab="create" class="groups-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Crear grupo</button>
+              </div>
+              <div id="groups-list-section">
+                <div id="groups-empty-state" class="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-400"></div>
+                <div id="groups-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <p class="text-slate-400 text-sm col-span-2 text-center py-8">Cargando grupos...</p>
+                </div>
+              </div>
+              <div id="groups-create-section" class="hidden">
+                <form id="create-group-form" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm font-semibold text-slate-700 mb-1" for="group-name">Nombre</label>
+                      <input id="group-name" name="name" required maxlength="150" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" placeholder="Ej. Comunidad de IA UPT"/>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-semibold text-slate-700 mb-1" for="group-description">Descripcion</label>
+                      <textarea id="group-description" name="description" rows="5" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Describe el objetivo del grupo"></textarea>
+                    </div>
+                  </div>
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm font-semibold text-slate-700 mb-1" for="group-privacy">Privacidad</label>
+                      <select id="group-privacy" name="privacy" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                        <option value="public">Publico</option>
+                        <option value="private">Privado</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-semibold text-slate-700 mb-1" for="group-cover">Portada</label>
+                      <input id="group-cover" name="cover" type="file" accept="image/*" class="hidden"/>
+                      <div id="group-cover-preview" class="h-40 rounded-2xl border border-slate-200 bg-slate-100 bg-cover bg-center" style="background:linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)"></div>
+                      <div class="mt-3 flex items-center gap-3">
+                        <button id="pick-group-cover-btn" type="button" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Seleccionar portada</button>
+                        <button id="clear-group-cover-btn" type="button" class="hidden px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors">Quitar</button>
+                      </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 leading-6">
+                      En la primera version los grupos incluyen informacion, conversacion, personas y multimedia. Los grupos publicos permiten unirse al instante y los privados requieren aprobacion.
+                    </div>
+                    <div class="flex justify-end">
+                      <button id="create-group-submit" type="submit" class="px-5 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Crear grupo</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+            <div id="group-create-crop-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 px-3 py-4">
+              <div class="bg-white rounded-[28px] shadow-xl w-full max-w-5xl overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                  <div>
+                    <h3 class="text-lg font-bold text-slate-900">Ajustar portada del grupo</h3>
+                    <p class="text-sm text-slate-500">Mueve y acerca la imagen para elegir la parte que quieres mostrar.</p>
+                  </div>
+                  <button id="group-create-crop-close-btn" type="button" class="w-10 h-10 rounded-full hover:bg-slate-100 transition-colors flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px] gap-6 p-6">
+                  <div id="group-create-crop-stage" class="rounded-[24px] bg-slate-900 overflow-hidden relative aspect-[16/5]">
+                    <img id="group-create-crop-image" alt="Previsualizacion de portada del grupo" class="absolute top-0 left-0 max-w-none select-none touch-none cursor-grab active:cursor-grabbing"/>
+                  </div>
+                  <div class="space-y-4">
+                    <div class="rounded-2xl border border-slate-200 p-4">
+                      <h4 class="text-sm font-semibold text-slate-900 mb-3">Vista previa</h4>
+                      <canvas id="group-create-crop-preview" class="w-full rounded-2xl border border-slate-200 bg-slate-100 aspect-[16/5]"></canvas>
+                    </div>
+                    <div>
+                      <div class="flex items-center justify-between gap-3 mb-2">
+                        <label for="group-create-crop-zoom" class="text-sm font-semibold text-slate-900">Zoom</label>
+                        <span id="group-create-crop-zoom-label" class="text-xs font-semibold text-slate-500">100%</span>
+                      </div>
+                      <input id="group-create-crop-zoom" type="range" min="100" max="400" value="100" class="w-full accent-[#1B2A6B]"/>
+                    </div>
+                    <div class="flex justify-end gap-3">
+                      <button id="group-create-crop-cancel-btn" type="button" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+                      <button id="group-create-crop-save-btn" type="button" class="px-4 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Usar portada</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      },
+      mount({ container, router }) {
+        const grid = container.querySelector('#groups-grid');
+        const emptyState = container.querySelector('#groups-empty-state');
+        const searchInput = container.querySelector('#groups-search');
+        const listSection = container.querySelector('#groups-list-section');
+        const createSection = container.querySelector('#groups-create-section');
+        const form = container.querySelector('#create-group-form');
+        const submitButton = container.querySelector('#create-group-submit');
+        const coverInput = container.querySelector('#group-cover');
+        const coverPreview = container.querySelector('#group-cover-preview');
+        const pickCoverButton = container.querySelector('#pick-group-cover-btn');
+        const clearCoverButton = container.querySelector('#clear-group-cover-btn');
+        const cropModal = container.querySelector('#group-create-crop-modal');
+        const cropStage = container.querySelector('#group-create-crop-stage');
+        const cropImage = container.querySelector('#group-create-crop-image');
+        const cropPreviewCanvas = container.querySelector('#group-create-crop-preview');
+        const cropZoom = container.querySelector('#group-create-crop-zoom');
+        const cropZoomLabel = container.querySelector('#group-create-crop-zoom-label');
+        const cropSaveButton = container.querySelector('#group-create-crop-save-btn');
+        const cropCancelButton = container.querySelector('#group-create-crop-cancel-btn');
+        const cropCloseButton = container.querySelector('#group-create-crop-close-btn');
+        const tabButtons = Array.from(container.querySelectorAll('[data-groups-tab]'));
+        let activeTab = 'discover';
+        let searchTimer = null;
+        let selectedCoverFile = null;
+        const cropState = {
+          file: null,
+          objectUrl: '',
+          image: null,
+          naturalWidth: 0,
+          naturalHeight: 0,
+          viewportWidth: 0,
+          viewportHeight: 0,
+          minScale: 1,
+          scale: 1,
+          zoom: 1,
+          maxZoom: 4,
+          offsetX: 0,
+          offsetY: 0,
+          pointerId: null,
+          dragStartX: 0,
+          dragStartY: 0,
+          dragOffsetX: 0,
+          dragOffsetY: 0,
+          saving: false,
+        };
+
+        function releaseCropObjectUrl() {
+          if (!cropState.objectUrl) return;
+          URL.revokeObjectURL(cropState.objectUrl);
+          cropState.objectUrl = '';
+        }
+
+        function resetCropState(clearInput = false) {
+          releaseCropObjectUrl();
+          cropState.file = null;
+          cropState.image = null;
+          cropState.naturalWidth = 0;
+          cropState.naturalHeight = 0;
+          cropState.viewportWidth = 0;
+          cropState.viewportHeight = 0;
+          cropState.minScale = 1;
+          cropState.scale = 1;
+          cropState.zoom = 1;
+          cropState.maxZoom = 4;
+          cropState.offsetX = 0;
+          cropState.offsetY = 0;
+          cropState.pointerId = null;
+          cropState.saving = false;
+          cropImage.removeAttribute('src');
+          cropZoom.value = '100';
+          cropZoomLabel.textContent = '100%';
+          if (clearInput) coverInput.value = '';
+        }
+
+        function closeCropModal(clearInput = false) {
+          cropModal.classList.add('hidden');
+          cropModal.classList.remove('flex');
+          resetCropState(clearInput);
+        }
+
+        function drawCreateCropPreview() {
+          if (!cropState.image) return;
+          cropPreviewCanvas.width = 640;
+          cropPreviewCanvas.height = 200;
+          const context = cropPreviewCanvas.getContext('2d');
+          if (!context) return;
+          const sourceX = Math.max(0, -cropState.offsetX / cropState.scale);
+          const sourceY = Math.max(0, -cropState.offsetY / cropState.scale);
+          const sourceWidth = Math.min(cropState.naturalWidth, cropState.viewportWidth / cropState.scale);
+          const sourceHeight = Math.min(cropState.naturalHeight, cropState.viewportHeight / cropState.scale);
+          context.clearRect(0, 0, cropPreviewCanvas.width, cropPreviewCanvas.height);
+          context.drawImage(cropState.image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, cropPreviewCanvas.width, cropPreviewCanvas.height);
+        }
+
+        function clampCreateCropAxis(offset, viewportSize, scaledSize) {
+          if (scaledSize <= viewportSize) return (viewportSize - scaledSize) / 2;
+          const minOffset = viewportSize - scaledSize;
+          return Math.min(0, Math.max(minOffset, offset));
+        }
+
+        function renderCreateCropStage() {
+          if (!cropState.image) return;
+          const scaledWidth = cropState.naturalWidth * cropState.scale;
+          const scaledHeight = cropState.naturalHeight * cropState.scale;
+          cropState.offsetX = clampCreateCropAxis(cropState.offsetX, cropState.viewportWidth, scaledWidth);
+          cropState.offsetY = clampCreateCropAxis(cropState.offsetY, cropState.viewportHeight, scaledHeight);
+          cropImage.style.width = `${scaledWidth}px`;
+          cropImage.style.height = `${scaledHeight}px`;
+          cropImage.style.transform = `translate3d(${cropState.offsetX}px, ${cropState.offsetY}px, 0)`;
+          cropZoomLabel.textContent = `${Math.round(cropState.zoom * 100)}%`;
+          drawCreateCropPreview();
+        }
+
+        function initializeCreateCropViewport() {
+          if (!cropState.image) return false;
+          const rect = cropStage.getBoundingClientRect();
+          if (!rect.width || !rect.height) return false;
+          cropState.viewportWidth = rect.width;
+          cropState.viewportHeight = rect.height;
+          cropState.minScale = Math.max(rect.width / cropState.naturalWidth, rect.height / cropState.naturalHeight);
+          cropState.zoom = 1;
+          cropState.maxZoom = 4;
+          cropState.scale = cropState.minScale;
+          cropState.offsetX = (rect.width - cropState.naturalWidth * cropState.scale) / 2;
+          cropState.offsetY = (rect.height - cropState.naturalHeight * cropState.scale) / 2;
+          cropZoom.min = '100';
+          cropZoom.max = `${Math.round(cropState.maxZoom * 100)}`;
+          cropZoom.value = '100';
+          renderCreateCropStage();
+          return true;
+        }
+
+        function setCreateCropZoom(nextZoom) {
+          if (!cropState.image) return;
+          const boundedZoom = Math.min(cropState.maxZoom, Math.max(1, nextZoom));
+          const previousScale = cropState.scale || cropState.minScale;
+          const focusX = cropState.viewportWidth / 2;
+          const focusY = cropState.viewportHeight / 2;
+          const imageFocusX = (focusX - cropState.offsetX) / previousScale;
+          const imageFocusY = (focusY - cropState.offsetY) / previousScale;
+          cropState.zoom = boundedZoom;
+          cropState.scale = cropState.minScale * cropState.zoom;
+          cropState.offsetX = focusX - imageFocusX * cropState.scale;
+          cropState.offsetY = focusY - imageFocusY * cropState.scale;
+          cropZoom.value = `${Math.round(cropState.zoom * 100)}`;
+          renderCreateCropStage();
+        }
+
+        async function openCreateCropModal(file) {
+          if (!file || !String(file.type || '').startsWith('image/')) {
+            showToast('Selecciona un archivo de imagen valido', 'error');
+            coverInput.value = '';
+            return;
+          }
+          resetCropState();
+          cropState.file = file;
+          cropState.objectUrl = URL.createObjectURL(file);
+          cropState.image = await new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('No se pudo cargar la imagen seleccionada.'));
+            image.src = cropState.objectUrl;
+          });
+          cropState.naturalWidth = cropState.image.naturalWidth;
+          cropState.naturalHeight = cropState.image.naturalHeight;
+          cropImage.src = cropState.objectUrl;
+          cropModal.classList.remove('hidden');
+          cropModal.classList.add('flex');
+          requestAnimationFrame(() => {
+            if (!initializeCreateCropViewport()) {
+              setTimeout(() => initializeCreateCropViewport(), 40);
+            }
+          });
+        }
+
+        function updateCreateCoverPreview(file = null) {
+          if (file) {
+            const previewUrl = URL.createObjectURL(file);
+            coverPreview.style.backgroundImage = `url('${safeUrl(previewUrl)}')`;
+            coverPreview.style.backgroundSize = 'cover';
+            coverPreview.style.backgroundPosition = 'center';
+            clearCoverButton.classList.remove('hidden');
+            setTimeout(() => URL.revokeObjectURL(previewUrl), 0);
+            return;
+          }
+          coverPreview.style.backgroundImage = '';
+          coverPreview.style.background = 'linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)';
+          clearCoverButton.classList.add('hidden');
+        }
+
+        function setTab(tab) {
+          activeTab = tab;
+          tabButtons.forEach((button) => {
+            const isActive = button.dataset.groupsTab === tab;
+            button.classList.toggle('bg-white', isActive);
+            button.classList.toggle('shadow-sm', isActive);
+            button.classList.toggle('text-slate-900', isActive);
+            button.classList.toggle('font-semibold', isActive);
+            button.classList.toggle('text-slate-600', !isActive);
+            button.classList.toggle('font-medium', !isActive);
+          });
+
+          const showCreate = tab === 'create';
+          listSection.classList.toggle('hidden', showCreate);
+          createSection.classList.toggle('hidden', !showCreate);
+          searchInput.closest('div').classList.toggle('hidden', showCreate);
+        }
+
+        function renderGroupCard(group) {
+          const membershipLabel = group.is_member
+            ? 'Miembro'
+            : group.current_membership_status === 'pending'
+              ? 'Solicitud enviada'
+              : group.privacy === 'public'
+                ? 'Publico'
+                : 'Privado';
+
+          return `
+            <article class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+              <button type="button" data-open-group="${group.id}" class="w-full text-left">
+                <div class="h-40 bg-slate-200 bg-cover bg-center" style="${group.cover_url ? `background-image:url('${safeUrl(group.cover_url)}')` : 'background:linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)'}"></div>
+                <div class="p-5">
+                  <div class="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                      <h3 class="text-lg font-bold text-slate-900 leading-tight">${escapeHtml(group.name)}</h3>
+                      <p class="text-xs text-slate-500 mt-1">${escapeHtml(group.member_count || 0)} miembros</p>
+                    </div>
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${group.privacy === 'private' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
+                      <span class="material-symbols-outlined text-[14px]">${group.privacy === 'private' ? 'lock' : 'public'}</span>
+                      ${group.privacy === 'private' ? 'Privado' : 'Publico'}
+                    </span>
+                  </div>
+                  <p class="text-sm text-slate-600 leading-6 min-h-[72px]">${escapeHtml((group.description || 'Sin descripcion').slice(0, 170))}</p>
+                </div>
+              </button>
+              <div class="px-5 pb-5 flex items-center justify-between gap-3">
+                <span class="text-xs font-semibold text-slate-500">${escapeHtml(membershipLabel)}</span>
+                <div class="flex items-center gap-2">
+                  ${!group.is_member && group.current_membership_status !== 'pending' ? `
+                    <button type="button" data-join-group="${group.id}" class="px-4 py-2 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">
+                      ${group.privacy === 'private' ? 'Solicitar ingreso' : 'Unirme'}
+                    </button>
+                  ` : ''}
+                  <button type="button" data-open-group="${group.id}" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Ver grupo</button>
+                </div>
+              </div>
+            </article>
+          `;
+        }
+
+        function renderList(groups, emptyMessage) {
+          if (!groups.length) {
+            grid.innerHTML = '';
+            emptyState.textContent = emptyMessage;
+            emptyState.classList.remove('hidden');
+            return;
+          }
+
+          emptyState.classList.add('hidden');
+          grid.innerHTML = groups.map(renderGroupCard).join('');
+        }
+
+        async function loadDiscover() {
+          grid.innerHTML = '<p class="text-slate-400 text-sm col-span-2 text-center py-8">Cargando grupos...</p>';
+          emptyState.classList.add('hidden');
+          const result = await SocialAPI.discoverGroups(searchInput.value.trim());
+          if (!result?.ok) {
+            renderList([], 'No se pudieron cargar los grupos.');
+            return;
+          }
+
+          const discoverableGroups = getList(result).filter((group) => !group.is_member);
+          renderList(discoverableGroups, 'No se encontraron grupos con esos criterios.');
+        }
+
+        async function loadMine() {
+          grid.innerHTML = '<p class="text-slate-400 text-sm col-span-2 text-center py-8">Cargando grupos...</p>';
+          emptyState.classList.add('hidden');
+          const result = await SocialAPI.getMyGroups();
+          if (!result?.ok) {
+            renderList([], 'No se pudieron cargar tus grupos.');
+            return;
+          }
+
+          renderList(getList(result), 'Todavia no perteneces a ningun grupo.');
+        }
+
+        async function loadActiveTab() {
+          if (activeTab === 'mine') {
+            await loadMine();
+            return;
+          }
+          if (activeTab === 'discover') {
+            await loadDiscover();
+          }
+        }
+
+        searchInput.addEventListener('input', () => {
+          if (activeTab !== 'discover') return;
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => {
+            loadDiscover();
+          }, 280);
+        });
+
+        tabButtons.forEach((button) => {
+          button.addEventListener('click', async () => {
+            setTab(button.dataset.groupsTab);
+            await loadActiveTab();
+          });
+        });
+
+        grid.addEventListener('click', async (event) => {
+          const openButton = event.target.closest('[data-open-group]');
+          if (openButton) {
+            router.navigate('group', { id: openButton.dataset.openGroup });
+            return;
+          }
+
+          const joinButton = event.target.closest('[data-join-group]');
+          if (!joinButton) return;
+
+          const result = await SocialAPI.joinGroup(joinButton.dataset.joinGroup);
+          if (result?.ok) {
+            showToast(result.data?.message || 'Solicitud enviada', 'success');
+            await loadActiveTab();
+            return;
+          }
+
+          showToast(result?.data?.error || 'No se pudo procesar la solicitud', 'error');
+        });
+
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          submitButton.disabled = true;
+          submitButton.textContent = 'Creando...';
+
+          const payload = {
+            name: form.name.value.trim(),
+            description: form.description.value.trim(),
+            privacy: form.privacy.value,
+            coverFile: selectedCoverFile,
+          };
+
+          const result = await SocialAPI.createGroup(payload);
+          submitButton.disabled = false;
+          submitButton.textContent = 'Crear grupo';
+
+          if (result?.ok) {
+            showToast('Grupo creado', 'success');
+            router.navigate('group', { id: result.data.id });
+            return;
+          }
+
+          showToast(result?.data?.error || 'No se pudo crear el grupo', 'error');
+        });
+
+        pickCoverButton.addEventListener('click', () => coverInput.click());
+        clearCoverButton.addEventListener('click', () => {
+          selectedCoverFile = null;
+          coverInput.value = '';
+          updateCreateCoverPreview(null);
+        });
+        coverInput.addEventListener('change', async (event) => {
+          const [file] = event.target.files || [];
+          if (!file) return;
+          try {
+            await openCreateCropModal(file);
+          } catch (error) {
+            showToast(error.message || 'No se pudo preparar la portada', 'error');
+            closeCropModal(true);
+          }
+        });
+        cropZoom.addEventListener('input', (event) => {
+          setCreateCropZoom(Number(event.target.value) / 100);
+        });
+        cropCancelButton.addEventListener('click', () => closeCropModal(true));
+        cropCloseButton.addEventListener('click', () => closeCropModal(true));
+        cropModal.addEventListener('click', (event) => {
+          if (event.target === cropModal) closeCropModal(true);
+        });
+        cropStage.addEventListener('pointerdown', (event) => {
+          if (!cropState.image || cropState.saving) return;
+          cropState.pointerId = event.pointerId;
+          cropState.dragStartX = event.clientX;
+          cropState.dragStartY = event.clientY;
+          cropState.dragOffsetX = cropState.offsetX;
+          cropState.dragOffsetY = cropState.offsetY;
+          cropStage.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        });
+        cropStage.addEventListener('pointermove', (event) => {
+          if (cropState.pointerId !== event.pointerId) return;
+          cropState.offsetX = cropState.dragOffsetX + (event.clientX - cropState.dragStartX);
+          cropState.offsetY = cropState.dragOffsetY + (event.clientY - cropState.dragStartY);
+          renderCreateCropStage();
+          event.preventDefault();
+        });
+        const stopCreateCropDrag = (event) => {
+          if (cropState.pointerId === null) return;
+          if (event && cropState.pointerId !== event.pointerId) return;
+          if (event && cropStage.hasPointerCapture(event.pointerId)) {
+            cropStage.releasePointerCapture(event.pointerId);
+          }
+          cropState.pointerId = null;
+        };
+        cropStage.addEventListener('pointerup', stopCreateCropDrag);
+        cropStage.addEventListener('pointercancel', stopCreateCropDrag);
+        cropStage.addEventListener('lostpointercapture', () => {
+          cropState.pointerId = null;
+        });
+        cropSaveButton.addEventListener('click', async () => {
+          if (!cropState.image || cropState.saving) return;
+          cropState.saving = true;
+          cropSaveButton.disabled = true;
+          cropSaveButton.textContent = 'Preparando...';
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1600;
+            canvas.height = 500;
+            const context = canvas.getContext('2d');
+            const sourceX = Math.max(0, -cropState.offsetX / cropState.scale);
+            const sourceY = Math.max(0, -cropState.offsetY / cropState.scale);
+            const sourceWidth = Math.min(cropState.naturalWidth, cropState.viewportWidth / cropState.scale);
+            const sourceHeight = Math.min(cropState.naturalHeight, cropState.viewportHeight / cropState.scale);
+            context.drawImage(cropState.image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+            if (!blob) throw new Error('No se pudo preparar la portada');
+            selectedCoverFile = new File([blob], `group-cover-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            updateCreateCoverPreview(selectedCoverFile);
+            closeCropModal(false);
+          } catch (error) {
+            showToast(error.message || 'No se pudo preparar la portada', 'error');
+          } finally {
+            cropState.saving = false;
+            cropSaveButton.disabled = false;
+            cropSaveButton.textContent = 'Usar portada';
+          }
+        });
+
+        setTab('discover');
+        loadActiveTab();
+      },
+    },
+    group: {
+      title: 'Grupo',
+      activeNav: 'groups',
+      render() {
+        return `
+          <div class="max-w-6xl mx-auto w-full space-y-6">
+            <div id="group-shell" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div class="h-52 md:h-64 bg-slate-200 bg-cover bg-center" id="group-cover-shell" style="background:linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)"></div>
+              <div class="px-6 py-5">
+                <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+                  <div class="space-y-2">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h1 id="group-title" class="text-3xl font-bold text-slate-900">Cargando grupo...</h1>
+                      <span id="group-privacy-badge" class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200"></span>
+                    </div>
+                    <p id="group-description" class="text-sm text-slate-600 leading-6 max-w-3xl"></p>
+                    <div class="flex items-center gap-3 flex-wrap text-sm text-slate-500">
+                      <span id="group-member-count">0 miembros</span>
+                      <span>&middot;</span>
+                      <span id="group-creator-label">-</span>
+                    </div>
+                  </div>
+                  <div id="group-actions" class="flex flex-wrap gap-3"></div>
+                </div>
+                <div class="flex flex-wrap items-center bg-[#E5E7EB] rounded-full p-1 w-max mt-6" id="group-tab-bar">
+                  <button type="button" data-group-tab="info" class="group-tab-btn px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Informacion</button>
+                  <button type="button" data-group-tab="conversation" class="group-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Conversacion</button>
+                  <button type="button" data-group-tab="people" class="group-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Personas</button>
+                  <button type="button" data-group-tab="media" class="group-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Multimedia</button>
+                </div>
+              </div>
+            </div>
+
+            <section id="group-tab-info" class="space-y-6"></section>
+            <section id="group-tab-conversation" class="space-y-6 hidden"></section>
+            <section id="group-tab-people" class="space-y-6 hidden"></section>
+            <section id="group-tab-media" class="space-y-6 hidden"></section>
+
+            <div id="group-edit-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 px-3 py-4">
+              <div class="bg-white rounded-[28px] shadow-xl w-full max-w-3xl overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                  <div>
+                    <h3 class="text-lg font-bold text-slate-900">Editar grupo</h3>
+                    <p class="text-sm text-slate-500">Actualiza la informacion principal y la portada del grupo.</p>
+                  </div>
+                  <button id="close-group-edit-modal-btn" type="button" class="w-10 h-10 rounded-full hover:bg-slate-100 transition-colors flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                </div>
+                <form id="edit-group-modal-form" class="p-6 space-y-5">
+                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <div class="space-y-4">
+                      <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1" for="edit-group-name">Nombre</label>
+                        <input id="edit-group-name" name="name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none"/>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1" for="edit-group-privacy">Privacidad</label>
+                        <select id="edit-group-privacy" name="privacy" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                          <option value="public">Publico</option>
+                          <option value="private">Privado</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1" for="edit-group-description">Descripcion</label>
+                        <textarea id="edit-group-description" name="description" rows="6" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none"></textarea>
+                      </div>
+                    </div>
+                    <div class="space-y-4">
+                      <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1" for="edit-group-cover-input">Portada</label>
+                        <input id="edit-group-cover-input" name="cover" type="file" accept="image/*" class="hidden"/>
+                        <div id="edit-group-cover-preview" class="h-40 rounded-2xl border border-slate-200 bg-slate-100 bg-cover bg-center" style="background:linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)"></div>
+                        <div class="mt-3 flex items-center gap-3">
+                          <button id="pick-edit-group-cover-btn" type="button" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Cambiar portada</button>
+                          <button id="clear-edit-group-cover-btn" type="button" class="hidden px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors">Quitar cambio</button>
+                        </div>
+                      </div>
+                      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 leading-6">
+                        La portada se ajusta antes de guardarse para que puedas elegir exactamente la parte visible del grupo.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex justify-end gap-3 pt-2">
+                    <button id="cancel-group-edit-modal-btn" type="button" class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+                    <button id="save-group-edit-modal-btn" type="submit" class="px-5 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Guardar cambios</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div id="group-edit-crop-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 px-3 py-4">
+              <div class="bg-white rounded-[28px] shadow-xl w-full max-w-5xl overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                  <div>
+                    <h3 class="text-lg font-bold text-slate-900">Ajustar portada del grupo</h3>
+                    <p class="text-sm text-slate-500">Mueve y acerca la imagen para elegir la parte que quieres mostrar.</p>
+                  </div>
+                  <button id="group-edit-crop-close-btn" type="button" class="w-10 h-10 rounded-full hover:bg-slate-100 transition-colors flex items-center justify-center">
+                    <span class="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px] gap-6 p-6">
+                  <div id="group-edit-crop-stage" class="rounded-[24px] bg-slate-900 overflow-hidden relative aspect-[16/5]">
+                    <img id="group-edit-crop-image" alt="Previsualizacion de portada del grupo" class="absolute top-0 left-0 max-w-none select-none touch-none cursor-grab active:cursor-grabbing"/>
+                  </div>
+                  <div class="space-y-4">
+                    <div class="rounded-2xl border border-slate-200 p-4">
+                      <h4 class="text-sm font-semibold text-slate-900 mb-3">Vista previa</h4>
+                      <canvas id="group-edit-crop-preview" class="w-full rounded-2xl border border-slate-200 bg-slate-100 aspect-[16/5]"></canvas>
+                    </div>
+                    <div>
+                      <div class="flex items-center justify-between gap-3 mb-2">
+                        <label for="group-edit-crop-zoom" class="text-sm font-semibold text-slate-900">Zoom</label>
+                        <span id="group-edit-crop-zoom-label" class="text-xs font-semibold text-slate-500">100%</span>
+                      </div>
+                      <input id="group-edit-crop-zoom" type="range" min="100" max="400" value="100" class="w-full accent-[#1B2A6B]"/>
+                    </div>
+                    <div class="flex justify-end gap-3">
+                      <button id="group-edit-crop-cancel-btn" type="button" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+                      <button id="group-edit-crop-save-btn" type="button" class="px-4 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Usar portada</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="group-comment-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
+              <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
+                <div class="post-comments-topbar">
+                  <h3 class="post-comments-topbar-title">Publicacion</h3>
+                  <button id="group-close-comment-top-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar comentarios de grupo">
+                    <span class="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                </div>
+                <div class="post-comments-body">
+                  <div class="post-comments-scroll custom-scrollbar">
+                    <div id="group-comment-post-preview" class="post-comments-preview"></div>
+                    <div class="post-comments-side">
+                      <div class="post-comments-section-head">
+                        <span class="post-comments-section-title">Comentarios</span>
+                        <select id="group-comment-sort" class="post-comments-sort">
+                          <option value="newest">Mas recientes</option>
+                          <option value="oldest">Mas antiguos</option>
+                        </select>
+                      </div>
+                      <div id="group-comment-list" class="post-comments-list">
+                        <p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="post-comments-compose">
+                    <div class="post-comments-compose-row">
+                      <textarea id="group-comment-input" class="post-comments-compose-input" rows="1" placeholder="Escribe un comentario..."></textarea>
+                      <button id="group-confirm-comment-btn" type="button" class="post-comments-compose-send" aria-label="Enviar comentario">
+                        <span class="material-symbols-outlined text-[18px]">send</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      },
+      mount({ container, user, params, router }) {
+        const groupId = Number(params.id);
+        const cover = container.querySelector('#group-cover-shell');
+        const title = container.querySelector('#group-title');
+        const description = container.querySelector('#group-description');
+        const memberCount = container.querySelector('#group-member-count');
+        const creatorLabel = container.querySelector('#group-creator-label');
+        const privacyBadge = container.querySelector('#group-privacy-badge');
+        const actionsWrap = container.querySelector('#group-actions');
+        const infoTab = container.querySelector('#group-tab-info');
+        const conversationTab = container.querySelector('#group-tab-conversation');
+        const peopleTab = container.querySelector('#group-tab-people');
+        const mediaTab = container.querySelector('#group-tab-media');
+        const tabButtons = Array.from(container.querySelectorAll('[data-group-tab]'));
+        const editModal = container.querySelector('#group-edit-modal');
+        const editForm = container.querySelector('#edit-group-modal-form');
+        const editNameInput = container.querySelector('#edit-group-name');
+        const editPrivacyInput = container.querySelector('#edit-group-privacy');
+        const editDescriptionInput = container.querySelector('#edit-group-description');
+        const editCoverInput = container.querySelector('#edit-group-cover-input');
+        const editCoverPreview = container.querySelector('#edit-group-cover-preview');
+        const pickEditCoverButton = container.querySelector('#pick-edit-group-cover-btn');
+        const clearEditCoverButton = container.querySelector('#clear-edit-group-cover-btn');
+        const closeEditModalButton = container.querySelector('#close-group-edit-modal-btn');
+        const cancelEditModalButton = container.querySelector('#cancel-group-edit-modal-btn');
+        const saveEditModalButton = container.querySelector('#save-group-edit-modal-btn');
+        const editCropModal = container.querySelector('#group-edit-crop-modal');
+        const editCropStage = container.querySelector('#group-edit-crop-stage');
+        const editCropImage = container.querySelector('#group-edit-crop-image');
+        const editCropPreviewCanvas = container.querySelector('#group-edit-crop-preview');
+        const editCropZoom = container.querySelector('#group-edit-crop-zoom');
+        const editCropZoomLabel = container.querySelector('#group-edit-crop-zoom-label');
+        const editCropSaveButton = container.querySelector('#group-edit-crop-save-btn');
+        const editCropCancelButton = container.querySelector('#group-edit-crop-cancel-btn');
+        const editCropCloseButton = container.querySelector('#group-edit-crop-close-btn');
+        const commentModal = container.querySelector('#group-comment-modal');
+        const commentPostPreview = container.querySelector('#group-comment-post-preview');
+        const commentList = container.querySelector('#group-comment-list');
+        const commentSort = container.querySelector('#group-comment-sort');
+        const commentInput = container.querySelector('#group-comment-input');
+        let groupData = null;
+        let groupPosts = [];
+        let currentTab = 'info';
+        let selectedImageFile = null;
+        let selectedEditCoverFile = null;
+        let pendingCommentPostId = null;
+        let currentCommentSort = 'newest';
+        const editCropState = {
+          file: null,
+          objectUrl: '',
+          image: null,
+          naturalWidth: 0,
+          naturalHeight: 0,
+          viewportWidth: 0,
+          viewportHeight: 0,
+          minScale: 1,
+          scale: 1,
+          zoom: 1,
+          maxZoom: 4,
+          offsetX: 0,
+          offsetY: 0,
+          pointerId: null,
+          dragStartX: 0,
+          dragStartY: 0,
+          dragOffsetX: 0,
+          dragOffsetY: 0,
+          saving: false,
+        };
+
+        function setTab(tab) {
+          currentTab = tab;
+          tabButtons.forEach((button) => {
+            const isActive = button.dataset.groupTab === tab;
+            button.classList.toggle('bg-white', isActive);
+            button.classList.toggle('shadow-sm', isActive);
+            button.classList.toggle('text-slate-900', isActive);
+            button.classList.toggle('font-semibold', isActive);
+            button.classList.toggle('text-slate-600', !isActive);
+            button.classList.toggle('font-medium', !isActive);
+          });
+          infoTab.classList.toggle('hidden', tab !== 'info');
+          conversationTab.classList.toggle('hidden', tab !== 'conversation');
+          peopleTab.classList.toggle('hidden', tab !== 'people');
+          mediaTab.classList.toggle('hidden', tab !== 'media');
+        }
+
+        function groupCanManage() {
+          return !!groupData?.is_admin;
+        }
+
+        function updateEditCoverPreview(file = null) {
+          if (file) {
+            const previewUrl = URL.createObjectURL(file);
+            editCoverPreview.style.backgroundImage = `url('${safeUrl(previewUrl)}')`;
+            editCoverPreview.style.backgroundSize = 'cover';
+            editCoverPreview.style.backgroundPosition = 'center';
+            clearEditCoverButton.classList.remove('hidden');
+            setTimeout(() => URL.revokeObjectURL(previewUrl), 0);
+            return;
+          }
+
+          if (groupData?.cover_url) {
+            editCoverPreview.style.backgroundImage = `url('${safeUrl(groupData.cover_url)}')`;
+            editCoverPreview.style.backgroundSize = 'cover';
+            editCoverPreview.style.backgroundPosition = 'center';
+            clearEditCoverButton.classList.add('hidden');
+            return;
+          }
+
+          editCoverPreview.style.backgroundImage = '';
+          editCoverPreview.style.background = 'linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)';
+          clearEditCoverButton.classList.add('hidden');
+        }
+
+        function releaseEditCropObjectUrl() {
+          if (!editCropState.objectUrl) return;
+          URL.revokeObjectURL(editCropState.objectUrl);
+          editCropState.objectUrl = '';
+        }
+
+        function resetEditCropState(clearInput = false) {
+          releaseEditCropObjectUrl();
+          editCropState.file = null;
+          editCropState.image = null;
+          editCropState.naturalWidth = 0;
+          editCropState.naturalHeight = 0;
+          editCropState.viewportWidth = 0;
+          editCropState.viewportHeight = 0;
+          editCropState.minScale = 1;
+          editCropState.scale = 1;
+          editCropState.zoom = 1;
+          editCropState.maxZoom = 4;
+          editCropState.offsetX = 0;
+          editCropState.offsetY = 0;
+          editCropState.pointerId = null;
+          editCropState.saving = false;
+          editCropImage.removeAttribute('src');
+          editCropZoom.value = '100';
+          editCropZoomLabel.textContent = '100%';
+          if (clearInput) editCoverInput.value = '';
+        }
+
+        function closeEditCropModal(clearInput = false) {
+          editCropModal.classList.add('hidden');
+          editCropModal.classList.remove('flex');
+          resetEditCropState(clearInput);
+        }
+
+        function drawEditCropPreview() {
+          if (!editCropState.image) return;
+          editCropPreviewCanvas.width = 640;
+          editCropPreviewCanvas.height = 200;
+          const context = editCropPreviewCanvas.getContext('2d');
+          if (!context) return;
+          const sourceX = Math.max(0, -editCropState.offsetX / editCropState.scale);
+          const sourceY = Math.max(0, -editCropState.offsetY / editCropState.scale);
+          const sourceWidth = Math.min(editCropState.naturalWidth, editCropState.viewportWidth / editCropState.scale);
+          const sourceHeight = Math.min(editCropState.naturalHeight, editCropState.viewportHeight / editCropState.scale);
+          context.clearRect(0, 0, editCropPreviewCanvas.width, editCropPreviewCanvas.height);
+          context.drawImage(editCropState.image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, editCropPreviewCanvas.width, editCropPreviewCanvas.height);
+        }
+
+        function clampEditCropAxis(offset, viewportSize, scaledSize) {
+          if (scaledSize <= viewportSize) return (viewportSize - scaledSize) / 2;
+          const minOffset = viewportSize - scaledSize;
+          return Math.min(0, Math.max(minOffset, offset));
+        }
+
+        function renderEditCropStage() {
+          if (!editCropState.image) return;
+          const scaledWidth = editCropState.naturalWidth * editCropState.scale;
+          const scaledHeight = editCropState.naturalHeight * editCropState.scale;
+          editCropState.offsetX = clampEditCropAxis(editCropState.offsetX, editCropState.viewportWidth, scaledWidth);
+          editCropState.offsetY = clampEditCropAxis(editCropState.offsetY, editCropState.viewportHeight, scaledHeight);
+          editCropImage.style.width = `${scaledWidth}px`;
+          editCropImage.style.height = `${scaledHeight}px`;
+          editCropImage.style.transform = `translate3d(${editCropState.offsetX}px, ${editCropState.offsetY}px, 0)`;
+          editCropZoomLabel.textContent = `${Math.round(editCropState.zoom * 100)}%`;
+          drawEditCropPreview();
+        }
+
+        function initializeEditCropViewport() {
+          if (!editCropState.image) return false;
+          const rect = editCropStage.getBoundingClientRect();
+          if (!rect.width || !rect.height) return false;
+          editCropState.viewportWidth = rect.width;
+          editCropState.viewportHeight = rect.height;
+          editCropState.minScale = Math.max(rect.width / editCropState.naturalWidth, rect.height / editCropState.naturalHeight);
+          editCropState.zoom = 1;
+          editCropState.maxZoom = 4;
+          editCropState.scale = editCropState.minScale;
+          editCropState.offsetX = (rect.width - editCropState.naturalWidth * editCropState.scale) / 2;
+          editCropState.offsetY = (rect.height - editCropState.naturalHeight * editCropState.scale) / 2;
+          editCropZoom.min = '100';
+          editCropZoom.max = `${Math.round(editCropState.maxZoom * 100)}`;
+          editCropZoom.value = '100';
+          renderEditCropStage();
+          return true;
+        }
+
+        function setEditCropZoom(nextZoom) {
+          if (!editCropState.image) return;
+          const boundedZoom = Math.min(editCropState.maxZoom, Math.max(1, nextZoom));
+          const previousScale = editCropState.scale || editCropState.minScale;
+          const focusX = editCropState.viewportWidth / 2;
+          const focusY = editCropState.viewportHeight / 2;
+          const imageFocusX = (focusX - editCropState.offsetX) / previousScale;
+          const imageFocusY = (focusY - editCropState.offsetY) / previousScale;
+          editCropState.zoom = boundedZoom;
+          editCropState.scale = editCropState.minScale * editCropState.zoom;
+          editCropState.offsetX = focusX - imageFocusX * editCropState.scale;
+          editCropState.offsetY = focusY - imageFocusY * editCropState.scale;
+          editCropZoom.value = `${Math.round(editCropState.zoom * 100)}`;
+          renderEditCropStage();
+        }
+
+        async function openEditCropModal(file) {
+          if (!file || !String(file.type || '').startsWith('image/')) {
+            showToast('Selecciona un archivo de imagen valido', 'error');
+            editCoverInput.value = '';
+            return;
+          }
+          resetEditCropState();
+          editCropState.file = file;
+          editCropState.objectUrl = URL.createObjectURL(file);
+          editCropState.image = await new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('No se pudo cargar la imagen seleccionada.'));
+            image.src = editCropState.objectUrl;
+          });
+          editCropState.naturalWidth = editCropState.image.naturalWidth;
+          editCropState.naturalHeight = editCropState.image.naturalHeight;
+          editCropImage.src = editCropState.objectUrl;
+          editCropModal.classList.remove('hidden');
+          editCropModal.classList.add('flex');
+          requestAnimationFrame(() => {
+            if (!initializeEditCropViewport()) {
+              setTimeout(() => initializeEditCropViewport(), 40);
+            }
+          });
+        }
+
+        function openEditModal() {
+          if (!groupData) return;
+          selectedEditCoverFile = null;
+          editCoverInput.value = '';
+          editNameInput.value = groupData.name || '';
+          editPrivacyInput.value = groupData.privacy || 'public';
+          editDescriptionInput.value = groupData.description || '';
+          updateEditCoverPreview(null);
+          editModal.classList.remove('hidden');
+          editModal.classList.add('flex');
+        }
+
+        function closeEditModal() {
+          editModal.classList.add('hidden');
+          editModal.classList.remove('flex');
+          selectedEditCoverFile = null;
+          editCoverInput.value = '';
+          updateEditCoverPreview(null);
+        }
+
+        function findGroupPost(postId) {
+          return groupPosts.find((post) => Number(post.id) === Number(postId)) || null;
+        }
+
+        function renderHeader() {
+          if (!groupData) return;
+          title.textContent = groupData.name;
+          description.textContent = groupData.description || 'Este grupo todavia no tiene una descripcion.';
+          memberCount.textContent = `${groupData.member_count || 0} miembros`;
+          creatorLabel.textContent = `Creador: ${displayName(groupData.creator || { full_name: 'Usuario' })}`;
+          privacyBadge.innerHTML = `
+            <span class="material-symbols-outlined text-[14px]">${groupData.privacy === 'private' ? 'lock' : 'public'}</span>
+            ${groupData.privacy === 'private' ? 'Privado' : 'Publico'}
+          `;
+          privacyBadge.className = `inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold border ${groupData.privacy === 'private' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`;
+
+          if (groupData.cover_url) {
+            cover.style.backgroundImage = `url('${safeUrl(groupData.cover_url)}')`;
+            cover.style.backgroundSize = 'cover';
+            cover.style.backgroundPosition = 'center';
+          }
+
+          const actionButtons = [];
+          if (groupData.is_member) {
+            actionButtons.push(`<button type="button" data-leave-group class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Salir del grupo</button>`);
+          } else if (groupData.current_membership_status === 'pending') {
+            actionButtons.push(`<span class="px-4 py-2 rounded-xl bg-amber-50 text-amber-700 text-sm font-semibold border border-amber-200">Solicitud pendiente</span>`);
+          } else {
+            actionButtons.push(`<button type="button" data-join-group class="px-4 py-2 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">${groupData.privacy === 'private' ? 'Solicitar ingreso' : 'Unirme al grupo'}</button>`);
+          }
+
+          if (groupCanManage()) {
+            actionButtons.push(`<button type="button" data-edit-group class="px-4 py-2 rounded-xl border border-[#1B2A6B] text-[#1B2A6B] text-sm font-semibold hover:bg-[#1B2A6B] hover:text-white transition-colors">Editar grupo</button>`);
+          }
+
+          actionsWrap.innerHTML = actionButtons.join('');
+        }
+
+        function renderInfoTab() {
+          if (!groupData) return;
+          infoTab.innerHTML = `
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              <div class="xl:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                <h2 class="text-lg font-bold text-slate-900 mb-3">Sobre este grupo</h2>
+                <p class="text-sm text-slate-600 leading-7">${escapeHtml(groupData.description || 'Sin descripcion todavia.')}</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Privacidad</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-800">${groupData.privacy === 'private' ? 'Privado' : 'Publico'}</p>
+                  </div>
+                  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Miembros</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-800">${groupData.member_count || 0}</p>
+                  </div>
+                  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Creador</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(displayName(groupData.creator || { full_name: 'Usuario' }))}</p>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                <h2 class="text-lg font-bold text-slate-900 mb-3">Estado</h2>
+                <div class="space-y-3 text-sm text-slate-600">
+                  <p>Rol actual: <span class="font-semibold text-slate-800">${escapeHtml(groupData.current_role || 'Visitante')}</span></p>
+                  <p>Acceso a conversacion: <span class="font-semibold text-slate-800">${groupData.can_view_conversation ? 'Si' : 'No'}</span></p>
+                </div>
+              </div>
+            </div>
+            `;
+          }
+
+        function renderConversationTabSkeleton() {
+          if (!groupData?.can_view_conversation) {
+            conversationTab.innerHTML = `
+              <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center">
+                <p class="text-slate-600 text-sm">Debes pertenecer al grupo para ver y publicar en la conversacion.</p>
+              </div>
+            `;
+            return;
+          }
+
+          conversationTab.innerHTML = `
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+              <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 bg-cover bg-center" id="group-composer-avatar" style="background:#1B2A6B">U</div>
+                <div class="flex-1">
+                  <textarea id="group-post-content" rows="3" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Comparte algo con tu grupo"></textarea>
+                  <div id="group-image-preview-wrap" class="hidden mt-3 relative rounded-2xl overflow-hidden border border-slate-200">
+                    <img id="group-image-preview" class="w-full max-h-64 object-cover" alt="Vista previa de imagen del grupo"/>
+                    <button id="group-clear-image-btn" type="button" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 text-white hover:bg-black/75 transition-colors">x</button>
+                  </div>
+                </div>
+              </div>
+              <input type="file" id="group-file-input" accept="image/*" class="hidden"/>
+              <div class="mt-4 flex flex-wrap justify-between gap-3">
+                <button id="group-pick-image-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  <span class="material-symbols-outlined text-[18px]">image</span>
+                  Agregar imagen
+                </button>
+                <button id="group-publish-btn" type="button" class="px-5 py-2 rounded-xl bg-[#E5D59A] text-[#5A4A1A] text-sm font-bold hover:bg-[#d8c686] transition-colors">Publicar</button>
+              </div>
+            </div>
+            <div id="group-posts-list" class="space-y-4">
+              <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Cargando publicaciones...</div>
+            </div>
+          `;
+        }
+
+        function openCommentModal(postId) {
+          pendingCommentPostId = Number(postId);
+          commentInput.value = '';
+          commentSort.value = currentCommentSort;
+          commentModal.classList.remove('hidden');
+          commentModal.classList.add('flex');
+          commentPostPreview.innerHTML = renderPostModalPreview(findGroupPost(postId), user.id);
+          loadComments(postId, currentCommentSort);
+        }
+
+        function closeCommentModal() {
+          pendingCommentPostId = null;
+          commentModal.classList.add('hidden');
+          commentModal.classList.remove('flex');
+          commentPostPreview.innerHTML = '';
+          commentList.innerHTML = '<p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>';
+        }
+
+        async function loadComments(postId = pendingCommentPostId, sort = currentCommentSort) {
+          if (!postId) return;
+          currentCommentSort = sort;
+          commentSort.value = sort;
+          commentList.innerHTML = '<p class="text-sm text-slate-400 text-center">Cargando comentarios...</p>';
+          const result = await PostsAPI.getComments(postId, sort);
+          if (!result?.ok) {
+            commentList.innerHTML = '<p class="text-sm text-slate-400 text-center">No se pudieron cargar los comentarios.</p>';
+            return;
+          }
+
+          const comments = getList(result);
+          if (!comments.length) {
+            commentList.innerHTML = '<p class="text-sm text-slate-400 text-center">No hay comentarios todavia.</p>';
+            return;
+          }
+
+          commentList.innerHTML = comments.map((comment) => {
+            const canDelete = Number(comment.user_id) === Number(user.id) || groupCanManage();
+            return renderCommentCard(comment, {
+              footerActions: canDelete ? `
+                <button type="button" data-group-delete-comment="${comment.id}" class="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-50">
+                  <span class="material-symbols-outlined text-[15px]">delete</span>
+                  Eliminar
+                </button>
+              ` : '',
+            });
+          }).join('');
+        }
+
+        async function loadConversation() {
+          renderConversationTabSkeleton();
+          if (!groupData?.can_view_conversation) return;
+
+          const composerAvatar = conversationTab.querySelector('#group-composer-avatar');
+          const fileInput = conversationTab.querySelector('#group-file-input');
+          const previewWrap = conversationTab.querySelector('#group-image-preview-wrap');
+          const previewImage = conversationTab.querySelector('#group-image-preview');
+          const contentInput = conversationTab.querySelector('#group-post-content');
+          const publishButton = conversationTab.querySelector('#group-publish-btn');
+          const postsList = conversationTab.querySelector('#group-posts-list');
+
+          setAvatarElement(composerAvatar, user);
+
+          function clearImage() {
+            selectedImageFile = null;
+            fileInput.value = '';
+            previewWrap.classList.add('hidden');
+            previewImage.src = '';
+          }
+
+          function renderPosts() {
+            if (!groupPosts.length) {
+              postsList.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Aun no hay publicaciones en este grupo.</div>';
+              return;
+            }
+
+            postsList.innerHTML = groupPosts.map((post) => renderPostCard(post, user.id, {
+              canDelete: Number(post.user_id) === Number(user.id) || groupCanManage(),
+            })).join('');
+          }
+
+          async function reloadPosts() {
+            const result = await PostsAPI.getGroupPosts(groupId);
+            if (!result?.ok) {
+              postsList.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">No se pudieron cargar las publicaciones del grupo.</div>';
+              return;
+            }
+
+            groupPosts = getList(result);
+            renderPosts();
+            if (pendingCommentPostId) {
+              commentPostPreview.innerHTML = renderPostModalPreview(findGroupPost(pendingCommentPostId), user.id);
+            }
+          }
+
+          conversationTab.querySelector('#group-pick-image-btn').addEventListener('click', () => fileInput.click());
+          conversationTab.querySelector('#group-clear-image-btn').addEventListener('click', clearImage);
+          fileInput.addEventListener('change', (event) => {
+            const [file] = event.target.files || [];
+            if (!file) {
+              clearImage();
+              return;
+            }
+
+            selectedImageFile = file;
+            previewImage.src = URL.createObjectURL(file);
+            previewWrap.classList.remove('hidden');
+          });
+
+          publishButton.addEventListener('click', async () => {
+            const content = contentInput.value.trim();
+            if (!content && !selectedImageFile) {
+              showToast('Escribe algo o adjunta una imagen', 'error');
+              return;
+            }
+
+            publishButton.disabled = true;
+            publishButton.textContent = 'Publicando...';
+            const result = await PostsAPI.createGroupPost(groupId, { content, imageFile: selectedImageFile });
+            publishButton.disabled = false;
+            publishButton.textContent = 'Publicar';
+
+            if (result?.ok) {
+              contentInput.value = '';
+              clearImage();
+              showToast('Publicacion creada', 'success');
+              await reloadPosts();
+              return;
+            }
+
+            showToast(result?.data?.error || 'No se pudo publicar en el grupo', 'error');
+          });
+
+          postsList.addEventListener('click', async (event) => {
+            const profileButton = event.target.closest('[data-action="open-profile"]');
+            if (profileButton) {
+              router.navigate('profile', { id: profileButton.dataset.userId });
+              return;
+            }
+
+            const deleteButton = event.target.closest('[data-action="delete-post"]');
+            if (deleteButton) {
+              const confirmed = window.confirm('Deseas eliminar esta publicacion del grupo?');
+              if (!confirmed) return;
+
+              const result = await PostsAPI.deletePost(deleteButton.dataset.postId);
+              if (result?.ok) {
+                showToast('Publicacion eliminada', 'success');
+                await reloadPosts();
+                return;
+              }
+
+              showToast(result?.data?.error || 'No se pudo eliminar la publicacion', 'error');
+              return;
+            }
+
+            const commentButton = event.target.closest('[data-action="comment-post"]');
+            if (commentButton) {
+              openCommentModal(commentButton.dataset.postId);
+              return;
+            }
+
+            const reportButton = event.target.closest('[data-action="report-post"]');
+            if (reportButton) {
+              const result = await PostsAPI.reportPost(reportButton.dataset.postId);
+              showToast(result?.ok ? 'Publicacion reportada' : (result?.data?.error || 'No se pudo reportar'), result?.ok ? 'success' : 'error');
+              return;
+            }
+
+            const reactionButton = event.target.closest('[data-action="react-post"]');
+            if (reactionButton) {
+              const result = await PostsAPI.reactPost(reactionButton.dataset.postId, reactionButton.dataset.reaction);
+              if (result?.ok) {
+                await reloadPosts();
+              } else {
+                showToast(result?.data?.error || 'No se pudo reaccionar', 'error');
+              }
+            }
+          });
+
+          await reloadPosts();
+        }
+
+        async function renderPeopleTab() {
+          peopleTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Cargando miembros...</div>';
+          const [membersResult, requestsResult] = await Promise.all([
+            SocialAPI.getGroupMembers(groupId),
+            groupCanManage() ? SocialAPI.getGroupRequests(groupId) : Promise.resolve({ ok: true, data: [] }),
+          ]);
+
+          if (!membersResult?.ok) {
+            peopleTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">No se pudo cargar la lista de miembros.</div>';
+            return;
+          }
+
+          const members = getList(membersResult);
+          const requests = getList(requestsResult);
+          peopleTab.innerHTML = `
+            ${groupCanManage() ? `
+              <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                <h2 class="text-lg font-bold text-slate-900 mb-4">Solicitudes pendientes</h2>
+                <div id="group-requests-list" class="space-y-3">
+                  ${requests.length ? requests.map((request) => `
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div>
+                        <p class="font-semibold text-slate-900">${escapeHtml(displayName(request.user || { full_name: 'Usuario' }))}</p>
+                        <p class="text-sm text-slate-500">${escapeHtml(careerLabel(request.user || {}))}</p>
+                      </div>
+                      <div class="flex gap-2">
+                        <button type="button" data-approve-group-request="${request.membership_id}" class="px-4 py-2 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Aprobar</button>
+                        <button type="button" data-reject-group-request="${request.membership_id}" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Rechazar</button>
+                      </div>
+                    </div>
+                  `).join('') : '<p class="text-sm text-slate-400">No hay solicitudes pendientes.</p>'}
+                </div>
+              </div>
+            ` : ''}
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <h2 class="text-lg font-bold text-slate-900 mb-4">Miembros</h2>
+              <div id="group-members-list" class="space-y-3">
+                ${members.map((member) => {
+                  const isSelf = Number(member.user_id) === Number(user.id);
+                  const canManageMember = groupCanManage() && member.role !== 'creator' && !isSelf;
+                  const canChangeRole = groupData.current_role === 'creator' && member.role !== 'creator' && !isSelf;
+                  return `
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4">
+                      <div class="flex items-center gap-3">
+                        ${renderAvatar(member.user || {}, { sizeClass: 'w-11 h-11', textClass: 'text-white font-bold text-sm' })}
+                        <div>
+                          <p class="font-semibold text-slate-900">${escapeHtml(displayName(member.user || { full_name: 'Usuario' }))}</p>
+                          <p class="text-sm text-slate-500">${escapeHtml(careerLabel(member.user || {}))}</p>
+                        </div>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${member.role === 'creator' ? 'bg-sky-50 text-sky-700 border border-sky-200' : member.role === 'admin' ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}">${escapeHtml(member.role)}</span>
+                        ${canChangeRole ? `
+                          <select data-group-role-user="${member.user_id}" class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                            <option value="member" ${member.role === 'member' ? 'selected' : ''}>Miembro</option>
+                            <option value="admin" ${member.role === 'admin' ? 'selected' : ''}>Admin</option>
+                          </select>
+                        ` : ''}
+                        ${canManageMember ? `
+                          <button type="button" data-remove-group-member="${member.user_id}" class="px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors">Expulsar</button>
+                        ` : ''}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+
+          peopleTab.addEventListener('click', async (event) => {
+            const approveButton = event.target.closest('[data-approve-group-request]');
+            if (approveButton) {
+              const result = await SocialAPI.approveGroupRequest(groupId, approveButton.dataset.approveGroupRequest);
+              if (result?.ok) {
+                showToast('Solicitud aprobada', 'success');
+                await loadGroup();
+                await renderPeopleTab();
+                return;
+              }
+              showToast(result?.data?.error || 'No se pudo aprobar la solicitud', 'error');
+              return;
+            }
+
+            const rejectButton = event.target.closest('[data-reject-group-request]');
+            if (rejectButton) {
+              const result = await SocialAPI.rejectGroupRequest(groupId, rejectButton.dataset.rejectGroupRequest);
+              if (result?.ok) {
+                showToast('Solicitud rechazada', 'success');
+                await renderPeopleTab();
+                return;
+              }
+              showToast(result?.data?.error || 'No se pudo rechazar la solicitud', 'error');
+              return;
+            }
+
+            const removeButton = event.target.closest('[data-remove-group-member]');
+            if (removeButton) {
+              const confirmed = window.confirm('Deseas expulsar a este miembro del grupo?');
+              if (!confirmed) return;
+              const result = await SocialAPI.removeGroupMember(groupId, removeButton.dataset.removeGroupMember);
+              if (result?.ok) {
+                showToast('Miembro expulsado', 'success');
+                await loadGroup();
+                await renderPeopleTab();
+                return;
+              }
+              showToast(result?.data?.error || 'No se pudo expulsar al miembro', 'error');
+            }
+          }, { once: true });
+
+          peopleTab.querySelectorAll('[data-group-role-user]').forEach((select) => {
+            select.addEventListener('change', async () => {
+              const result = await SocialAPI.updateGroupMemberRole(groupId, select.dataset.groupRoleUser, select.value);
+              if (result?.ok) {
+                showToast('Rol actualizado', 'success');
+                await loadGroup();
+                await renderPeopleTab();
+                return;
+              }
+              showToast(result?.data?.error || 'No se pudo actualizar el rol', 'error');
+            });
+          });
+        }
+
+        async function renderMediaTab() {
+          mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Cargando imagenes...</div>';
+          if (!groupData?.can_view_conversation) {
+            mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Debes pertenecer al grupo para ver su multimedia.</div>';
+            return;
+          }
+
+          const result = await PostsAPI.getGroupMedia(groupId);
+          if (!result?.ok) {
+            mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">No se pudo cargar la multimedia.</div>';
+            return;
+          }
+
+          const posts = getList(result);
+          if (!posts.length) {
+            mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Todavia no hay imagenes en este grupo.</div>';
+            return;
+          }
+
+          mediaTab.innerHTML = `
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+              ${posts.map((post) => `
+                <article class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div class="h-52 bg-slate-100">
+                    <img src="${safeUrl(post.image_url)}" alt="Imagen publicada en el grupo" class="w-full h-full object-cover"/>
+                  </div>
+                  <div class="p-4">
+                    <p class="font-semibold text-slate-900 text-sm">${escapeHtml(displayName(resolveProfileData({
+                      id: post.user_id,
+                      user_name: post.user_name,
+                      user_faculty: post.user_faculty,
+                      user_school: post.user_school,
+                      user_avatar: post.user_avatar,
+                    })))}</p>
+                    <p class="text-xs text-slate-500 mt-1">${escapeHtml(timeAgo(post.created_at))}</p>
+                    ${post.content ? `<p class="text-sm text-slate-600 mt-3 leading-6">${escapeHtml(post.content.slice(0, 120))}</p>` : ''}
+                  </div>
+                </article>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        async function loadGroup() {
+          const result = await SocialAPI.getGroup(groupId);
+          if (!result?.ok) {
+            container.innerHTML = `
+              <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
+                <p class="text-slate-500 text-sm">No se pudo cargar el grupo.</p>
+              </div>
+            `;
+            return false;
+          }
+
+          groupData = result.data;
+          renderHeader();
+          renderInfoTab();
+          return true;
+        }
+
+        actionsWrap.addEventListener('click', async (event) => {
+          const joinButton = event.target.closest('[data-join-group]');
+          if (joinButton) {
+            const result = await SocialAPI.joinGroup(groupId);
+            if (result?.ok) {
+              showToast(result.data?.message || 'Operacion completada', 'success');
+              await loadGroup();
+              if (currentTab === 'conversation') await loadConversation();
+              if (currentTab === 'people') await renderPeopleTab();
+              if (currentTab === 'media') await renderMediaTab();
+              return;
+            }
+            showToast(result?.data?.error || 'No se pudo procesar la solicitud', 'error');
+            return;
+          }
+
+          const leaveButton = event.target.closest('[data-leave-group]');
+          if (leaveButton) {
+            const confirmed = window.confirm('Deseas salir de este grupo?');
+            if (!confirmed) return;
+            const result = await SocialAPI.leaveGroup(groupId);
+            if (result?.ok) {
+              showToast('Saliste del grupo', 'success');
+              await loadGroup();
+              setTab('info');
+              return;
+            }
+            showToast(result?.data?.error || 'No se pudo salir del grupo', 'error');
+            return;
+          }
+
+          const editButton = event.target.closest('[data-edit-group]');
+          if (editButton) {
+            openEditModal();
+          }
+        });
+
+        tabButtons.forEach((button) => {
+          button.addEventListener('click', async () => {
+            setTab(button.dataset.groupTab);
+            if (currentTab === 'conversation') await loadConversation();
+            if (currentTab === 'people') await renderPeopleTab();
+            if (currentTab === 'media') await renderMediaTab();
+          });
+        });
+
+        pickEditCoverButton.addEventListener('click', () => editCoverInput.click());
+        clearEditCoverButton.addEventListener('click', () => {
+          selectedEditCoverFile = null;
+          editCoverInput.value = '';
+          updateEditCoverPreview(null);
+        });
+        editCoverInput.addEventListener('change', async (event) => {
+          const [file] = event.target.files || [];
+          if (!file) return;
+          try {
+            await openEditCropModal(file);
+          } catch (error) {
+            showToast(error.message || 'No se pudo preparar la portada', 'error');
+            closeEditCropModal(true);
+          }
+        });
+        editCropZoom.addEventListener('input', (event) => {
+          setEditCropZoom(Number(event.target.value) / 100);
+        });
+        editCropCancelButton.addEventListener('click', () => closeEditCropModal(true));
+        editCropCloseButton.addEventListener('click', () => closeEditCropModal(true));
+        editCropModal.addEventListener('click', (event) => {
+          if (event.target === editCropModal) closeEditCropModal(true);
+        });
+        editCropStage.addEventListener('pointerdown', (event) => {
+          if (!editCropState.image || editCropState.saving) return;
+          editCropState.pointerId = event.pointerId;
+          editCropState.dragStartX = event.clientX;
+          editCropState.dragStartY = event.clientY;
+          editCropState.dragOffsetX = editCropState.offsetX;
+          editCropState.dragOffsetY = editCropState.offsetY;
+          editCropStage.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        });
+        editCropStage.addEventListener('pointermove', (event) => {
+          if (editCropState.pointerId !== event.pointerId) return;
+          editCropState.offsetX = editCropState.dragOffsetX + (event.clientX - editCropState.dragStartX);
+          editCropState.offsetY = editCropState.dragOffsetY + (event.clientY - editCropState.dragStartY);
+          renderEditCropStage();
+          event.preventDefault();
+        });
+        const stopEditCropDrag = (event) => {
+          if (editCropState.pointerId === null) return;
+          if (event && editCropState.pointerId !== event.pointerId) return;
+          if (event && editCropStage.hasPointerCapture(event.pointerId)) {
+            editCropStage.releasePointerCapture(event.pointerId);
+          }
+          editCropState.pointerId = null;
+        };
+        editCropStage.addEventListener('pointerup', stopEditCropDrag);
+        editCropStage.addEventListener('pointercancel', stopEditCropDrag);
+        editCropStage.addEventListener('lostpointercapture', () => {
+          editCropState.pointerId = null;
+        });
+        editCropSaveButton.addEventListener('click', async () => {
+          if (!editCropState.image || editCropState.saving) return;
+          editCropState.saving = true;
+          editCropSaveButton.disabled = true;
+          editCropSaveButton.textContent = 'Preparando...';
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1600;
+            canvas.height = 500;
+            const context = canvas.getContext('2d');
+            const sourceX = Math.max(0, -editCropState.offsetX / editCropState.scale);
+            const sourceY = Math.max(0, -editCropState.offsetY / editCropState.scale);
+            const sourceWidth = Math.min(editCropState.naturalWidth, editCropState.viewportWidth / editCropState.scale);
+            const sourceHeight = Math.min(editCropState.naturalHeight, editCropState.viewportHeight / editCropState.scale);
+            context.drawImage(editCropState.image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+            if (!blob) throw new Error('No se pudo preparar la portada');
+            selectedEditCoverFile = new File([blob], `group-cover-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            updateEditCoverPreview(selectedEditCoverFile);
+            closeEditCropModal(false);
+          } catch (error) {
+            showToast(error.message || 'No se pudo preparar la portada', 'error');
+          } finally {
+            editCropState.saving = false;
+            editCropSaveButton.disabled = false;
+            editCropSaveButton.textContent = 'Usar portada';
+          }
+        });
+
+        const closeEditModalIfBackdrop = (event) => {
+          if (event.target === editModal) closeEditModal();
+        };
+        editModal.addEventListener('click', closeEditModalIfBackdrop);
+        closeEditModalButton.addEventListener('click', closeEditModal);
+        cancelEditModalButton.addEventListener('click', closeEditModal);
+        editForm.addEventListener('submit', async (submitEvent) => {
+          submitEvent.preventDefault();
+          saveEditModalButton.disabled = true;
+          saveEditModalButton.textContent = 'Guardando...';
+          const result = await SocialAPI.updateGroup(groupId, {
+            name: editNameInput.value.trim(),
+            description: editDescriptionInput.value.trim(),
+            privacy: editPrivacyInput.value,
+            coverFile: selectedEditCoverFile,
+          });
+          saveEditModalButton.disabled = false;
+          saveEditModalButton.textContent = 'Guardar cambios';
+          if (result?.ok) {
+            showToast('Grupo actualizado', 'success');
+            await loadGroup();
+            if (currentTab === 'people') await renderPeopleTab();
+            if (currentTab === 'media') await renderMediaTab();
+            closeEditModal();
+            return;
+          }
+          showToast(result?.data?.error || 'No se pudo actualizar el grupo', 'error');
+        });
+
+        commentModal.addEventListener('click', (event) => {
+          if (event.target === commentModal) closeCommentModal();
+        });
+        container.querySelector('#group-close-comment-top-btn').addEventListener('click', closeCommentModal);
+        commentSort.addEventListener('change', () => loadComments(pendingCommentPostId, commentSort.value));
+        container.querySelector('#group-confirm-comment-btn').addEventListener('click', async () => {
+          const content = commentInput.value.trim();
+          if (!pendingCommentPostId || !content) return;
+
+          const result = await PostsAPI.addComment(pendingCommentPostId, content);
+          if (result?.ok) {
+            commentInput.value = '';
+            await loadComments(pendingCommentPostId, currentCommentSort);
+            await loadConversation();
+            return;
+          }
+          showToast(result?.data?.error || 'No se pudo comentar', 'error');
+        });
+
+        commentList.addEventListener('click', async (event) => {
+          const deleteButton = event.target.closest('[data-group-delete-comment]');
+          if (deleteButton) {
+            const result = await PostsAPI.deleteComment(null, deleteButton.dataset.groupDeleteComment);
+            if (result?.ok) {
+              showToast('Comentario eliminado', 'success');
+              await loadComments(pendingCommentPostId, currentCommentSort);
+              await loadConversation();
+              return;
+            }
+            showToast(result?.data?.error || 'No se pudo eliminar el comentario', 'error');
+            return;
+          }
+
+          const reportButton = event.target.closest('[data-action="report-comment"]');
+          if (reportButton) {
+            const result = await PostsAPI.reportComment(reportButton.dataset.commentId);
+            showToast(result?.ok ? 'Comentario reportado' : (result?.data?.error || 'No se pudo reportar'), result?.ok ? 'success' : 'error');
+            return;
+          }
+
+          const reactionButton = event.target.closest('[data-action="react-comment"]');
+          if (reactionButton) {
+            const result = await PostsAPI.reactComment(reactionButton.dataset.commentId, reactionButton.dataset.reaction);
+            if (result?.ok) {
+              await loadComments(pendingCommentPostId, currentCommentSort);
+              await loadConversation();
+            } else {
+              showToast(result?.data?.error || 'No se pudo reaccionar', 'error');
+            }
+          }
+        });
+
+        return (async () => {
+          const ok = await loadGroup();
+          if (!ok) return null;
+          setTab('info');
+          renderInfoTab();
+          return () => {};
+        })();
+      },
+    },
     profile: {
       title: 'Perfil',
       activeNav: 'profile',
