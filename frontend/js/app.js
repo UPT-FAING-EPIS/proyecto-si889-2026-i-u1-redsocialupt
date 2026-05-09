@@ -903,6 +903,7 @@
       session: null,
       otherUser: null,
       mode: 'audio',
+      initialMode: 'audio',
       status: 'idle',
       startedAt: 0,
       pendingIncoming: null,
@@ -1102,7 +1103,8 @@
       const root = ensureCallWindow();
       const session = callState.session;
       const otherUser = callState.otherUser || {};
-      const showVideoStage = callState.mode === 'video' || callState.localVideoEnabled || Boolean(callState.remoteStream && callState.remoteStream.getVideoTracks().length);
+      const hasRemoteVideo = Boolean(callState.remoteStream && callState.remoteStream.getVideoTracks().length);
+      const showVideoStage = callState.initialMode === 'video' || callState.localVideoEnabled || hasRemoteVideo;
 
       root.classList.toggle('hidden', !session);
       if (!session) {
@@ -1113,7 +1115,7 @@
 
       root.classList.toggle('w-[390px]', showVideoStage);
       root.querySelector('#call-window-name').textContent = displayName(otherUser);
-      root.querySelector('#call-window-status').textContent = describeCallStatus(session.status, callState.mode);
+      root.querySelector('#call-window-status').textContent = describeCallStatus(session.status);
       root.querySelector('#call-video-stage').classList.toggle('hidden', callState.minimized || !showVideoStage);
       root.querySelector('#call-accept-btn').classList.toggle('hidden', !(session.status === 'ringing' && Number(session.receiver_id) === Number(user.id)));
       root.querySelector('#call-reject-btn').classList.toggle('hidden', !(session.status === 'ringing' && Number(session.receiver_id) === Number(user.id)));
@@ -1131,7 +1133,6 @@
       const remotePlaceholder = root.querySelector('#call-remote-placeholder');
       const remoteLabel = root.querySelector('#call-video-placeholder-label');
 
-      const hasRemoteVideo = Boolean(callState.remoteStream && callState.remoteStream.getVideoTracks().length);
       remoteVideo.classList.toggle('hidden', !hasRemoteVideo);
       remotePlaceholder.classList.toggle('hidden', hasRemoteVideo);
       localVideo.classList.toggle('hidden', !(callState.localVideoEnabled && callState.localStream));
@@ -1144,14 +1145,16 @@
       clampCallWindow(root);
     }
 
-    function describeCallStatus(status, mode) {
+    function describeCallStatus(status) {
       if (status === 'ringing') {
         return Number(callState.session?.caller_id) === Number(user.id)
-          ? (mode === 'video' ? 'Iniciando videollamada...' : 'Llamando...')
-          : (mode === 'video' ? 'Videollamada entrante' : 'Llamada entrante');
+          ? (callState.initialMode === 'video' ? 'Iniciando videollamada...' : 'Llamando...')
+          : (callState.initialMode === 'video' ? 'Videollamada entrante' : 'Llamada entrante');
       }
       if (status === 'accepted') {
-        return mode === 'video' || callState.localVideoEnabled ? 'En videollamada' : 'En llamada';
+        return callState.localVideoEnabled || Boolean(callState.remoteStream && callState.remoteStream.getVideoTracks().length)
+          ? 'En videollamada'
+          : 'En llamada';
       }
       if (status === 'rejected') return 'Llamada rechazada';
       if (status === 'ended') return 'Llamada finalizada';
@@ -1308,14 +1311,13 @@
           console.warn('No se pudo agregar ICE candidate:', error);
         }
       } else if (signal.signal_type === 'mode-change' && payload?.mode) {
-        callState.mode = payload.mode === 'video' ? 'video' : 'audio';
         updateCallWindow();
       }
     }
 
     async function beginWebRtcIfNeeded() {
       if (!callState.session || callState.session.status !== 'accepted') return;
-      await ensureLocalStream(callState.mode);
+      await ensureLocalStream(callState.localVideoEnabled ? 'video' : 'audio');
       const peer = createPeerConnection();
 
       if (Number(callState.session.caller_id) === Number(user.id) && !callState.outgoingOfferSent) {
@@ -1349,7 +1351,9 @@
       if (!nextSession) return;
 
       callState.session = nextSession;
-      callState.mode = nextSession.mode || callState.mode;
+      if (nextSession.status === 'ringing') {
+        callState.initialMode = nextSession.mode || callState.initialMode;
+      }
       updateCallWindow();
 
       if (nextSession.status === 'accepted') {
@@ -1379,6 +1383,7 @@
         callState.session = incoming;
         callState.otherUser = resolveProfileData(caller);
         callState.mode = incoming.mode || 'audio';
+        callState.initialMode = incoming.mode || 'audio';
         callState.status = incoming.status || 'ringing';
         callState.minimized = false;
         callState.outgoingOfferSent = false;
@@ -1424,6 +1429,7 @@
       callState.session = result.data;
       callState.otherUser = resolveProfileData(activeUser);
       callState.mode = mode === 'video' ? 'video' : 'audio';
+      callState.initialMode = callState.mode;
       callState.minimized = false;
       callState.outgoingOfferSent = false;
       callState.lastSignalId = 0;
@@ -1475,6 +1481,7 @@
       callState.session = null;
       callState.otherUser = null;
       callState.mode = 'audio';
+      callState.initialMode = 'audio';
       callState.status = 'idle';
       callState.startedAt = 0;
       callState.pendingIncoming = null;
@@ -1513,7 +1520,6 @@
         const media = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         const videoTrack = media.getVideoTracks()[0];
         callState.localVideoEnabled = true;
-        callState.mode = 'video';
 
         if (!callState.localStream) {
           await ensureLocalStream('audio');
@@ -1535,7 +1541,6 @@
         await ChatAPI.sendCallSignal(callState.session.id, 'mode-change', { mode: 'video' });
         await renegotiateCall();
       } else {
-        callState.mode = 'audio';
         callState.localVideoEnabled = false;
         if (callState.localStream) {
           callState.localStream.getVideoTracks().forEach((track) => {
@@ -1683,6 +1688,27 @@
       return false;
     }
 
+    function canAppendMessages(nextMessages) {
+      if (!currentMessages.length || nextMessages.length <= currentMessages.length) {
+        return false;
+      }
+
+      for (let index = 0; index < currentMessages.length; index += 1) {
+        const current = currentMessages[index];
+        const next = nextMessages[index];
+        if (
+          Number(current?.id) !== Number(next?.id)
+          || String(current?.content || '') !== String(next?.content || '')
+          || String(current?.image_url || '') !== String(next?.image_url || '')
+          || String(current?.created_at || '') !== String(next?.created_at || '')
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
     function shouldAutoScroll(area) {
       if (!area) return false;
       const distanceFromBottom = area.scrollHeight - area.scrollTop - area.clientHeight;
@@ -1739,6 +1765,55 @@
       if (autoScroll) {
         area.scrollTop = area.scrollHeight;
       }
+    }
+
+    function renderMessageBubble(message) {
+      const isMine = Number(message.sender_id) === Number(user.id);
+      const hasImage = Boolean(message.image_url);
+      const hasContent = Boolean(String(message.content || '').trim());
+      const bubbleClass = hasImage
+        ? `${isMine ? 'bg-[#1B2A6B]/6 border border-[#1B2A6B]/10' : 'bg-white border border-slate-200'} overflow-hidden`
+        : `${isMine ? 'bg-[#1B2A6B] text-white' : 'bg-white text-slate-800 border border-slate-200'} px-4 py-3`;
+
+      return `
+        <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
+          <div class="max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}">
+            <div class="rounded-2xl ${isMine ? 'rounded-br-sm' : 'rounded-bl-sm'} shadow-sm ${bubbleClass}">
+              ${hasImage ? `
+                <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
+              ` : ''}
+              ${hasContent ? `
+                <div class="${hasImage ? 'px-4 py-3 text-sm leading-6 text-slate-800' : 'text-sm leading-6'}">
+                  ${nl2br(message.content || '')}
+                </div>
+              ` : ''}
+            </div>
+            <div class="mt-1 px-1 flex items-center gap-2">
+              <span class="text-[11px] text-slate-500">${escapeHtml(formatClock(message.created_at))}</span>
+              ${!isMine ? `
+                <button type="button" data-action="report-message" data-message-id="${message.id}" class="text-[11px] font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+                  Reportar
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function appendNewMessages(messages) {
+      const area = chatPanel.querySelector('#messages-area');
+      if (!area || !messages.length) return;
+
+      const fragment = document.createDocumentFragment();
+      messages.forEach((message) => {
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = renderMessageBubble(message).trim();
+        fragment.appendChild(wrapper.firstElementChild);
+      });
+      area.appendChild(fragment);
+      currentMessages = currentMessages.concat(messages);
+      area.scrollTop = area.scrollHeight;
     }
 
     async function loadConversation(userId, otherUser = findConversationUser(userId)) {
@@ -1921,7 +1996,11 @@
 
       const nextMessages = getList(result);
       if (hasConversationChanged(nextMessages)) {
-        renderMessages(nextMessages, { preserveScroll: true });
+        if (canAppendMessages(nextMessages)) {
+          appendNewMessages(nextMessages.slice(currentMessages.length));
+        } else {
+          renderMessages(nextMessages, { preserveScroll: true });
+        }
         await loadInbox(false);
       }
     }
