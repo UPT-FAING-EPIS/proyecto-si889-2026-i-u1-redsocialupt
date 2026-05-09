@@ -879,6 +879,12 @@
     const messagesSummary = container.querySelector('#messages-summary');
     const messagesCount = container.querySelector('#messages-count');
     const CHAT_POLL_INTERVAL_MS = 1000;
+    const CALL_POLL_INTERVAL_MS = 1000;
+    const CALL_SIGNAL_POLL_INTERVAL_MS = 700;
+    const CALL_ICE_SERVERS = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
 
     let friends = [];
     let conversations = [];
@@ -888,6 +894,512 @@
     let activeConversationToken = 0;
     let chatPollTimer = null;
     let chatPollInFlight = false;
+    let callInboxTimer = null;
+    let callSessionTimer = null;
+    let callSignalTimer = null;
+
+    const callState = {
+      session: null,
+      otherUser: null,
+      mode: 'audio',
+      status: 'idle',
+      startedAt: 0,
+      pendingIncoming: null,
+      localStream: null,
+      remoteStream: null,
+      peerConnection: null,
+      lastSignalId: 0,
+      drag: null,
+      localVideoEnabled: false,
+      isMuted: false,
+      minimized: false,
+      outgoingOfferSent: false,
+    };
+
+    function ensureCallWindow() {
+      let root = document.getElementById('floating-call-window');
+      if (root) return root;
+
+      root = document.createElement('div');
+      root.id = 'floating-call-window';
+      root.className = 'hidden fixed z-[70] w-[360px] max-w-[calc(100vw-1.5rem)] rounded-[28px] bg-[#1f1f1f] text-white shadow-2xl border border-white/10 overflow-hidden';
+      root.style.top = '96px';
+      root.style.right = '24px';
+      root.innerHTML = `
+        <div class="cursor-move px-5 pt-4 pb-3 bg-[#232323] flex items-center gap-3 select-none" data-call-drag-handle="true">
+          <div class="w-12 h-12 rounded-full bg-emerald-900/60 flex items-center justify-center text-emerald-400 shrink-0" id="call-avatar-badge">
+            <span class="material-symbols-outlined text-[28px]">person</span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h3 id="call-window-name" class="font-bold text-lg truncate">Llamada</h3>
+            <p id="call-window-status" class="text-white/70 text-sm">Esperando...</p>
+          </div>
+          <button type="button" id="call-minimize-btn" class="w-10 h-10 rounded-full bg-white/8 hover:bg-white/12 transition-colors flex items-center justify-center">
+            <span class="material-symbols-outlined text-[20px]">remove</span>
+          </button>
+        </div>
+        <div id="call-video-stage" class="px-5 pt-4">
+          <div class="relative overflow-hidden rounded-3xl bg-[#2b2b2b] min-h-[240px] md:min-h-[280px] flex items-center justify-center">
+            <video id="call-remote-video" class="absolute inset-0 w-full h-full object-cover hidden" autoplay playsinline></video>
+            <div id="call-remote-placeholder" class="absolute inset-0 bg-[linear-gradient(160deg,#21264a_0%,#2f3d8b_60%,#1b2248_100%)] flex flex-col items-center justify-center gap-4">
+              <div class="w-24 h-24 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black/20 flex items-center justify-center">
+                <div id="call-remote-avatar" class="w-full h-full flex items-center justify-center bg-emerald-900/70 text-emerald-300 text-5xl">
+                  <span class="material-symbols-outlined text-[44px]">person</span>
+                </div>
+              </div>
+              <span id="call-video-placeholder-label" class="text-white/70 text-sm">Camara apagada</span>
+            </div>
+            <video id="call-local-video" class="absolute bottom-4 right-4 w-28 h-20 rounded-2xl object-cover bg-black/40 border border-white/20 hidden" autoplay playsinline muted></video>
+          </div>
+        </div>
+        <div id="call-actions-row" class="px-5 py-4 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <button type="button" id="call-toggle-video-btn" class="w-12 h-12 rounded-full bg-white text-slate-900 hover:bg-slate-100 transition-colors flex items-center justify-center">
+              <span class="material-symbols-outlined text-[22px]">videocam_off</span>
+            </button>
+            <button type="button" id="call-toggle-mic-btn" class="w-12 h-12 rounded-full bg-[#2c2c2c] hover:bg-[#363636] transition-colors flex items-center justify-center">
+              <span class="material-symbols-outlined text-[22px]">mic</span>
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="call-accept-btn" class="hidden px-4 h-12 rounded-full bg-emerald-500 hover:bg-emerald-600 transition-colors font-semibold">Aceptar</button>
+            <button type="button" id="call-reject-btn" class="hidden px-4 h-12 rounded-full bg-white/10 hover:bg-white/15 transition-colors font-semibold">Rechazar</button>
+            <button type="button" id="call-hangup-btn" class="w-14 h-12 rounded-full bg-[#ff0b53] hover:bg-[#e00549] transition-colors flex items-center justify-center">
+              <span class="material-symbols-outlined text-[22px]">call_end</span>
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(root);
+
+      const handle = root.querySelector('[data-call-drag-handle="true"]');
+      handle.addEventListener('mousedown', (event) => {
+        if (event.target.closest('button')) return;
+        const rect = root.getBoundingClientRect();
+        callState.drag = {
+          offsetX: event.clientX - rect.left,
+          offsetY: event.clientY - rect.top,
+        };
+        document.body.classList.add('select-none');
+      });
+
+      document.addEventListener('mousemove', (event) => {
+        if (!callState.drag) return;
+        const nextLeft = Math.min(Math.max(8, event.clientX - callState.drag.offsetX), window.innerWidth - root.offsetWidth - 8);
+        const nextTop = Math.min(Math.max(8, event.clientY - callState.drag.offsetY), window.innerHeight - root.offsetHeight - 8);
+        root.style.left = `${nextLeft}px`;
+        root.style.top = `${nextTop}px`;
+        root.style.right = 'auto';
+      });
+
+      document.addEventListener('mouseup', () => {
+        callState.drag = null;
+        document.body.classList.remove('select-none');
+      });
+
+      root.querySelector('#call-minimize-btn').addEventListener('click', () => {
+        callState.minimized = !callState.minimized;
+        root.querySelector('#call-video-stage').classList.toggle('hidden', callState.minimized);
+      });
+
+      root.querySelector('#call-toggle-mic-btn').addEventListener('click', toggleMicrophone);
+      root.querySelector('#call-toggle-video-btn').addEventListener('click', toggleCamera);
+      root.querySelector('#call-hangup-btn').addEventListener('click', endActiveCall);
+      root.querySelector('#call-accept-btn').addEventListener('click', acceptIncomingCall);
+      root.querySelector('#call-reject-btn').addEventListener('click', rejectIncomingCall);
+
+      return root;
+    }
+
+    function updateCallWindow() {
+      const root = ensureCallWindow();
+      const session = callState.session;
+      const otherUser = callState.otherUser || {};
+      const showVideoStage = callState.mode === 'video' || callState.localVideoEnabled || Boolean(callState.remoteStream && callState.remoteStream.getVideoTracks().length);
+
+      root.classList.toggle('hidden', !session);
+      if (!session) {
+        stopCallTimers();
+        return;
+      }
+
+      root.classList.toggle('w-[390px]', showVideoStage);
+      root.querySelector('#call-window-name').textContent = displayName(otherUser);
+      root.querySelector('#call-window-status').textContent = describeCallStatus(session.status, callState.mode);
+      root.querySelector('#call-video-stage').classList.toggle('hidden', callState.minimized || !showVideoStage);
+      root.querySelector('#call-accept-btn').classList.toggle('hidden', !(session.status === 'ringing' && Number(session.receiver_id) === Number(user.id)));
+      root.querySelector('#call-reject-btn').classList.toggle('hidden', !(session.status === 'ringing' && Number(session.receiver_id) === Number(user.id)));
+      root.querySelector('#call-toggle-video-btn').classList.toggle('hidden', session.status !== 'accepted');
+      root.querySelector('#call-toggle-mic-btn').classList.toggle('hidden', session.status !== 'accepted');
+      root.querySelector('#call-minimize-btn').classList.toggle('hidden', !showVideoStage);
+
+      const micIcon = root.querySelector('#call-toggle-mic-btn .material-symbols-outlined');
+      const videoIcon = root.querySelector('#call-toggle-video-btn .material-symbols-outlined');
+      micIcon.textContent = callState.isMuted ? 'mic_off' : 'mic';
+      videoIcon.textContent = callState.localVideoEnabled ? 'videocam' : 'videocam_off';
+
+      const remoteVideo = root.querySelector('#call-remote-video');
+      const localVideo = root.querySelector('#call-local-video');
+      const remotePlaceholder = root.querySelector('#call-remote-placeholder');
+      const remoteLabel = root.querySelector('#call-video-placeholder-label');
+
+      const hasRemoteVideo = Boolean(callState.remoteStream && callState.remoteStream.getVideoTracks().length);
+      remoteVideo.classList.toggle('hidden', !hasRemoteVideo);
+      remotePlaceholder.classList.toggle('hidden', hasRemoteVideo);
+      localVideo.classList.toggle('hidden', !(callState.localVideoEnabled && callState.localStream));
+      remoteLabel.textContent = hasRemoteVideo ? '' : 'Camara apagada';
+    }
+
+    function describeCallStatus(status, mode) {
+      if (status === 'ringing') {
+        return Number(callState.session?.caller_id) === Number(user.id)
+          ? (mode === 'video' ? 'Iniciando videollamada...' : 'Llamando...')
+          : (mode === 'video' ? 'Videollamada entrante' : 'Llamada entrante');
+      }
+      if (status === 'accepted') {
+        return mode === 'video' || callState.localVideoEnabled ? 'En videollamada' : 'En llamada';
+      }
+      if (status === 'rejected') return 'Llamada rechazada';
+      if (status === 'ended') return 'Llamada finalizada';
+      return 'Conectando...';
+    }
+
+    function stopCallTimers() {
+      if (callInboxTimer) {
+        window.clearInterval(callInboxTimer);
+        callInboxTimer = null;
+      }
+      if (callSessionTimer) {
+        window.clearInterval(callSessionTimer);
+        callSessionTimer = null;
+      }
+      if (callSignalTimer) {
+        window.clearInterval(callSignalTimer);
+        callSignalTimer = null;
+      }
+    }
+
+    function cleanupPeerConnection() {
+      if (callState.peerConnection) {
+        try { callState.peerConnection.ontrack = null; } catch (error) {}
+        try { callState.peerConnection.onicecandidate = null; } catch (error) {}
+        try { callState.peerConnection.close(); } catch (error) {}
+      }
+      callState.peerConnection = null;
+      callState.remoteStream = null;
+
+      if (callState.localStream) {
+        callState.localStream.getTracks().forEach((track) => track.stop());
+      }
+      callState.localStream = null;
+      callState.localVideoEnabled = false;
+      callState.isMuted = false;
+
+      const root = ensureCallWindow();
+      root.querySelector('#call-remote-video').srcObject = null;
+      root.querySelector('#call-local-video').srcObject = null;
+    }
+
+    async function ensureLocalStream(mode = 'audio') {
+      if (callState.localStream) {
+        return callState.localStream;
+      }
+
+      const constraints = {
+        audio: true,
+        video: mode === 'video',
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      callState.localStream = stream;
+      callState.localVideoEnabled = mode === 'video' && stream.getVideoTracks().length > 0;
+
+      const root = ensureCallWindow();
+      const localVideo = root.querySelector('#call-local-video');
+      localVideo.srcObject = stream;
+
+      return stream;
+    }
+
+    function createPeerConnection() {
+      if (callState.peerConnection) {
+        return callState.peerConnection;
+      }
+
+      const peer = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+      callState.remoteStream = new MediaStream();
+
+      const root = ensureCallWindow();
+      root.querySelector('#call-remote-video').srcObject = callState.remoteStream;
+
+      peer.ontrack = (event) => {
+        event.streams[0].getTracks().forEach((track) => {
+          callState.remoteStream.addTrack(track);
+        });
+        updateCallWindow();
+      };
+
+      peer.onicecandidate = (event) => {
+        if (!event.candidate || !callState.session) return;
+        ChatAPI.sendCallSignal(callState.session.id, 'ice-candidate', event.candidate.toJSON());
+      };
+
+      if (callState.localStream) {
+        callState.localStream.getTracks().forEach((track) => {
+          peer.addTrack(track, callState.localStream);
+        });
+      }
+
+      callState.peerConnection = peer;
+      return peer;
+    }
+
+    async function applyRemoteSignal(signal) {
+      const peer = createPeerConnection();
+      const payload = signal.payload || null;
+
+      if (signal.signal_type === 'offer' && payload) {
+        await peer.setRemoteDescription(new RTCSessionDescription(payload));
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        await ChatAPI.sendCallSignal(callState.session.id, 'answer', answer.toJSON());
+      } else if (signal.signal_type === 'answer' && payload) {
+        if (!peer.currentRemoteDescription) {
+          await peer.setRemoteDescription(new RTCSessionDescription(payload));
+        }
+      } else if (signal.signal_type === 'ice-candidate' && payload) {
+        try {
+          await peer.addIceCandidate(new RTCIceCandidate(payload));
+        } catch (error) {
+          console.warn('No se pudo agregar ICE candidate:', error);
+        }
+      } else if (signal.signal_type === 'mode-change' && payload?.mode) {
+        callState.mode = payload.mode === 'video' ? 'video' : 'audio';
+        updateCallWindow();
+      }
+    }
+
+    async function beginWebRtcIfNeeded() {
+      if (!callState.session || callState.session.status !== 'accepted') return;
+      await ensureLocalStream(callState.mode);
+      const peer = createPeerConnection();
+
+      if (Number(callState.session.caller_id) === Number(user.id) && !callState.outgoingOfferSent) {
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        await ChatAPI.sendCallSignal(callState.session.id, 'offer', offer.toJSON());
+        callState.outgoingOfferSent = true;
+      }
+
+      updateCallWindow();
+    }
+
+    async function pollCallSignals() {
+      if (!callState.session || callState.session.status !== 'accepted') return;
+      const result = await ChatAPI.getCallSignals(callState.session.id, callState.lastSignalId);
+      if (!result?.ok) return;
+
+      const signals = getList(result);
+      for (const signal of signals) {
+        callState.lastSignalId = Math.max(callState.lastSignalId, Number(signal.id || 0));
+        await applyRemoteSignal(signal);
+      }
+    }
+
+    async function pollActiveCallState() {
+      if (!callState.session) return;
+      const result = await ChatAPI.getCall(callState.session.id);
+      if (!result?.ok) return;
+
+      const nextSession = result.data || null;
+      if (!nextSession) return;
+
+      callState.session = nextSession;
+      callState.mode = nextSession.mode || callState.mode;
+      updateCallWindow();
+
+      if (nextSession.status === 'accepted') {
+        if (!callState.startedAt) {
+          callState.startedAt = Date.now();
+        }
+        await beginWebRtcIfNeeded();
+      } else if (['rejected', 'ended'].includes(nextSession.status)) {
+        const message = nextSession.status === 'rejected' ? 'La llamada fue rechazada' : 'La llamada termino';
+        await finalizeCall(message);
+      }
+    }
+
+    function startIncomingCallPolling() {
+      if (callInboxTimer) return;
+      callInboxTimer = window.setInterval(async () => {
+        if (document.hidden || callState.session) return;
+        const result = await ChatAPI.getPendingCalls();
+        if (!result?.ok) return;
+        const pending = getList(result);
+        if (!pending.length) return;
+
+        const incoming = pending[0];
+        const caller = findConversationUser(incoming.caller_id) || publicUsersState.map.get(Number(incoming.caller_id)) || null;
+        if (!caller) return;
+
+        callState.session = incoming;
+        callState.otherUser = resolveProfileData(caller);
+        callState.mode = incoming.mode || 'audio';
+        callState.status = incoming.status || 'ringing';
+        callState.minimized = false;
+        callState.outgoingOfferSent = false;
+        callState.lastSignalId = 0;
+        updateCallWindow();
+        startActiveCallPolling();
+      }, CALL_POLL_INTERVAL_MS);
+    }
+
+    function startActiveCallPolling() {
+      if (!callState.session) return;
+
+      if (!callSessionTimer) {
+        callSessionTimer = window.setInterval(() => {
+          pollActiveCallState().catch((error) => console.warn('Error de estado de llamada:', error));
+        }, CALL_POLL_INTERVAL_MS);
+      }
+
+      if (!callSignalTimer) {
+        callSignalTimer = window.setInterval(() => {
+          pollCallSignals().catch((error) => console.warn('Error de senales de llamada:', error));
+        }, CALL_SIGNAL_POLL_INTERVAL_MS);
+      }
+    }
+
+    async function openOutgoingCall(mode) {
+      if (!activeUser?.id) return;
+
+      const result = await ChatAPI.startCall({ receiverId: activeUser.id, mode });
+      if (!result?.ok) {
+        showToast(result?.data?.error || 'No se pudo iniciar la llamada', 'error');
+        return;
+      }
+
+      callState.session = result.data;
+      callState.otherUser = resolveProfileData(activeUser);
+      callState.mode = mode === 'video' ? 'video' : 'audio';
+      callState.minimized = false;
+      callState.outgoingOfferSent = false;
+      callState.lastSignalId = 0;
+      updateCallWindow();
+      startActiveCallPolling();
+    }
+
+    async function acceptIncomingCall() {
+      if (!callState.session) return;
+      const result = await ChatAPI.acceptCall(callState.session.id);
+      if (!result?.ok) {
+        showToast(result?.data?.error || 'No se pudo aceptar la llamada', 'error');
+        return;
+      }
+
+      callState.session = result.data;
+      callState.startedAt = Date.now();
+      await beginWebRtcIfNeeded();
+      startActiveCallPolling();
+    }
+
+    async function rejectIncomingCall() {
+      if (!callState.session) return;
+      await ChatAPI.rejectCall(callState.session.id);
+      await finalizeCall('Llamada rechazada');
+    }
+
+    async function endActiveCall() {
+      if (!callState.session) return;
+      const durationSeconds = callState.startedAt ? Math.max(0, Math.floor((Date.now() - callState.startedAt) / 1000)) : 0;
+      await ChatAPI.endCall(callState.session.id, durationSeconds);
+      await finalizeCall('Llamada finalizada');
+    }
+
+    async function finalizeCall(toastMessage = '') {
+      cleanupPeerConnection();
+      stopCallTimers();
+
+      const root = ensureCallWindow();
+      root.classList.add('hidden');
+      root.querySelector('#call-video-stage').classList.remove('hidden');
+
+      callState.session = null;
+      callState.otherUser = null;
+      callState.mode = 'audio';
+      callState.status = 'idle';
+      callState.startedAt = 0;
+      callState.pendingIncoming = null;
+      callState.lastSignalId = 0;
+      callState.drag = null;
+      callState.minimized = false;
+      callState.outgoingOfferSent = false;
+
+      startIncomingCallPolling();
+
+      if (toastMessage) {
+        showToast(toastMessage, 'success');
+      }
+    }
+
+    async function toggleMicrophone() {
+      if (!callState.localStream) return;
+      callState.isMuted = !callState.isMuted;
+      callState.localStream.getAudioTracks().forEach((track) => {
+        track.enabled = !callState.isMuted;
+      });
+      updateCallWindow();
+    }
+
+    async function toggleCamera() {
+      if (!callState.session || callState.session.status !== 'accepted') return;
+      const root = ensureCallWindow();
+      const localVideo = root.querySelector('#call-local-video');
+
+      if (!callState.localVideoEnabled) {
+        const media = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const videoTrack = media.getVideoTracks()[0];
+        callState.localVideoEnabled = true;
+        callState.mode = 'video';
+
+        if (!callState.localStream) {
+          await ensureLocalStream('audio');
+        }
+
+        callState.localStream.addTrack(videoTrack);
+        localVideo.srcObject = callState.localStream;
+
+        if (callState.peerConnection) {
+          const sender = callState.peerConnection.getSenders().find((item) => item.track && item.track.kind === 'video');
+          if (sender) {
+            await sender.replaceTrack(videoTrack);
+          } else {
+            callState.peerConnection.addTrack(videoTrack, callState.localStream);
+          }
+        }
+
+        await ChatAPI.updateCallMode(callState.session.id, 'video');
+        await ChatAPI.sendCallSignal(callState.session.id, 'mode-change', { mode: 'video' });
+      } else {
+        callState.mode = 'audio';
+        callState.localVideoEnabled = false;
+        if (callState.localStream) {
+          callState.localStream.getVideoTracks().forEach((track) => {
+            const sender = callState.peerConnection?.getSenders().find((item) => item.track === track);
+            if (sender?.replaceTrack) {
+              sender.replaceTrack(null).catch(() => {});
+            }
+            track.stop();
+            callState.localStream.removeTrack(track);
+          });
+        }
+
+        localVideo.srcObject = callState.localStream;
+        await ChatAPI.updateCallMode(callState.session.id, 'audio');
+        await ChatAPI.sendCallSignal(callState.session.id, 'mode-change', { mode: 'audio' });
+      }
+
+      updateCallWindow();
+    }
 
     function updateUrlForChat(userId) {
       window.history.replaceState(
@@ -1110,6 +1622,14 @@
               </div>
             <p class="text-sm text-slate-500 truncate">${escapeHtml(`${careerLabel(friendProfile) || 'Amigo UPT'} · ${presenceLabel(friendProfile)}`)}</p>
           </div>
+          <div class="flex items-center gap-2 ml-auto">
+            <button id="start-audio-call-btn" type="button" class="w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center text-slate-700" title="Llamada">
+              <span class="material-symbols-outlined text-[22px]">call</span>
+            </button>
+            <button id="start-video-call-btn" type="button" class="w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center text-slate-700" title="Videollamada">
+              <span class="material-symbols-outlined text-[22px]">videocam</span>
+            </button>
+          </div>
         </div>
         <div class="flex-1 overflow-y-auto p-4 md:p-5 flex flex-col gap-3 custom-scrollbar" id="messages-area">
           <p class="text-center text-slate-400 text-sm">Cargando mensajes...</p>
@@ -1127,6 +1647,8 @@
       const area = chatPanel.querySelector('#messages-area');
       const input = chatPanel.querySelector('#msg-input');
       const sendButton = chatPanel.querySelector('#send-msg-btn');
+      const startAudioCallButton = chatPanel.querySelector('#start-audio-call-btn');
+      const startVideoCallButton = chatPanel.querySelector('#start-video-call-btn');
 
       async function sendMessage() {
         const content = input.value.trim();
@@ -1168,6 +1690,12 @@
         const button = event.target.closest('[data-action="report-message"]');
         if (!button) return;
         await reportContent('mensaje', Number(button.dataset.messageId));
+      });
+      startAudioCallButton?.addEventListener('click', async () => {
+        await openOutgoingCall('audio');
+      });
+      startVideoCallButton?.addEventListener('click', async () => {
+        await openOutgoingCall('video');
       });
 
       const result = await ChatAPI.getConversation(numericUserId);
@@ -1363,11 +1891,15 @@
       window.addEventListener('blocks:changed', handleBlocksChanged);
       window.addEventListener('presence:updated', handlePresenceUpdated);
       document.addEventListener('visibilitychange', handleMessagesVisibilityChange);
+      ensureCallWindow();
+      startIncomingCallPolling();
       loadInbox(Boolean(activeChat));
 
       return () => {
         clearSelectedImage();
         stopChatPolling();
+        stopCallTimers();
+        cleanupPeerConnection();
         window.removeEventListener('friendship:changed', handleFriendshipChanged);
         window.removeEventListener('blocks:changed', handleBlocksChanged);
         window.removeEventListener('presence:updated', handlePresenceUpdated);
