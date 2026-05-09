@@ -86,6 +86,10 @@ class CallService
             throw new MessageServiceException('Solo el receptor puede aceptar esta llamada', 403);
         }
 
+        if ($session->status === 'accepted') {
+            return $session->fresh();
+        }
+
         if ($session->status !== 'ringing') {
             throw new MessageServiceException('La llamada ya no esta disponible', 409);
         }
