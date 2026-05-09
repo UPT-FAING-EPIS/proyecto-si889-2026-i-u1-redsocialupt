@@ -909,7 +909,6 @@
     let callMeterFrame = null;
     let callSessionPollInFlight = false;
     let callSignalPollInFlight = false;
-    const activeCallGuard = () => Boolean(callState.session);
 
     const callState = {
       session: null,
@@ -1218,7 +1217,7 @@
     function hasLiveRemoteVideo() {
       return Boolean(
         callState.remoteStream
-        && callState.remoteStream.getVideoTracks().some((track) => track.readyState === 'live')
+        && callState.remoteStream.getVideoTracks().some((track) => track.readyState === 'live' && !track.muted)
       );
     }
 
@@ -2554,15 +2553,14 @@
     });
 
     window.addEventListener('friendship:changed', handleFriendshipChanged);
-    window.addEventListener('blocks:changed', handleBlocksChanged);
-    window.addEventListener('presence:updated', handlePresenceUpdated);
-    document.addEventListener('visibilitychange', handleMessagesVisibilityChange);
-    window.addEventListener('pagehide', handleCallPageLeave);
-    window.addEventListener('beforeunload', handleCallPageLeave);
-    window.__uptHasActiveCall = activeCallGuard;
-    ensureCallWindow();
-    startIncomingCallPolling();
-    loadInbox(Boolean(activeChat));
+      window.addEventListener('blocks:changed', handleBlocksChanged);
+      window.addEventListener('presence:updated', handlePresenceUpdated);
+      document.addEventListener('visibilitychange', handleMessagesVisibilityChange);
+      window.addEventListener('pagehide', handleCallPageLeave);
+      window.addEventListener('beforeunload', handleCallPageLeave);
+      ensureCallWindow();
+      startIncomingCallPolling();
+      loadInbox(Boolean(activeChat));
 
       return () => {
         stopChatPolling();
@@ -2577,9 +2575,6 @@
         if (!callState.session) {
           window.removeEventListener('pagehide', handleCallPageLeave);
           window.removeEventListener('beforeunload', handleCallPageLeave);
-        }
-        if (window.__uptHasActiveCall === activeCallGuard && !callState.session) {
-          delete window.__uptHasActiveCall;
         }
       };
   }
@@ -7325,11 +7320,6 @@
   const AppRouter = {
     currentRoute: null,
     navigate(route, params = {}, options = {}) {
-      if (this.currentRoute?.route === 'messages' && route !== 'messages' && window.__uptHasActiveCall?.()) {
-        showToast('Termina la llamada para salir de Mensajes', 'error');
-        return;
-      }
-
       const targetHash = buildHash(route, params);
       const targetUrl = `${window.location.pathname}${targetHash}`;
 
@@ -7343,14 +7333,6 @@
     },
     async render() {
       const parsed = parseRoute();
-
-      if (this.currentRoute?.route === 'messages' && parsed.route !== 'messages' && window.__uptHasActiveCall?.()) {
-        showToast('Termina la llamada para salir de Mensajes', 'error');
-        const lockedHash = buildHash('messages', this.currentRoute.params || {});
-        window.history.replaceState(null, '', `${window.location.pathname}${lockedHash}`);
-        return;
-      }
-
       const view = views[parsed.route] || views.feed;
 
       if (view.adminOnly && appState.user.role !== 'admin') {
