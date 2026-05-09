@@ -897,6 +897,7 @@
     let callInboxTimer = null;
     let callSessionTimer = null;
     let callSignalTimer = null;
+    let callMeterFrame = null;
 
     const callState = {
       session: null,
@@ -914,7 +915,84 @@
       isMuted: false,
       minimized: false,
       outgoingOfferSent: false,
+      audioContext: null,
+      audioAnalyser: null,
+      audioMeterData: null,
+      ringAudio: null,
     };
+
+    function clampCallWindow(root = ensureCallWindow()) {
+      if (!root || root.classList.contains('hidden')) return;
+      const rect = root.getBoundingClientRect();
+      const maxLeft = Math.max(8, window.innerWidth - root.offsetWidth - 8);
+      const maxTop = Math.max(8, window.innerHeight - root.offsetHeight - 8);
+      root.style.left = `${Math.min(Math.max(8, rect.left), maxLeft)}px`;
+      root.style.top = `${Math.min(Math.max(8, rect.top), maxTop)}px`;
+      root.style.right = 'auto';
+    }
+
+    function stopRingTone() {
+      if (!callState.ringAudio) return;
+      try {
+        callState.ringAudio.pause();
+        callState.ringAudio.currentTime = 0;
+      } catch (error) {
+        console.warn('No se pudo detener el tono:', error);
+      }
+    }
+
+    async function playRingTone() {
+      if (!callState.ringAudio) {
+        callState.ringAudio = new Audio('/sonidos/phone-ringing.mp3');
+        callState.ringAudio.loop = true;
+      }
+
+      try {
+        callState.ringAudio.currentTime = 0;
+        await callState.ringAudio.play();
+      } catch (error) {
+        console.warn('No se pudo reproducir el tono:', error);
+      }
+    }
+
+    function stopAudioMeter() {
+      if (callMeterFrame) {
+        cancelAnimationFrame(callMeterFrame);
+        callMeterFrame = null;
+      }
+      document.querySelectorAll('[data-audio-meter-bar]').forEach((bar) => {
+        bar.style.transform = 'scaleY(0.2)';
+        bar.style.opacity = '0.35';
+      });
+    }
+
+    function startAudioMeter() {
+      stopAudioMeter();
+      if (!callState.audioAnalyser || !callState.audioMeterData || callState.isMuted) return;
+      const bars = Array.from(document.querySelectorAll('[data-audio-meter-bar]'));
+      if (!bars.length) return;
+
+      const tick = () => {
+        if (!callState.audioAnalyser || !callState.audioMeterData || callState.isMuted) {
+          stopAudioMeter();
+          return;
+        }
+
+        callState.audioAnalyser.getByteFrequencyData(callState.audioMeterData);
+        const chunk = Math.max(1, Math.floor(callState.audioMeterData.length / bars.length));
+        bars.forEach((bar, index) => {
+          const slice = callState.audioMeterData.slice(index * chunk, (index + 1) * chunk);
+          const avg = slice.reduce((sum, value) => sum + value, 0) / Math.max(1, slice.length);
+          const scale = Math.max(0.2, Math.min(1, avg / 90));
+          bar.style.transform = `scaleY(${scale})`;
+          bar.style.opacity = String(Math.max(0.35, scale));
+        });
+
+        callMeterFrame = requestAnimationFrame(tick);
+      };
+
+      tick();
+    }
 
     function ensureCallWindow() {
       let root = document.getElementById('floating-call-window');
@@ -957,9 +1035,17 @@
             <button type="button" id="call-toggle-video-btn" class="w-12 h-12 rounded-full bg-white text-slate-900 hover:bg-slate-100 transition-colors flex items-center justify-center">
               <span class="material-symbols-outlined text-[22px]">videocam_off</span>
             </button>
-            <button type="button" id="call-toggle-mic-btn" class="w-12 h-12 rounded-full bg-[#2c2c2c] hover:bg-[#363636] transition-colors flex items-center justify-center">
-              <span class="material-symbols-outlined text-[22px]">mic</span>
-            </button>
+            <div class="flex items-center gap-2 rounded-full bg-[#2c2c2c] px-3 h-12">
+              <button type="button" id="call-toggle-mic-btn" class="w-8 h-8 rounded-full hover:bg-[#363636] transition-colors flex items-center justify-center">
+                <span class="material-symbols-outlined text-[22px]">mic</span>
+              </button>
+              <div class="flex items-end gap-1 h-6" aria-label="Medidor de sonido">
+                <span data-audio-meter-bar class="w-1.5 h-3 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
+                <span data-audio-meter-bar class="w-1.5 h-4 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
+                <span data-audio-meter-bar class="w-1.5 h-5 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
+                <span data-audio-meter-bar class="w-1.5 h-4 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
+              </div>
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <button type="button" id="call-accept-btn" class="hidden px-4 h-12 rounded-full bg-emerald-500 hover:bg-emerald-600 transition-colors font-semibold">Aceptar</button>
@@ -1007,6 +1093,7 @@
       root.querySelector('#call-hangup-btn').addEventListener('click', endActiveCall);
       root.querySelector('#call-accept-btn').addEventListener('click', acceptIncomingCall);
       root.querySelector('#call-reject-btn').addEventListener('click', rejectIncomingCall);
+      window.addEventListener('resize', () => clampCallWindow(root));
 
       return root;
     }
@@ -1020,6 +1107,7 @@
       root.classList.toggle('hidden', !session);
       if (!session) {
         stopCallTimers();
+        stopRingTone();
         return;
       }
 
@@ -1048,6 +1136,12 @@
       remotePlaceholder.classList.toggle('hidden', hasRemoteVideo);
       localVideo.classList.toggle('hidden', !(callState.localVideoEnabled && callState.localStream));
       remoteLabel.textContent = hasRemoteVideo ? '' : 'Camara apagada';
+      if (session.status === 'ringing') {
+        playRingTone();
+      } else {
+        stopRingTone();
+      }
+      clampCallWindow(root);
     }
 
     function describeCallStatus(status, mode) {
@@ -1094,6 +1188,14 @@
       callState.localStream = null;
       callState.localVideoEnabled = false;
       callState.isMuted = false;
+      if (callState.audioContext) {
+        callState.audioContext.close().catch(() => {});
+      }
+      callState.audioContext = null;
+      callState.audioAnalyser = null;
+      callState.audioMeterData = null;
+      stopAudioMeter();
+      stopRingTone();
 
       const root = ensureCallWindow();
       root.querySelector('#call-remote-video').srcObject = null;
@@ -1101,17 +1203,36 @@
     }
 
     async function ensureLocalStream(mode = 'audio') {
-      if (callState.localStream) {
+      const needsVideo = mode === 'video';
+      const hasExistingVideo = Boolean(callState.localStream?.getVideoTracks().length);
+
+      if (callState.localStream && (!needsVideo || hasExistingVideo)) {
         return callState.localStream;
       }
 
       const constraints = {
         audio: true,
-        video: mode === 'video',
+        video: needsVideo,
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       callState.localStream = stream;
-      callState.localVideoEnabled = mode === 'video' && stream.getVideoTracks().length > 0;
+      callState.localVideoEnabled = needsVideo && stream.getVideoTracks().length > 0;
+
+      if (!callState.audioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          callState.audioContext = new AudioContextClass();
+          const source = callState.audioContext.createMediaStreamSource(stream);
+          callState.audioAnalyser = callState.audioContext.createAnalyser();
+          callState.audioAnalyser.fftSize = 64;
+          callState.audioMeterData = new Uint8Array(callState.audioAnalyser.frequencyBinCount);
+          source.connect(callState.audioAnalyser);
+          if (callState.audioContext.state === 'suspended') {
+            callState.audioContext.resume().catch(() => {});
+          }
+          startAudioMeter();
+        }
+      }
 
       const root = ensureCallWindow();
       const localVideo = root.querySelector('#call-local-video');
@@ -1143,6 +1264,12 @@
         ChatAPI.sendCallSignal(callState.session.id, 'ice-candidate', event.candidate.toJSON());
       };
 
+      peer.onconnectionstatechange = () => {
+        if (peer.connectionState === 'failed') {
+          console.warn('La conexion WebRTC fallo');
+        }
+      };
+
       if (callState.localStream) {
         callState.localStream.getTracks().forEach((track) => {
           peer.addTrack(track, callState.localStream);
@@ -1151,6 +1278,14 @@
 
       callState.peerConnection = peer;
       return peer;
+    }
+
+    async function renegotiateCall() {
+      if (!callState.session || callState.session.status !== 'accepted') return;
+      const peer = createPeerConnection();
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      await ChatAPI.sendCallSignal(callState.session.id, 'offer', offer.toJSON());
     }
 
     async function applyRemoteSignal(signal) {
@@ -1272,9 +1407,17 @@
     async function openOutgoingCall(mode) {
       if (!activeUser?.id) return;
 
+      try {
+        await ensureLocalStream(mode);
+      } catch (error) {
+        showToast(mode === 'video' ? 'Debes permitir microfono y camara para iniciar la videollamada' : 'Debes permitir el microfono para iniciar la llamada', 'error');
+        return;
+      }
+
       const result = await ChatAPI.startCall({ receiverId: activeUser.id, mode });
       if (!result?.ok) {
         showToast(result?.data?.error || 'No se pudo iniciar la llamada', 'error');
+        cleanupPeerConnection();
         return;
       }
 
@@ -1290,6 +1433,12 @@
 
     async function acceptIncomingCall() {
       if (!callState.session) return;
+      try {
+        await ensureLocalStream(callState.mode);
+      } catch (error) {
+        showToast(callState.mode === 'video' ? 'Debes permitir microfono y camara para aceptar la videollamada' : 'Debes permitir el microfono para aceptar la llamada', 'error');
+        return;
+      }
       const result = await ChatAPI.acceptCall(callState.session.id);
       if (!result?.ok) {
         showToast(result?.data?.error || 'No se pudo aceptar la llamada', 'error');
@@ -1347,6 +1496,11 @@
       callState.localStream.getAudioTracks().forEach((track) => {
         track.enabled = !callState.isMuted;
       });
+      if (!callState.isMuted) {
+        startAudioMeter();
+      } else {
+        stopAudioMeter();
+      }
       updateCallWindow();
     }
 
@@ -1379,6 +1533,7 @@
 
         await ChatAPI.updateCallMode(callState.session.id, 'video');
         await ChatAPI.sendCallSignal(callState.session.id, 'mode-change', { mode: 'video' });
+        await renegotiateCall();
       } else {
         callState.mode = 'audio';
         callState.localVideoEnabled = false;
@@ -1396,6 +1551,7 @@
         localVideo.srcObject = callState.localStream;
         await ChatAPI.updateCallMode(callState.session.id, 'audio');
         await ChatAPI.sendCallSignal(callState.session.id, 'mode-change', { mode: 'audio' });
+        await renegotiateCall();
       }
 
       updateCallWindow();
