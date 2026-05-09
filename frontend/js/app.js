@@ -931,6 +931,9 @@
       isFinalizing: false,
       awaitingAnswer: false,
       cameraBusy: false,
+      makingOffer: false,
+      ignoreOffer: false,
+      videoSender: null,
       audioContext: null,
       audioAnalyser: null,
       audioMeterData: null,
@@ -1016,7 +1019,7 @@
 
       root = document.createElement('div');
       root.id = 'floating-call-window';
-      root.className = 'hidden fixed z-[70] w-[360px] max-w-[calc(100vw-1.5rem)] rounded-[28px] bg-[#1f1f1f] text-white shadow-2xl border border-white/10 overflow-hidden';
+      root.className = 'hidden fixed z-[70] flex max-h-[calc(100vh-1rem)] w-[360px] max-w-[calc(100vw-1rem)] flex-col rounded-[28px] bg-[#1f1f1f] text-white shadow-2xl border border-white/10 overflow-hidden';
       root.style.top = '96px';
       root.style.right = '24px';
       root.innerHTML = `
@@ -1032,8 +1035,8 @@
             <span class="material-symbols-outlined text-[20px]">remove</span>
           </button>
         </div>
-        <div id="call-video-stage" class="px-5 pt-4">
-          <div class="relative overflow-hidden rounded-3xl bg-[#2b2b2b] min-h-[240px] md:min-h-[280px] flex items-center justify-center">
+        <div id="call-video-stage" class="px-4 sm:px-5 pt-3 sm:pt-4 shrink min-h-0">
+          <div class="relative overflow-hidden rounded-3xl bg-[#2b2b2b] min-h-[170px] sm:min-h-[230px] md:min-h-[280px] flex items-center justify-center">
             <audio id="call-remote-audio" class="hidden" autoplay playsinline></audio>
             <video id="call-remote-video" class="absolute inset-0 w-full h-full object-cover hidden" autoplay playsinline muted></video>
             <div id="call-remote-placeholder" class="absolute inset-0 bg-[linear-gradient(160deg,#21264a_0%,#2f3d8b_60%,#1b2248_100%)] flex flex-col items-center justify-center gap-4">
@@ -1044,16 +1047,16 @@
               </div>
               <span id="call-video-placeholder-label" class="text-white/70 text-sm">Camara apagada</span>
             </div>
-            <video id="call-local-video" class="absolute bottom-4 right-4 w-28 h-20 rounded-2xl object-cover bg-black/40 border border-white/20 hidden" autoplay playsinline muted></video>
+            <video id="call-local-video" class="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 w-24 h-16 sm:w-28 sm:h-20 rounded-2xl object-cover bg-black/40 border border-white/20 hidden" autoplay playsinline muted></video>
           </div>
         </div>
-        <div id="call-actions-row" class="px-5 py-4 flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <button type="button" id="call-toggle-video-btn" class="w-12 h-12 rounded-full bg-white text-slate-900 hover:bg-slate-100 transition-colors flex items-center justify-center">
+        <div id="call-actions-row" class="px-4 py-3 sm:py-4 mt-auto flex flex-col gap-2 sm:gap-3">
+          <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button type="button" id="call-toggle-video-btn" class="w-12 h-12 shrink-0 rounded-full bg-white text-slate-900 hover:bg-slate-100 transition-colors flex items-center justify-center">
               <span class="material-symbols-outlined text-[22px]">videocam_off</span>
             </button>
-            <div class="flex items-center gap-2 rounded-full bg-[#2c2c2c] px-3 h-12">
-              <button type="button" id="call-toggle-mic-btn" class="w-8 h-8 rounded-full hover:bg-[#363636] transition-colors flex items-center justify-center">
+            <div class="flex items-center gap-2 rounded-full bg-[#2c2c2c] px-3 h-12 shrink-0">
+              <button type="button" id="call-toggle-mic-btn" class="w-8 h-8 shrink-0 rounded-full hover:bg-[#363636] transition-colors flex items-center justify-center">
                 <span class="material-symbols-outlined text-[22px]">mic</span>
               </button>
               <div class="flex items-end gap-1 h-6" aria-label="Medidor de sonido">
@@ -1063,15 +1066,15 @@
                 <span data-audio-meter-bar class="w-1.5 h-4 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
               </div>
             </div>
-            <div class="flex items-center gap-2 rounded-full bg-[#2c2c2c] px-3 h-12">
+            <div class="flex items-center gap-2 rounded-full bg-[#2c2c2c] px-3 h-12 min-w-0 w-full sm:w-[170px]">
               <span class="material-symbols-outlined text-[18px] text-white/70">volume_down</span>
-              <input id="call-remote-volume" type="range" min="0" max="1" step="0.05" value="1" class="w-20 accent-emerald-400" aria-label="Volumen de llamada"/>
+              <input id="call-remote-volume" type="range" min="0" max="1" step="0.05" value="1" class="flex-1 min-w-0 accent-emerald-400" aria-label="Volumen de llamada"/>
             </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button type="button" id="call-accept-btn" class="hidden px-4 h-12 rounded-full bg-emerald-500 hover:bg-emerald-600 transition-colors font-semibold">Aceptar</button>
-            <button type="button" id="call-reject-btn" class="hidden px-4 h-12 rounded-full bg-white/10 hover:bg-white/15 transition-colors font-semibold">Rechazar</button>
-            <button type="button" id="call-hangup-btn" class="w-14 h-12 rounded-full bg-[#ff0b53] hover:bg-[#e00549] transition-colors flex items-center justify-center">
+          <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full shrink-0">
+            <button type="button" id="call-accept-btn" class="hidden px-3 sm:px-4 h-11 sm:h-12 rounded-full bg-emerald-500 hover:bg-emerald-600 transition-colors text-sm font-semibold shrink-0">Aceptar</button>
+            <button type="button" id="call-reject-btn" class="hidden px-3 sm:px-4 h-11 sm:h-12 rounded-full bg-white/10 hover:bg-white/15 transition-colors text-sm font-semibold shrink-0">Rechazar</button>
+            <button type="button" id="call-hangup-btn" class="w-12 sm:w-14 h-11 sm:h-12 shrink-0 rounded-full bg-[#ff0b53] hover:bg-[#e00549] transition-colors flex items-center justify-center">
               <span class="material-symbols-outlined text-[22px]">call_end</span>
             </button>
           </div>
@@ -1085,11 +1088,16 @@
       const bindTouchClick = (element, handler) => {
         if (!element) return;
         let lastTouchTime = 0;
+        const invoke = (event) => {
+          Promise.resolve(handler(event)).catch((error) => {
+            console.warn('Error en accion de llamada:', error);
+          });
+        };
 
         element.addEventListener('touchend', (event) => {
           lastTouchTime = Date.now();
           event.preventDefault();
-          handler(event);
+          invoke(event);
         }, { passive: false });
 
         element.addEventListener('click', (event) => {
@@ -1097,7 +1105,7 @@
             event.preventDefault();
             return;
           }
-          handler(event);
+          invoke(event);
         });
       };
 
@@ -1169,6 +1177,10 @@
         callState.remoteStream
         && callState.remoteStream.getVideoTracks().some((track) => track.readyState === 'live')
       );
+    }
+
+    function isPolitePeer() {
+      return Number(callState.session?.receiver_id) === Number(user.id);
     }
 
     function updateCallWindow() {
@@ -1265,6 +1277,9 @@
       callState.localVideoEnabled = false;
       callState.isMuted = false;
       callState.cameraBusy = false;
+      callState.makingOffer = false;
+      callState.ignoreOffer = false;
+      callState.videoSender = null;
       if (callState.audioContext) {
         callState.audioContext.close().catch(() => {});
       }
@@ -1379,7 +1394,10 @@
 
       if (callState.localStream) {
         callState.localStream.getTracks().forEach((track) => {
-          peer.addTrack(track, callState.localStream);
+          const sender = peer.addTrack(track, callState.localStream);
+          if (track.kind === 'video') {
+            callState.videoSender = sender;
+          }
         });
       }
 
@@ -1388,12 +1406,17 @@
     }
 
     async function renegotiateCall() {
-      if (!callState.session || callState.session.status !== 'accepted' || callState.awaitingAnswer) return;
+      if (!callState.session || callState.session.status !== 'accepted' || callState.awaitingAnswer || callState.makingOffer) return;
       const peer = createPeerConnection();
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      await ChatAPI.sendCallSignal(callState.session.id, 'offer', serializeSessionDescription(peer.localDescription || offer));
-      callState.awaitingAnswer = true;
+      try {
+        callState.makingOffer = true;
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        await ChatAPI.sendCallSignal(callState.session.id, 'offer', serializeSessionDescription(peer.localDescription || offer));
+        callState.awaitingAnswer = true;
+      } finally {
+        callState.makingOffer = false;
+      }
     }
 
     async function applyRemoteSignal(signal) {
@@ -1401,20 +1424,38 @@
       const payload = signal.payload || null;
 
       if (signal.signal_type === 'offer' && payload) {
-        await peer.setRemoteDescription(new RTCSessionDescription(payload));
+        const offerCollision = callState.makingOffer || peer.signalingState !== 'stable';
+        callState.ignoreOffer = !isPolitePeer() && offerCollision;
+        if (callState.ignoreOffer) {
+          return;
+        }
+
+        if (offerCollision) {
+          await Promise.all([
+            peer.setLocalDescription({ type: 'rollback' }),
+            peer.setRemoteDescription(new RTCSessionDescription(payload)),
+          ]);
+        } else {
+          await peer.setRemoteDescription(new RTCSessionDescription(payload));
+        }
+
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
         await ChatAPI.sendCallSignal(callState.session.id, 'answer', serializeSessionDescription(peer.localDescription || answer));
+        callState.awaitingAnswer = false;
       } else if (signal.signal_type === 'answer' && payload) {
-        if (peer.signalingState !== 'stable' || !peer.currentRemoteDescription || peer.currentRemoteDescription?.sdp !== payload.sdp) {
+        if (!callState.ignoreOffer && (!peer.currentRemoteDescription || peer.currentRemoteDescription?.sdp !== payload.sdp)) {
           await peer.setRemoteDescription(new RTCSessionDescription(payload));
         }
         callState.awaitingAnswer = false;
+        callState.ignoreOffer = false;
       } else if (signal.signal_type === 'ice-candidate' && payload) {
         try {
           await peer.addIceCandidate(new RTCIceCandidate(payload));
         } catch (error) {
-          console.warn('No se pudo agregar ICE candidate:', error);
+          if (!callState.ignoreOffer) {
+            console.warn('No se pudo agregar ICE candidate:', error);
+          }
         }
       }
     }
@@ -1430,17 +1471,30 @@
       };
     }
 
+    function resetCallNegotiationState() {
+      callState.outgoingOfferSent = false;
+      callState.awaitingAnswer = false;
+      callState.makingOffer = false;
+      callState.ignoreOffer = false;
+      callState.lastSignalId = 0;
+    }
+
     async function beginWebRtcIfNeeded() {
       if (!callState.session || callState.session.status !== 'accepted') return;
       await ensureLocalStream(callState.localVideoEnabled ? 'video' : 'audio');
       const peer = createPeerConnection();
 
       if (Number(callState.session.caller_id) === Number(user.id) && !callState.outgoingOfferSent) {
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        await ChatAPI.sendCallSignal(callState.session.id, 'offer', serializeSessionDescription(peer.localDescription || offer));
-        callState.outgoingOfferSent = true;
-        callState.awaitingAnswer = true;
+        try {
+          callState.makingOffer = true;
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          await ChatAPI.sendCallSignal(callState.session.id, 'offer', serializeSessionDescription(peer.localDescription || offer));
+          callState.outgoingOfferSent = true;
+          callState.awaitingAnswer = true;
+        } finally {
+          callState.makingOffer = false;
+        }
       }
 
       updateCallWindow();
@@ -1448,13 +1502,18 @@
 
     async function pollCallSignals() {
       if (!callState.session || callState.session.status !== 'accepted' || callSignalPollInFlight) return;
+      const expectedSessionId = Number(callState.session.id);
       callSignalPollInFlight = true;
       try {
-        const result = await ChatAPI.getCallSignals(callState.session.id, callState.lastSignalId);
+        const result = await ChatAPI.getCallSignals(expectedSessionId, callState.lastSignalId);
         if (!result?.ok) return;
+        if (!callState.session || Number(callState.session.id) !== expectedSessionId) return;
 
         const signals = getList(result);
         for (const signal of signals) {
+          if (!callState.session || Number(callState.session.id) !== expectedSessionId) {
+            break;
+          }
           callState.lastSignalId = Math.max(callState.lastSignalId, Number(signal.id || 0));
           await applyRemoteSignal(signal);
         }
@@ -1465,10 +1524,12 @@
 
     async function pollActiveCallState() {
       if (!callState.session || callSessionPollInFlight) return;
+      const expectedSessionId = Number(callState.session.id);
       callSessionPollInFlight = true;
       try {
-        const result = await ChatAPI.getCall(callState.session.id);
+        const result = await ChatAPI.getCall(expectedSessionId);
         if (!result?.ok) return;
+        if (!callState.session || Number(callState.session.id) !== expectedSessionId) return;
 
         const nextSession = result.data || null;
         if (!nextSession) return;
@@ -1512,8 +1573,7 @@
         callState.initialMode = incoming.mode || 'audio';
         callState.status = incoming.status || 'ringing';
         callState.minimized = false;
-        callState.outgoingOfferSent = false;
-        callState.lastSignalId = 0;
+        resetCallNegotiationState();
         updateCallWindow();
         startActiveCallPolling();
       }, CALL_POLL_INTERVAL_MS);
@@ -1557,8 +1617,7 @@
       callState.mode = mode === 'video' ? 'video' : 'audio';
       callState.initialMode = callState.mode;
       callState.minimized = false;
-      callState.outgoingOfferSent = false;
-      callState.lastSignalId = 0;
+      resetCallNegotiationState();
       updateCallWindow();
       startActiveCallPolling();
     }
@@ -1579,6 +1638,7 @@
 
       callState.session = result.data;
       callState.startedAt = Date.now();
+      resetCallNegotiationState();
       await beginWebRtcIfNeeded();
       startActiveCallPolling();
     }
@@ -1646,9 +1706,9 @@
       callState.lastSignalId = 0;
       callState.drag = null;
       callState.minimized = false;
-      callState.outgoingOfferSent = false;
       callState.isFinalizing = false;
-      callState.awaitingAnswer = false;
+      callState.videoSender = null;
+      resetCallNegotiationState();
 
       startIncomingCallPolling();
 
@@ -1690,13 +1750,11 @@
           callState.localStream.addTrack(videoTrack);
           localVideo.srcObject = callState.localStream;
 
-          if (callState.peerConnection) {
-            const sender = callState.peerConnection.getSenders().find((item) => item.track && item.track.kind === 'video');
-            if (sender) {
-              await sender.replaceTrack(videoTrack);
-            } else {
-              callState.peerConnection.addTrack(videoTrack, callState.localStream);
-            }
+          const peer = createPeerConnection();
+          if (callState.videoSender?.replaceTrack) {
+            await callState.videoSender.replaceTrack(videoTrack);
+          } else {
+            callState.videoSender = peer.addTrack(videoTrack, callState.localStream);
           }
 
           await renegotiateCall();
@@ -1704,9 +1762,8 @@
           callState.localVideoEnabled = false;
           if (callState.localStream) {
             callState.localStream.getVideoTracks().forEach((track) => {
-              const sender = callState.peerConnection?.getSenders().find((item) => item.track === track);
-              if (sender?.replaceTrack) {
-                sender.replaceTrack(null).catch(() => {});
+              if (callState.videoSender?.replaceTrack) {
+                callState.videoSender.replaceTrack(null).catch(() => {});
               }
               track.stop();
               callState.localStream.removeTrack(track);
@@ -1790,21 +1847,21 @@
         const otherUser = conversation.other_user || {};
         const isActive = Number(otherUser.id) === Number(activeChat);
         return `
-          <button type="button" class="w-full flex items-start gap-3 p-3 mx-2 my-1 ${isActive ? 'bg-slate-100 ring-1 ring-slate-200' : 'hover:bg-slate-50'} rounded-xl cursor-pointer transition-colors text-left" data-open-chat="${otherUser.id}">
+          <button type="button" class="w-full flex items-start gap-3 p-3 mx-2 my-1 ${isActive ? 'bg-slate-100 ring-1 ring-slate-200' : 'hover:bg-slate-50'} rounded-xl cursor-pointer transition-colors text-left" data-open-chat="${otherUser.id}" data-conversation-user-id="${otherUser.id}">
             ${renderAvatar(otherUser, { sizeClass: 'w-12 h-12', textClass: 'text-white font-bold', showOnline: true })}
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between gap-3 mb-1">
                 <div class="min-w-0">
                   <h3 class="font-bold text-sm text-slate-900 truncate">${escapeHtml(displayName(otherUser))}</h3>
-                  <p class="text-xs text-slate-500 truncate">${escapeHtml(careerLabel(otherUser) || otherUser.faculty || 'Amigo UPT')}</p>
+                  <p class="text-xs text-slate-500 truncate" data-conversation-meta>${escapeHtml(careerLabel(otherUser) || otherUser.faculty || 'Amigo UPT')}</p>
                 </div>
                 ${conversation.unread_count > 0 ? `
-                  <span class="min-w-[22px] h-6 px-2 inline-flex items-center justify-center rounded-full bg-[#1B2A6B] text-white text-[11px] font-bold">
+                  <span class="min-w-[22px] h-6 px-2 inline-flex items-center justify-center rounded-full bg-[#1B2A6B] text-white text-[11px] font-bold" data-conversation-unread>
                     ${conversation.unread_count}
                   </span>
                 ` : ''}
               </div>
-              <p class="text-sm text-slate-500 truncate">${escapeHtml(getMessagePreview(conversation.last_message))}</p>
+              <p class="text-sm text-slate-500 truncate" data-conversation-preview>${escapeHtml(getMessagePreview(conversation.last_message))}</p>
             </div>
           </button>
         `;
@@ -2005,27 +2062,38 @@
       const liveUser = publicUsersState.map.get(activeChatId);
       const nextUser = resolveProfileData(liveUser || activeUser);
 
-      conversations = conversations
-        .map((entry) => {
-          if (Number(entry?.other_user?.id) !== activeChatId) {
-            return entry;
-          }
+      conversations = conversations.map((entry) => {
+        if (Number(entry?.other_user?.id) !== activeChatId) {
+          return entry;
+        }
 
-          return {
-            ...entry,
-            other_user: nextUser,
-            last_message: lastMessage,
-            unread_count: 0,
-          };
-        })
-        .sort((left, right) => {
-          const leftDate = new Date(left?.last_message?.created_at || 0).getTime();
-          const rightDate = new Date(right?.last_message?.created_at || 0).getTime();
-          return rightDate - leftDate;
-        });
+        return {
+          ...entry,
+          other_user: nextUser,
+          last_message: lastMessage,
+          unread_count: 0,
+        };
+      });
 
       activeUser = nextUser;
-      renderInbox();
+      const conversationButton = inboxList.querySelector(`[data-conversation-user-id="${activeChatId}"]`);
+      if (conversationButton) {
+        const metaLabel = conversationButton.querySelector('[data-conversation-meta]');
+        const previewLabel = conversationButton.querySelector('[data-conversation-preview]');
+        const unreadBadge = conversationButton.querySelector('[data-conversation-unread]');
+        if (metaLabel) {
+          metaLabel.textContent = careerLabel(nextUser) || nextUser.faculty || 'Amigo UPT';
+        }
+        if (previewLabel) {
+          previewLabel.textContent = getMessagePreview(lastMessage);
+        }
+        if (unreadBadge) {
+          unreadBadge.textContent = '0';
+          unreadBadge.classList.add('hidden');
+        }
+      } else {
+        renderInbox();
+      }
       refreshActiveChatPresenceLabel();
     }
 
@@ -2311,7 +2379,6 @@
       }
 
     async function handlePresenceUpdated() {
-      renderInbox();
       refreshActiveChatPresenceLabel();
     }
 
