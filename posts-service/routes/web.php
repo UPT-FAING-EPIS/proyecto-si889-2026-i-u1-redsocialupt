@@ -14,6 +14,13 @@ $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($rou
     $router->post('/posts', 'PostController@store');
     $router->get('/posts', 'PostController@index');
     $router->get('/posts/{id}', 'PostController@show');
+    $router->post('/livestreams', 'LivestreamController@store');
+    $router->get('/livestreams/active', 'LivestreamController@active');
+    $router->get('/livestreams/{id}', 'LivestreamController@show');
+    $router->put('/livestreams/{id}/end', 'LivestreamController@end');
+    $router->post('/livestreams/{id}/heartbeat', 'LivestreamController@heartbeat');
+    $router->post('/livestreams/{id}/reaction', 'LivestreamController@react');
+    $router->get('/livestreams/{id}/events', 'LivestreamController@events');
     $router->get('/group-posts/{groupId}', 'PostController@groupIndex');
     $router->post('/group-posts/{groupId}', 'PostController@storeGroup');
     $router->get('/group-posts/{groupId}/media', 'PostController@groupMedia');
