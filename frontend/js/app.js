@@ -3679,7 +3679,7 @@
                         <textarea id="live-comment-input-mobile" rows="1" class="live-mobile-input" placeholder="Escribe algo..."></textarea>
                         <div class="relative">
                           <button id="live-reaction-trigger" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
-                          <div id="live-reaction-selector" class="hidden absolute bottom-[120%] right-0 glass rounded-full px-2 py-1.5 flex items-center gap-1 shadow-xl z-50" style="animation:live-selector-pop 0.2s ease-out both;">
+                          <div id="live-reaction-selector" class="hidden absolute bottom-[120%] right-0 glass rounded-2xl px-1.5 py-2 flex flex-col items-center gap-1 shadow-xl z-50" style="animation:live-selector-pop 0.2s ease-out both;">
                             <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_gusta">❤️</button>
                             <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_encanta">😍</button>
                             <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_divierte">😂</button>
@@ -3706,7 +3706,7 @@
                       <textarea id="live-comment-input" rows="1" class="flex-1 min-h-[48px] max-h-28 rounded-[22px] bg-slate-950/70 border border-white/10 focus:border-[#ec4899]/40 px-4 py-3 text-sm text-white caret-[#ec4899] outline-none resize-none placeholder:text-white/35 transition" style="-webkit-text-fill-color:#fff;" placeholder="Escribe algo..."></textarea>
                       <div class="relative">
                         <button id="live-reaction-trigger-desktop" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow hover:brightness-110 flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
-                        <div id="live-reaction-selector-desktop" class="hidden absolute bottom-[120%] right-0 glass rounded-full px-2 py-1.5 flex items-center gap-1 shadow-xl z-50" style="animation:live-selector-pop 0.2s ease-out both;">
+                        <div id="live-reaction-selector-desktop" class="hidden absolute bottom-[120%] right-0 glass rounded-2xl px-1.5 py-2 flex flex-col items-center gap-1 shadow-xl z-50" style="animation:live-selector-pop 0.2s ease-out both;">
                           <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_gusta">❤️</button>
                           <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_encanta">😍</button>
                           <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_divierte">😂</button>
@@ -3914,13 +3914,17 @@
         function refreshReactionButtons() {
           const emojiLookup = { me_gusta: '❤️', me_divierte: '😂', me_sorprende: '😮', me_enoja: '😡', me_entristece: '😢', me_encanta: '😍' };
           const activeEmoji = emojiLookup[activeReaction] || '❤️';
-          // Update both trigger buttons
-          if (reactionTrigger) reactionTrigger.textContent = activeEmoji;
-          if (reactionTriggerDesktop) reactionTriggerDesktop.textContent = activeEmoji;
+          // Update BOTH trigger buttons to show the currently active emoji
+          [reactionTrigger, reactionTriggerDesktop].forEach(btn => {
+            if (!btn) return;
+            btn.textContent = activeEmoji;
+          });
+          // Update ALL selector items: highlight only the active one
           container.querySelectorAll('[data-live-set-reaction]').forEach((button) => {
             const isActive = button.dataset.liveSetReaction === activeReaction;
-            button.style.background = isActive ? 'rgba(255,255,255,0.18)' : '';
-            button.style.transform = isActive ? 'scale(1.18)' : '';
+            button.style.background = isActive ? 'rgba(255,255,255,0.2)' : '';
+            button.style.transform = isActive ? 'scale(1.2)' : '';
+            button.style.boxShadow = isActive ? '0 0 0 2px rgba(236,72,153,0.5)' : '';
           });
         }
 
