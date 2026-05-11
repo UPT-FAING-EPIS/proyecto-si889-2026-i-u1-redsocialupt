@@ -524,21 +524,9 @@
     return `${protocol}//${host}:${port}/app/${encodeURIComponent(streamKey)}/master.m3u8`;
   }
 
-  function normalizeLivestreamPlaybackUrl(streamKey, playbackUrl) {
-    const fallbackUrl = buildLivestreamHlsUrl(streamKey);
-    if (!playbackUrl) {
-      return fallbackUrl;
-    }
-
-    try {
-      const normalizedUrl = new URL(playbackUrl, window.location.origin);
-      if (normalizedUrl.protocol === 'ws:' || normalizedUrl.protocol === 'wss:' || !normalizedUrl.pathname.endsWith('.m3u8')) {
-        return fallbackUrl;
-      }
-      return normalizedUrl.toString();
-    } catch (error) {
-      return /\.m3u8(\?|$)/i.test(playbackUrl) ? playbackUrl : fallbackUrl;
-    }
+  function normalizeLivestreamPlaybackUrl(streamKey, _playbackUrl) {
+    // Always rebuild from stream_key to ensure correct protocol/port
+    return buildLivestreamHlsUrl(streamKey);
   }
 
   function buildLivestreamPublishUrl(streamKey) {
@@ -3638,7 +3626,7 @@
                 <div class="live-video-col">
                   <div id="live-video-wrap" class="live-video-wrap">
                     <div id="live-viewer-player" class="absolute inset-0 hidden"></div>
-                    <video id="live-host-preview" class="absolute inset-0 w-full h-full object-contain hidden" playsinline autoplay muted></video>
+                    <video id="live-host-preview" class="absolute inset-0 w-full h-full object-cover hidden" playsinline autoplay muted></video>
 
                     <!-- Fallback -->
                     <div id="live-video-fallback" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-[5]">
@@ -3684,6 +3672,9 @@
                           </button>
                           <button id="live-toggle-system-audio-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar audio del sistema">
                             <span class="material-symbols-outlined text-[20px]">volume_up</span>
+                          </button>
+                          <button id="live-flip-camera-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Cambiar camara">
+                            <span class="material-symbols-outlined text-[20px]">flip_camera_ios</span>
                           </button>
                           <button id="live-switch-source-btn" type="button" class="rounded-full glass hover:bg-white/20 px-3 py-1.5 text-xs font-semibold transition">Cambiar fuente</button>
                         </div>
@@ -3778,6 +3769,7 @@
         const toggleMicButton = container.querySelector('#live-toggle-mic-btn');
         const toggleSystemAudioButton = container.querySelector('#live-toggle-system-audio-btn');
         const switchSourceButton = container.querySelector('#live-switch-source-btn');
+        const flipCameraButton = container.querySelector('#live-flip-camera-btn');
 
         const fullscreenBtn = container.querySelector('#live-fullscreen-btn');
         const immersiveBtn = container.querySelector('#live-immersive-btn');
@@ -3813,6 +3805,7 @@
         let longPressTimer = null;
         let selectorOpen = false;
         let lastKnownSource = null;
+        let currentFacingMode = 'environment'; // default: rear camera on mobile
 
         function cleanupMediaBundle(bundle) {
           if (!bundle) {
@@ -3999,6 +3992,17 @@
             btn.classList.toggle('gradient-live', hostSystemMuted);
             btn.title = hostSystemMuted ? 'Activar audio del sistema' : 'Silenciar audio del sistema';
           });
+
+          // Flip camera button: only on mobile, camera source, and owner
+          const isMobileCamera = !isDesktopClient() && (liveData?.live_source || 'camera') === 'camera' && isHostOwner();
+          if (flipCameraButton) {
+            flipCameraButton.classList.toggle('hidden', !isMobileCamera);
+            flipCameraButton.classList.toggle('flex', isMobileCamera);
+          }
+          // Hide switch source button on mobile (only desktop has screen share)
+          if (switchSourceButton && !isDesktopClient()) {
+            switchSourceButton.classList.add('hidden');
+          }
         }
 
         function isHostOwner() {
@@ -4084,7 +4088,7 @@
 
         function createViewerVideo() {
           const video = document.createElement('video');
-          video.className = 'w-full h-full object-contain bg-black absolute inset-0';
+          video.className = 'w-full h-full object-cover bg-black absolute inset-0';
           video.autoplay = true;
           video.controls = false;
           video.playsInline = true;
@@ -4258,7 +4262,11 @@
             return bundle;
           }
 
-          const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          // On mobile use facingMode for front/rear camera; on desktop just { video: true }
+          const videoConstraints = isDesktopClient()
+            ? true
+            : { facingMode: { ideal: currentFacingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+          const cameraStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
           bundle.previewStream = cameraStream;
           bundle.publishedStream = cameraStream;
           bundle.micAudioTracks = cameraStream.getAudioTracks();
@@ -4500,15 +4508,26 @@
           await pollReactionEvents();
         };
 
-        // ── Auto-hide overlay (desktop hover) ──
+        // ── Auto-hide overlay (desktop hover / mobile tap) ──
+        const mobileOverlay = container.querySelector('#live-mobile-overlay');
         function showOverlay() {
           overlays.forEach(el => { el.style.opacity = '1'; el.style.pointerEvents = 'auto'; });
+          // In fullscreen on mobile, also show the chat overlay
+          if (mobileOverlay && document.fullscreenElement) {
+            mobileOverlay.style.opacity = '1';
+            mobileOverlay.style.pointerEvents = 'auto';
+          }
           clearTimeout(overlayTimer);
           overlayTimer = setTimeout(hideOverlay, 3500);
         }
         function hideOverlay() {
           if (selectorOpen) return;
           overlays.forEach(el => { el.style.opacity = '0'; el.style.pointerEvents = 'none'; });
+          // In fullscreen on mobile, also hide the chat overlay
+          if (mobileOverlay && document.fullscreenElement) {
+            mobileOverlay.style.opacity = '0';
+            mobileOverlay.style.pointerEvents = 'none';
+          }
         }
         if (liveVideoWrap) {
           liveVideoWrap.addEventListener('mouseenter', showOverlay);
@@ -4541,6 +4560,12 @@
             if (icon) icon.textContent = document.fullscreenElement ? 'fullscreen_exit' : 'fullscreen';
             if (!document.fullscreenElement) {
               try { screen.orientation.unlock(); } catch(e) {}
+              // Restore mobile overlay and immersive button when exiting fullscreen
+              if (mobileOverlay) { mobileOverlay.style.opacity = ''; mobileOverlay.style.pointerEvents = ''; }
+              if (immersiveBtn) immersiveBtn.classList.remove('hidden');
+            } else {
+              // Hide immersive button in video fullscreen to prevent conflicts
+              if (immersiveBtn && !isDesktopClient()) immersiveBtn.classList.add('hidden');
             }
           });
         }
@@ -4677,6 +4702,18 @@
           liveData.live_source = next;
           await startHostSource(next, true);
         });
+
+        // Flip camera on mobile (front ↔ rear)
+        if (flipCameraButton) {
+          flipCameraButton.addEventListener('click', async () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            await startHostSource('camera', true);
+            // Mirror the video for front camera
+            if (hostPreviewVideo) {
+              hostPreviewVideo.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : '';
+            }
+          });
+        }
 
         loadLivestream().then(async () => {
           refreshReactionButtons();

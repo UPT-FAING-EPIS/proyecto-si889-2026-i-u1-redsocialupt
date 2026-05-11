@@ -1417,6 +1417,25 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
 }
+
+/* On mobile, remove parent grid margins/padding so the live root fills edge-to-edge */
+@media (max-width: 960px) {
+  body:has(.live-root:not(.live-is-desktop)) > .max-w-7xl {
+    max-width: none;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  body:has(.live-root:not(.live-is-desktop)) > .max-w-7xl > .grid {
+    gap: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  body:has(.live-root:not(.live-is-desktop)) #app-view {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+  }
+}
 .live-is-desktop .live-root,
 .live-root.live-is-desktop {
   border-radius: 28px;
@@ -1709,6 +1728,7 @@ body.live-immersive-active #app-view {
   justify-content: flex-end;
   pointer-events: none;
   max-height: 30%;           /* comments tight to bottom, video dominant */
+  transition: opacity 0.35s ease;
 }
 .live-mobile-overlay > * {
   pointer-events: auto;
