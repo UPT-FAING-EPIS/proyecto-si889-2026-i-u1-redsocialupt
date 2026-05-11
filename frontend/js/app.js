@@ -3620,7 +3620,7 @@
                 <div class="live-video-col">
                   <div id="live-video-wrap" class="live-video-wrap">
                     <div id="live-viewer-player" class="absolute inset-0 hidden"></div>
-                    <video id="live-host-preview" class="absolute inset-0 w-full h-full object-cover hidden" playsinline autoplay muted></video>
+                    <video id="live-host-preview" class="absolute inset-0 w-full h-full object-contain bg-black hidden" playsinline autoplay muted></video>
 
                     <!-- Fallback -->
                     <div id="live-video-fallback" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-[5]">
@@ -4578,12 +4578,6 @@
             mobileOverlay.style.opacity = '0';
             mobileOverlay.style.pointerEvents = 'none';
           }
-
-          // In immersive mode: keep the immersive exit button visible always
-          if (immersiveActive && immersiveBtn) {
-            immersiveBtn.style.opacity = '1';
-            immersiveBtn.style.pointerEvents = 'auto';
-          }
         }
         if (liveVideoWrap) {
           liveVideoWrap.addEventListener('mouseenter', showOverlay);
@@ -4615,20 +4609,40 @@
 
         // ── Immersive mode (hides page chrome, keeps chat) ──
         let immersiveActive = false;
+        let immersiveBtnOriginalParent = immersiveBtn?.parentElement || null;
+
         function activateImmersive() {
           immersiveActive = true;
           document.body.classList.add('live-immersive-active');
           liveShell.classList.add('live-immersive-shell');
-          const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
-          if (icon) icon.textContent = isDesktopClient() ? 'close_fullscreen' : 'close';
+
+          if (!isDesktopClient()) {
+            // Mobile: move the X button out of the overlay → shell root so overlay hide can't affect it
+            if (immersiveBtn && liveShell) {
+              liveShell.appendChild(immersiveBtn);
+            }
+            const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = 'close';
+          } else {
+            const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = 'close_fullscreen';
+          }
         }
+
         function deactivateImmersive() {
           immersiveActive = false;
           document.body.classList.remove('live-immersive-active');
           liveShell.classList.remove('live-immersive-shell');
+
+          // Mobile: move button back to its original parent (the overlay)
+          if (!isDesktopClient() && immersiveBtn && immersiveBtnOriginalParent) {
+            immersiveBtnOriginalParent.appendChild(immersiveBtn);
+          }
+
           const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
           if (icon) icon.textContent = 'open_in_full';
         }
+
         function exitLivestream() {
           deactivateImmersive();
           if (window.history.length > 1) {
@@ -4637,11 +4651,14 @@
             router.navigate('feed');
           }
         }
+
         if (immersiveBtn && liveShell) {
           immersiveBtn.addEventListener('click', () => {
             if (!isDesktopClient()) {
+              // Mobile: X button always exits the livestream
               exitLivestream();
             } else {
+              // Desktop: toggle immersive mode
               if (immersiveActive) { deactivateImmersive(); } else { activateImmersive(); }
             }
           });
@@ -4820,6 +4837,7 @@
           if (longPressTimer) clearTimeout(longPressTimer);
           // Clean up immersive mode
           document.body.classList.remove('live-immersive-active');
+          if (liveShell) liveShell.classList.remove('live-immersive-shell');
           if (!endedByHost && ovenLivekit && typeof ovenLivekit.stopStreaming === 'function') {
             try {
               ovenLivekit.stopStreaming();

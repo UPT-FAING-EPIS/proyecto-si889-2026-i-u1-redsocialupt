@@ -428,7 +428,7 @@ class AuthService
             'avatar_url' => $user->avatar_url,
             'blocked_until' => $user->blocked_until?->toIso8601String(),
             'iat'        => time(),
-            'exp'        => time() + (env('JWT_EXPIRATION_MINUTES', 1440) * 60),
+            'exp'        => time() + (env('JWT_EXPIRATION_MINUTES', 60) * 60),
         ];
 
         return JWT::encode($payload, env('JWT_SECRET'), env('JWT_ALGORITHM', 'HS256'));

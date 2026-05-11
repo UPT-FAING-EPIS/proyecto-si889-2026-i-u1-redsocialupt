@@ -575,9 +575,15 @@ function requireAuth() {
   const markActivity = () => { lastActivity = Date.now(); };
   activityEvents.forEach(evt => document.addEventListener(evt, markActivity, { passive: true }));
 
-  // Check token expiry every 5 minutes
+  // Check session state every 1 minute
   setInterval(async () => {
     if (!isLoggedIn()) return;
+
+    const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 min in ms
+    if (Date.now() - lastActivity >= INACTIVITY_LIMIT) {
+      logout();
+      return;
+    }
 
     const token = getToken();
     const payload = decodeJwtPayload(token);
@@ -586,10 +592,8 @@ function requireAuth() {
     const now = Math.floor(Date.now() / 1000);
     const timeLeft = payload.exp - now;
     const REFRESH_THRESHOLD = 30 * 60; // refresh if less than 30 min left
-    const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 min in ms
 
-    // Only refresh if token is expiring soon AND user was active recently
-    if (timeLeft < REFRESH_THRESHOLD && (Date.now() - lastActivity) < INACTIVITY_LIMIT) {
+    if (timeLeft < REFRESH_THRESHOLD) {
       try {
         const res = await fetch(`${API.auth}/auth/refresh`, {
           method: 'POST',
@@ -605,7 +609,7 @@ function requireAuth() {
         // Silent fail — will retry next interval
       }
     }
-  }, 5 * 60 * 1000); // every 5 minutes
+  }, 60 * 1000); // every 1 minute
 })();
 
 /* ── Guard: redirect to feed if already authenticated ─────────── */
