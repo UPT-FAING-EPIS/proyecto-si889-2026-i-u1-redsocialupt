@@ -1714,6 +1714,22 @@ body.live-immersive-active #app-view {
   min-height: 100dvh !important;
 }
 
+/* In immersive mode: always show immersive exit button */
+.live-immersive-shell #live-immersive-btn {
+  position: fixed !important;
+  top: 16px;
+  right: 16px;
+  z-index: 10000 !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* In immersive mode: always show the mobile overlay (chat + title) */
+.live-immersive-shell .live-mobile-overlay {
+  opacity: 1 !important;
+  pointer-events: none !important;  /* children get auto via existing rule */
+}
+
 /* ═══════════════════════════
    MOBILE OVERLAY (TikTok style)
    ═══════════════════════════ */

@@ -556,7 +556,7 @@ function showToast(msg, type = '') {
   }
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.textContent = msg;
+      toast.textContent = msg;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3600);
 }
@@ -565,6 +565,48 @@ function showToast(msg, type = '') {
 function requireAuth() {
   if (!isLoggedIn()) { window.location.href = '/index.html'; }
 }
+
+/* ── Activity-based JWT refresh ──────────────────────────────── */
+(function initTokenRefresh() {
+  let lastActivity = Date.now();
+
+  // Track user activity
+  const activityEvents = ['click', 'keydown', 'scroll', 'touchstart', 'mousemove'];
+  const markActivity = () => { lastActivity = Date.now(); };
+  activityEvents.forEach(evt => document.addEventListener(evt, markActivity, { passive: true }));
+
+  // Check token expiry every 5 minutes
+  setInterval(async () => {
+    if (!isLoggedIn()) return;
+
+    const token = getToken();
+    const payload = decodeJwtPayload(token);
+    if (!payload || !payload.exp) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    const timeLeft = payload.exp - now;
+    const REFRESH_THRESHOLD = 30 * 60; // refresh if less than 30 min left
+    const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 min in ms
+
+    // Only refresh if token is expiring soon AND user was active recently
+    if (timeLeft < REFRESH_THRESHOLD && (Date.now() - lastActivity) < INACTIVITY_LIMIT) {
+      try {
+        const res = await fetch(`${API.auth}/auth/refresh`, {
+          method: 'POST',
+          headers: authHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            saveSession(data.token, data.user || getUser());
+          }
+        }
+      } catch (e) {
+        // Silent fail — will retry next interval
+      }
+    }
+  }, 5 * 60 * 1000); // every 5 minutes
+})();
 
 /* ── Guard: redirect to feed if already authenticated ─────────── */
 function requireGuest() {

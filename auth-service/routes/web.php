@@ -21,6 +21,7 @@ $router->group(['prefix' => 'api/auth'], function () use ($router) {
         $router->post('/complete-profile',  'AuthController@completeProfile');
         $router->get('/me',                 'AuthController@me');
         $router->post('/presence',          'AuthController@touchPresence');
+        $router->post('/refresh',           'AuthController@refreshToken');
         $router->get('/users',              'AuthController@listUsersPublic');
         $router->get('/users/{id}',         'AuthController@getUser');
         $router->put('/profile',            'AuthController@updateProfile');
