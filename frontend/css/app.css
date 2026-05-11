@@ -1678,6 +1678,21 @@ body.live-immersive-active #app-view {
   height: 100vh !important;
   height: 100dvh !important;
   min-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100vw !important;
+  max-width: none !important;
+}
+/* In immersive, video wrapper fills edge-to-edge */
+.live-immersive-shell .live-video-wrap {
+  border-radius: 0 !important;
+}
+.live-immersive-shell .live-root {
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
 }
 
 /* ═══════════════════════════
@@ -1693,7 +1708,7 @@ body.live-immersive-active #app-view {
   flex-direction: column;
   justify-content: flex-end;
   pointer-events: none;
-  max-height: 38%;           /* keep comments tight to bottom, video dominant */
+  max-height: 30%;           /* comments tight to bottom, video dominant */
 }
 .live-mobile-overlay > * {
   pointer-events: auto;

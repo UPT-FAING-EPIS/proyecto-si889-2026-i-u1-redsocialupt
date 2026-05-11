@@ -3635,9 +3635,6 @@
                         </div>
                       </div>
                       <div class="flex items-center gap-2">
-                        <button id="live-toggle-mic-btn-mobile" type="button" class="hidden w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar microfono">
-                          <span class="material-symbols-outlined text-[20px]">mic</span>
-                        </button>
                         <button id="live-immersive-btn" type="button" class="w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Modo inmersivo">
                           <span class="material-symbols-outlined text-[20px]">open_in_full</span>
                         </button>
@@ -3752,7 +3749,6 @@
         const hostEndButton = container.querySelector('#live-host-end-btn');
         const hostTools = container.querySelector('#live-host-tools');
         const toggleMicButton = container.querySelector('#live-toggle-mic-btn');
-        const toggleMicButtonMobile = container.querySelector('#live-toggle-mic-btn-mobile');
         const toggleSystemAudioButton = container.querySelector('#live-toggle-system-audio-btn');
         const switchSourceButton = container.querySelector('#live-switch-source-btn');
 
@@ -3875,7 +3871,7 @@
           const avatarContent = author.avatar_url ? '' : escapeHtml(initials(displayName(author)));
 
           return `
-            <div class="flex items-start gap-3" style="animation:live-comment-in 0.3s ease-out both;">
+            <div class="flex items-start gap-3" data-comment-id="${comment.id}" style="animation:live-comment-in 0.3s ease-out both;">
               <div class="w-10 h-10 rounded-full bg-slate-600 shrink-0 flex items-center justify-center text-white text-xs font-bold" style="${avatarBg};background-size:cover;background-position:center;">${avatarContent}</div>
               <div class="min-w-0">
                 <span class="font-bold text-[13px] text-white">${escapeHtml(displayName(author))}</span>
@@ -3957,7 +3953,7 @@
         }
 
         function refreshHostAudioButtons() {
-          const allMicBtns = [toggleMicButton, toggleMicButtonMobile].filter(Boolean);
+          const allMicBtns = [toggleMicButton].filter(Boolean);
           const allSysBtns = [toggleSystemAudioButton].filter(Boolean);
 
           allMicBtns.forEach((btn) => {
@@ -3995,11 +3991,19 @@
             return false;
           }
 
-          if ((Date.now() - viewerPlayerCreatedAt) < 6000 || (Date.now() - viewerPlayerLastRetryAt) < 6000) {
+          const now = Date.now();
+          if ((now - viewerPlayerCreatedAt) < 4000 || (now - viewerPlayerLastRetryAt) < 4000) {
             return false;
           }
 
-          return viewerVideo.readyState < 2 || (viewerVideo.currentTime === 0 && viewerVideo.paused);
+          // Stalled: not enough data buffered, or buffered but stuck at 0
+          if (viewerVideo.readyState < 2) return true;
+          if (viewerVideo.currentTime === 0 && viewerVideo.paused) {
+            // Try to kick-start playback before declaring stalled
+            viewerVideo.play().catch(() => {});
+            return false;
+          }
+          return false;
         }
 
         function syncViewerToLiveEdge(force = false) {
@@ -4058,9 +4062,19 @@
           video.controls = false;
           video.playsInline = true;
           video.setAttribute('playsinline', '');
+          video.muted = true; // muted autoplay is allowed on all browsers
           viewerPlayerRoot.innerHTML = '';
           viewerPlayerRoot.appendChild(video);
           viewerVideo = video;
+          // Click anywhere on the video wrapper to unmute + ensure playback
+          const unmuteHandler = () => {
+            if (viewerVideo) {
+              viewerVideo.muted = false;
+              viewerVideo.play().catch(() => {});
+            }
+            liveVideoWrap?.removeEventListener('click', unmuteHandler);
+          };
+          liveVideoWrap?.addEventListener('click', unmuteHandler);
           return video;
         }
 
@@ -4291,8 +4305,7 @@
           hostEndButton.classList.toggle('hidden', !isOwner);
           hostTools.classList.toggle('hidden', !isOwner);
           hostTools.classList.toggle('flex', isOwner);
-          // Mobile host controls
-          if (toggleMicButtonMobile) { toggleMicButtonMobile.classList.toggle('hidden', !isOwner); toggleMicButtonMobile.classList.toggle('flex', isOwner); }
+
           refreshHostAudioButtons();
 
           if (!isOwner && liveData.live_status === 'live') {
@@ -4326,15 +4339,55 @@
             return;
           }
           if (!comments.length) {
-            const emptyHtml = '<p class="text-sm text-white/55">Todavia no hay comentarios en este directo.</p>';
-            liveComments.innerHTML = emptyHtml;
-            if (liveCommentsMobile) liveCommentsMobile.innerHTML = '';
+            if (!commentsInitialized) {
+              const emptyHtml = '<p class="text-sm text-white/55">Todavia no hay comentarios en este directo.</p>';
+              liveComments.innerHTML = emptyHtml;
+              if (liveCommentsMobile) liveCommentsMobile.innerHTML = '';
+            }
             commentsInitialized = true;
             return;
           }
-          const html = comments.map(commentMarkup).join('');
-          liveComments.innerHTML = html;
-          if (liveCommentsMobile) liveCommentsMobile.innerHTML = html;
+
+          // Build set of new comment IDs
+          const newIds = new Set(comments.map(c => String(c.id)));
+          const existingIds = new Set();
+          liveComments.querySelectorAll('[data-comment-id]').forEach(el => existingIds.add(el.dataset.commentId));
+
+          // First load or major mismatch: full render
+          if (!commentsInitialized || existingIds.size === 0) {
+            const html = comments.map(c => commentMarkup(c)).join('');
+            liveComments.innerHTML = html;
+            if (liveCommentsMobile) liveCommentsMobile.innerHTML = html;
+          } else {
+            // Remove comments that are no longer in the list (old ones rotated out)
+            liveComments.querySelectorAll('[data-comment-id]').forEach(el => {
+              if (!newIds.has(el.dataset.commentId)) el.remove();
+            });
+            if (liveCommentsMobile) {
+              liveCommentsMobile.querySelectorAll('[data-comment-id]').forEach(el => {
+                if (!newIds.has(el.dataset.commentId)) el.remove();
+              });
+            }
+            // Append only truly new comments
+            const fragment = document.createDocumentFragment();
+            const fragmentMobile = document.createDocumentFragment();
+            comments.forEach(c => {
+              if (!existingIds.has(String(c.id))) {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = commentMarkup(c);
+                const node = wrapper.firstElementChild;
+                if (node) {
+                  fragment.appendChild(node);
+                  fragmentMobile.appendChild(node.cloneNode(true));
+                }
+              }
+            });
+            if (fragment.childNodes.length) {
+              liveComments.appendChild(fragment);
+              if (liveCommentsMobile) liveCommentsMobile.appendChild(fragmentMobile);
+            }
+          }
+
           commentsInitialized = true;
           if (stickToBottom) {
             liveComments.scrollTop = liveComments.scrollHeight;
@@ -4460,38 +4513,71 @@
 
         // ── Immersive mode (hides page chrome, keeps chat) ──
         let immersiveActive = false;
+        function activateImmersive() {
+          immersiveActive = true;
+          document.body.classList.add('live-immersive-active');
+          liveShell.classList.add('live-immersive-shell');
+          const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
+          if (icon) icon.textContent = 'close_fullscreen';
+          // On mobile, use native Fullscreen API to hide browser UI
+          if (!isDesktopClient() && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          }
+        }
+        function deactivateImmersive() {
+          immersiveActive = false;
+          document.body.classList.remove('live-immersive-active');
+          liveShell.classList.remove('live-immersive-shell');
+          const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
+          if (icon) icon.textContent = 'open_in_full';
+          // Exit fullscreen if active (only affects mobile)
+          if (document.fullscreenElement && !isDesktopClient()) {
+            document.exitFullscreen().catch(() => {});
+          }
+        }
         if (immersiveBtn && liveShell) {
           immersiveBtn.addEventListener('click', () => {
-            immersiveActive = !immersiveActive;
-            document.body.classList.toggle('live-immersive-active', immersiveActive);
-            liveShell.classList.toggle('live-immersive-shell', immersiveActive);
-            const icon = immersiveBtn.querySelector('.material-symbols-outlined');
-            if (icon) icon.textContent = immersiveActive ? 'close_fullscreen' : 'open_in_full';
+            if (immersiveActive) { deactivateImmersive(); } else { activateImmersive(); }
+          });
+          // Sync state when user exits fullscreen via back button / gesture
+          document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && immersiveActive && !isDesktopClient()) {
+              deactivateImmersive();
+            }
           });
         }
 
         // ── Long-press reaction selector (both mobile + desktop) ──
+        let selectorAutoCloseTimer = null;
         function openSelector(sel) {
           if (!sel) return;
           sel.classList.remove('hidden'); sel.classList.add('flex');
           selectorOpen = true;
+          // Auto-close after 5s if no interaction
+          if (selectorAutoCloseTimer) clearTimeout(selectorAutoCloseTimer);
+          selectorAutoCloseTimer = setTimeout(() => closeAllSelectors(), 5000);
         }
         function closeAllSelectors() {
           [reactionSelector, reactionSelectorDesktop].forEach(sel => {
             if (sel) { sel.classList.add('hidden'); sel.classList.remove('flex'); }
           });
           selectorOpen = false;
+          if (selectorAutoCloseTimer) { clearTimeout(selectorAutoCloseTimer); selectorAutoCloseTimer = null; }
         }
 
         function bindTrigger(trigger, selector) {
           if (!trigger) return;
           let lpTimer = null;
+          let openedByLongPress = false;
           trigger.addEventListener('click', () => {
+            // If selector was just opened by long-press, don't close it on the click release
+            if (openedByLongPress) { openedByLongPress = false; return; }
             if (selectorOpen) { closeAllSelectors(); return; }
             sendActiveReaction();
           });
           trigger.addEventListener('pointerdown', () => {
-            lpTimer = setTimeout(() => { openSelector(selector); }, 400);
+            openedByLongPress = false;
+            lpTimer = setTimeout(() => { openSelector(selector); openedByLongPress = true; }, 400);
           });
           trigger.addEventListener('pointerup', () => clearTimeout(lpTimer));
           trigger.addEventListener('pointerleave', () => clearTimeout(lpTimer));
@@ -4546,7 +4632,7 @@
           refreshHostAudioButtons();
         };
         toggleMicButton.addEventListener('click', toggleMicHandler);
-        if (toggleMicButtonMobile) toggleMicButtonMobile.addEventListener('click', toggleMicHandler);
+
         toggleSystemAudioButton.addEventListener('click', () => {
           hostSystemMuted = !hostSystemMuted;
           applyHostAudioState();
