@@ -3726,6 +3726,10 @@
                       <button id="live-toggle-mic-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Silenciar micrófono">
                         <span class="material-symbols-outlined text-[20px]">mic</span>
                       </button>
+                      <!-- Flip camera button (host mobile only) -->
+                      <button id="live-flip-camera-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Cambiar cámara">
+                        <span class="material-symbols-outlined text-[20px]">flip_camera_ios</span>
+                      </button>
                       <textarea id="live-comment-input-mobile" rows="1" class="live-mobile-input" placeholder="Escribe algo..."></textarea>
                       <div class="relative">
                         <button id="live-reaction-trigger" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
@@ -3809,6 +3813,7 @@
         const toggleSystemAudioButton = container.querySelector('#live-toggle-system-audio-btn');
         const switchSourceButton = container.querySelector('#live-switch-source-btn');
         const flipCameraButton = container.querySelector('#live-flip-camera-btn');
+        const flipCameraMobileButton = container.querySelector('#live-flip-camera-mobile-btn');
 
         const fullscreenBtn = container.querySelector('#live-fullscreen-btn');
         const immersiveBtn = container.querySelector('#live-immersive-btn');
@@ -4067,6 +4072,11 @@
           if (flipCameraButton) {
             flipCameraButton.classList.toggle('hidden', !isMobileCamera);
             flipCameraButton.classList.toggle('flex', isMobileCamera);
+          }
+          // Also show/hide the mobile input row flip button
+          if (flipCameraMobileButton) {
+            flipCameraMobileButton.classList.toggle('hidden', !isMobileCamera);
+            flipCameraMobileButton.classList.toggle('flex', isMobileCamera);
           }
           // Hide switch source button on mobile (only desktop has screen share)
           if (switchSourceButton && !isDesktopClient()) {
@@ -4885,31 +4895,35 @@
             if (mobileOverlay) { mobileOverlay.style.opacity = '0'; mobileOverlay.style.pointerEvents = 'none'; }
             if (immersiveBtn && !isDesktopClient()) immersiveBtn.classList.add('hidden');
           } else if (fsEl === liveShell) {
-            // Returned to shell fullscreen (immersive) — show overlay so X becomes visible
+            // Shell fullscreen active — show overlay so X reappears
             if (!isDesktopClient()) {
+              // Ensure mobileOverlay is visible
+              if (mobileOverlay) { mobileOverlay.style.opacity = ''; mobileOverlay.style.pointerEvents = ''; }
               showOverlay();
             }
           } else if (!fsEl) {
             if (inVideoFullscreen) {
-              // Exited video fullscreen → restore X button and reset state
+              // Exited video fullscreen → restore mobileOverlay, re-enter shell fullscreen
               inVideoFullscreen = false;
               try { screen.orientation.unlock(); } catch(e) {}
               const icon = fullscreenBtn?.querySelector('.material-symbols-outlined');
               if (icon) icon.textContent = 'fullscreen';
+              // Restore mobile overlay immediately
               if (mobileOverlay) { mobileOverlay.style.opacity = ''; mobileOverlay.style.pointerEvents = ''; }
-              // Restore X button visibility
               if (immersiveBtn && !isDesktopClient() && !isHostOnMobile) {
                 immersiveBtn.classList.remove('hidden');
               }
-              // Re-enter immersive shell fullscreen
-              if (immersiveActive && !isDesktopClient() && liveShell) {
-                liveShell.requestFullscreen().catch(() => {});
+              if (!isDesktopClient() && liveShell) {
+                // Always try to re-enter shell fullscreen on mobile
+                liveShell.requestFullscreen().catch(() => {
+                  // requestFullscreen failed (e.g. browser policy) — still show overlay
+                  showOverlay();
+                });
               } else {
-                // Not re-entering fullscreen: show overlay so X is visible
                 showOverlay();
               }
             } else if (immersiveActive && !isDesktopClient()) {
-              // User pressed browser back button while in immersive → exit livestream
+              // User exited shell fullscreen via browser back → exit livestream
               exitLivestream();
             }
           }
@@ -5074,12 +5088,21 @@
           await startHostSource(next, true);
         });
 
-        // Flip camera on mobile (front ↔ rear)
+        // Flip camera on mobile (front ↔ rear) — desktop host tool button
         if (flipCameraButton) {
           flipCameraButton.addEventListener('click', async () => {
             currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
             await startHostSource('camera', true);
-            // Mirror the video for front camera
+            if (hostPreviewVideo) {
+              hostPreviewVideo.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : '';
+            }
+          });
+        }
+        // Flip camera — mobile input row button (same logic)
+        if (flipCameraMobileButton) {
+          flipCameraMobileButton.addEventListener('click', async () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            await startHostSource('camera', true);
             if (hostPreviewVideo) {
               hostPreviewVideo.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : '';
             }

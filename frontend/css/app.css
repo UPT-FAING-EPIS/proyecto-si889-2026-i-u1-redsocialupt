@@ -1975,20 +1975,23 @@ body.live-immersive-active #app-view {
 /* ── Mobile comments ── */
 .live-mobile-comments {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch; /* iOS momentum scroll */
-  padding: 8px 16px 4px;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
-  /* No justify-content:flex-end — broken with overflow-y on mobile */
+  /* justify-content:flex-end pushes messages to bottom when content < container height */
+  justify-content: flex-end;
   gap: 10px;
-  min-height: 0;
+  padding: 8px 16px 4px;
 }
 
 /* Spacer pushes messages to bottom; grows to fill empty space above */
 .live-mobile-comments::before {
   content: '';
-  flex: 1 0 auto;
+  flex-shrink: 0;
+  flex-grow: 1;
+  min-height: 4px;
 }
 
 /* ── Mobile input row (default: separate section below video) ── */
@@ -2014,9 +2017,9 @@ body.live-immersive-active #app-view {
     padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
     background: rgba(11, 17, 32, 0.98);
   }
-  /* Add padding at bottom of comments so messages aren't hidden behind pinned input */
+  /* Pad comments so last message isn't hidden behind the fixed input bar (~64px tall) */
   body:has(.live-root:not(.live-is-desktop)) .live-mobile-comments {
-    padding-bottom: 72px;
+    padding-bottom: 68px;
   }
 }
 
