@@ -4145,14 +4145,14 @@
           if (isDesktopClient() || isHostRoute) return; // only for mobile viewers
           const video = viewerVideo;
           if (!video || !video.videoWidth || !video.videoHeight) return;
-          const isPortrait = video.videoHeight > video.videoWidth;
+          // Only treat as portrait if significantly taller than wide (ratio < 0.75)
+          const ratio = video.videoWidth / video.videoHeight;
+          const isPortrait = ratio < 0.75;
           if (liveShell) {
             liveShell.classList.toggle('live-cam-stream', isPortrait);
           }
-          // Also apply object-cover directly on the video element
-          if (isPortrait) {
-            video.style.objectFit = 'cover';
-          }
+          // Set object-fit based on stream orientation
+          video.style.objectFit = isPortrait ? 'cover' : 'contain';
         }
 
         function viewerPlaybackLooksStalled() {
@@ -4722,6 +4722,7 @@
           if (playerControls) { playerControls.style.opacity = '1'; playerControls.style.pointerEvents = 'auto'; }
           // Show X button on mobile viewers only (host never sees X)
           if (immersiveBtn && !isDesktopClient() && !isHostOnMobile) {
+            immersiveBtn.classList.remove('hidden'); // clear display:none from video-fullscreen
             immersiveBtn.style.opacity = '1';
             immersiveBtn.style.pointerEvents = 'auto';
           }
@@ -4758,18 +4759,20 @@
             toggleOverlay();
           }, { passive: true });
           // Prevent click from re-toggling after a touch-toggle
+          let lastVideoWrapTouchTime = 0;
+          liveVideoWrap.addEventListener('touchend', () => {
+            lastVideoWrapTouchTime = Date.now();
+          }, { passive: true, capture: true }); // capture phase to record time before other handlers
           liveVideoWrap.addEventListener('click', (e) => {
             if (Date.now() - lastTouchToggleTime < 600) e.stopImmediatePropagation();
           }, true);
         }
         // Also toggle on tap anywhere on the live shell (not just video wrap)
-        // Catches cam-stream top area and non-video regions
         if (liveShell && !isDesktopClient()) {
           let lastShellTouchTime = 0;
           liveShell.addEventListener('touchend', (e) => {
-            // Ignore taps inside buttons, input, textarea, or the comments section
             if (e.target.closest('button, input, textarea, #live-comments-mobile, .live-mobile-input')) return;
-            // Ignore if the video wrap already handled it (avoid double toggle)
+            // Skip if video wrap already handled this touch (same timestamp within 50ms)
             if (liveVideoWrap && liveVideoWrap.contains(e.target)) return;
             const now = Date.now();
             if (now - lastShellTouchTime < 400) return;

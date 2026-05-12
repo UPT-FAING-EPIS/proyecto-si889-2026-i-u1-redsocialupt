@@ -1728,13 +1728,15 @@ body {
   mask-image: linear-gradient(to bottom, transparent 0%, black 35%);
   background: transparent;
   padding-bottom: 2px;
-  /* Scroll support in overlay mode */
+  /* Concrete viewport-based max-height so overflow-y:auto actually triggers scroll */
+  max-height: calc(55vh - 72px) !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  max-height: 100%;
-  height: auto;
-  /* Disable spacer trick in overlay mode (justify-content:flex-end handles alignment) */
+  /* Push messages to bottom of available space */
+  justify-content: flex-end;
+  display: flex;
+  flex-direction: column;
 }
 .live-host-mobile .live-mobile-comments::before,
 .live-cam-stream .live-mobile-comments::before {
