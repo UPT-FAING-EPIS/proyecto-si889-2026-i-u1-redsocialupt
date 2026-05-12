@@ -3697,8 +3697,16 @@
                     <div class="px-4 pb-1 pt-3">
                       <h2 id="live-title-mobile" class="text-lg font-black leading-tight break-words drop-shadow-lg">Cargando directo...</h2>
                     </div>
-                    <div id="live-comments-mobile" class="live-mobile-comments custom-scrollbar"></div>
+                    <div id="live-comments-mobile" class="live-mobile-comments custom-scrollbar" style="overflow-y:auto;touch-action:pan-y;"></div>
                     <div class="live-mobile-input-row">
+                      <!-- Mobile mic button (host only, hidden for viewers) -->
+                      <button id="live-toggle-mic-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Silenciar micrófono">
+                        <span class="material-symbols-outlined text-[20px]">mic</span>
+                      </button>
+                      <!-- Mobile stream mute button (viewer only, hidden for host) -->
+                      <button id="live-viewer-mute-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Silenciar / Activar sonido">
+                        <span class="material-symbols-outlined text-[20px]">volume_up</span>
+                      </button>
                       <textarea id="live-comment-input-mobile" rows="1" class="live-mobile-input" placeholder="Escribe algo..."></textarea>
                       <div class="relative">
                         <button id="live-reaction-trigger" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
@@ -3778,6 +3786,8 @@
         const hostEndButton = container.querySelector('#live-host-end-btn');
         const hostTools = container.querySelector('#live-host-tools');
         const toggleMicButton = container.querySelector('#live-toggle-mic-btn');
+        const toggleMicMobileButton = container.querySelector('#live-toggle-mic-mobile-btn');
+        const viewerMuteMobileButton = container.querySelector('#live-viewer-mute-mobile-btn');
         const toggleSystemAudioButton = container.querySelector('#live-toggle-system-audio-btn');
         const switchSourceButton = container.querySelector('#live-switch-source-btn');
         const flipCameraButton = container.querySelector('#live-flip-camera-btn');
@@ -4210,11 +4220,10 @@
           viewerPlayerRoot.innerHTML = '';
           viewerPlayerRoot.appendChild(video);
           viewerVideo = video;
-          // Click anywhere on the video wrapper to unmute + ensure playback
+          // Tap on video to unmute (only fires once, only unmutes — no play() to avoid HLS interruption)
           const unmuteHandler = () => {
-            if (viewerVideo) {
+            if (viewerVideo && viewerVideo.muted) {
               viewerVideo.muted = false;
-              viewerVideo.play().catch(() => {});
             }
             liveVideoWrap?.removeEventListener('click', unmuteHandler);
           };
@@ -4490,11 +4499,21 @@
 
           refreshHostAudioButtons();
 
-          // Show viewer mute button only for viewers (not host)
+          // Show viewer mute button only for viewers (not host) — desktop
           const viewerMuteBtn = container.querySelector('#live-viewer-mute-btn');
           if (viewerMuteBtn) {
             viewerMuteBtn.classList.toggle('hidden', isOwner);
             viewerMuteBtn.classList.toggle('flex', !isOwner);
+          }
+          // Mobile mic button — host only
+          if (toggleMicMobileButton) {
+            toggleMicMobileButton.classList.toggle('hidden', !isOwner);
+            toggleMicMobileButton.classList.toggle('flex', isOwner && !isDesktopClient());
+          }
+          // Mobile viewer mute button — viewer only
+          if (viewerMuteMobileButton) {
+            viewerMuteMobileButton.classList.toggle('hidden', isOwner);
+            viewerMuteMobileButton.classList.toggle('flex', !isOwner && !isDesktopClient());
           }
 
           if (!isOwner && liveData.live_status === 'live') {
@@ -4632,11 +4651,15 @@
           addFloatingReaction(activeReaction);
         }
 
+        let endingLivestream = false;
         async function endLivestream() {
+          if (endingLivestream) return;
+          endingLivestream = true;
           const durationSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
           const result = await PostsAPI.endLivestream(liveId, durationSeconds);
           if (!result?.ok) {
             showToast(result?.data?.error || 'No se pudo finalizar el directo', 'error');
+            endingLivestream = false; // allow retry
             return;
           }
           endedByHost = true;
@@ -4648,7 +4671,9 @@
             }
           }
           showToast('Directo finalizado', 'success');
-          router.navigate('feed');
+          // Reset stuck flag then navigate
+          exitingLivestream = false;
+          exitLivestream();
         }
 
         const commentsLoop = () => loadComments().catch(() => {});
@@ -4708,12 +4733,18 @@
           liveVideoWrap.addEventListener('mouseenter', showOverlay);
           liveVideoWrap.addEventListener('mousemove', showOverlay);
           liveVideoWrap.addEventListener('mouseleave', () => { clearTimeout(overlayTimer); overlayTimer = setTimeout(hideOverlay, 1200); });
-          // Mobile: tap toggles overlay instead of always showing
-          liveVideoWrap.addEventListener('touchstart', (e) => {
+          // Mobile: touchend toggles overlay (not touchstart, to avoid ghost-click conflict)
+          let lastTouchToggleTime = 0;
+          liveVideoWrap.addEventListener('touchend', (e) => {
             // Don't toggle if tapping a button
             if (e.target.closest('button')) return;
+            lastTouchToggleTime = Date.now();
             toggleOverlay();
           }, { passive: true });
+          // Prevent click from re-toggling after a touch-toggle
+          liveVideoWrap.addEventListener('click', (e) => {
+            if (Date.now() - lastTouchToggleTime < 600) e.stopImmediatePropagation();
+          }, true);
         }
         // On desktop show overlay initially, on mobile start hidden (tap to reveal)
         if (isDesktopClient()) {
@@ -4885,6 +4916,33 @@
               const dIcon = viewerMuteBtn?.querySelector('.material-symbols-outlined');
               if (dIcon) dIcon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
             }
+          });
+        }
+
+        // ── Mobile viewer mute button (in input row, viewer only) ──
+        if (viewerMuteMobileButton) {
+          viewerMuteMobileButton.addEventListener('click', () => {
+            if (viewerVideo) {
+              viewerVideo.muted = !viewerVideo.muted;
+              const icon = viewerMuteMobileButton.querySelector('.material-symbols-outlined');
+              if (icon) icon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
+              // Sync other mute buttons
+              const dIcon = container.querySelector('#live-viewer-mute-btn .material-symbols-outlined');
+              if (dIcon) dIcon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
+              const pIcon = playerMuteBtn?.querySelector('.material-symbols-outlined');
+              if (pIcon) pIcon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
+            }
+          });
+        }
+
+        // ── Mobile mic button (in input row, host only) ──
+        if (toggleMicMobileButton) {
+          toggleMicMobileButton.addEventListener('click', () => {
+            hostMicMuted = !hostMicMuted;
+            applyHostAudioState();
+            refreshHostAudioButtons();
+            const icon = toggleMicMobileButton.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = hostMicMuted ? 'mic_off' : 'mic';
           });
         }
 

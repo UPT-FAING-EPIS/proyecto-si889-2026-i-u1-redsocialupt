@@ -1477,6 +1477,12 @@ body {
     height: 100%;
     overflow: hidden;
   }
+
+  /* section.w-full is the direct wrapper of #live-shell — must be in height chain */
+  body:has(.live-root:not(.live-is-desktop)) #app-view > section {
+    height: 100%;
+    display: block;
+  }
 }
 
 .live-is-desktop .live-root,
