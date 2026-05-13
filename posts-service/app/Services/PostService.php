@@ -23,6 +23,7 @@ class PostService
         return Post::create([
             'user_id' => $userId,
             'group_id' => $data['group_id'] ?? null,
+            'post_type' => $data['post_type'] ?? 'standard',
             'user_name' => $data['user_name'] ?? 'Usuario',
             'user_school' => $data['user_school'] ?? '',
             'user_faculty' => $data['user_faculty'] ?? '',

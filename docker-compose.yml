@@ -139,6 +139,28 @@ services:
       auth-service:
         condition: service_started
 
+  ovenmediaengine:
+    image: airensoft/ovenmediaengine:latest
+    restart: unless-stopped
+    environment:
+      OME_HOST_IP: 127.0.0.1
+      OME_WEBRTC_CANDIDATE_PORT: 10000-10005/udp
+      OME_WEBRTC_TCP_RELAY_PORT: 3478
+    ports:
+      - "1935:1935"
+      - "3333:3333/tcp"
+      - "3333:3333/udp"
+      - "3334:3334/tcp"
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "8080:8080/tcp"
+      - "10000:10000/udp"
+      - "10001:10001/udp"
+      - "10002:10002/udp"
+      - "10003:10003/udp"
+      - "10004:10004/udp"
+      - "10005:10005/udp"
+
   # --- Frontend ---
   frontend:
     build: ./frontend

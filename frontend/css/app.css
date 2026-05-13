@@ -50,7 +50,8 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -58,8 +59,18 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #dadada;
+  background-color: rgba(148, 163, 184, 0.32);
   border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.48);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.32) transparent;
 }
 
 .feed-composer-card {
@@ -418,7 +429,7 @@ body {
   pointer-events: none;
 }
 
-.profile-view .profile-banner > * {
+.profile-view .profile-banner>* {
   position: relative;
   z-index: 1;
 }
@@ -939,5 +950,1181 @@ body {
 
   .media-crop-sidebar {
     padding: 1.25rem;
+  }
+}
+
+/* ===== LIVE STREAM REDESIGN ===== */
+
+/* Gradient live (pink→red) */
+.gradient-live {
+  background: linear-gradient(135deg, #ec4899, #ef4444);
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+/* Shadow glow for LIVE accent */
+.shadow-glow {
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.45), 0 0 6px rgba(239, 68, 68, 0.3);
+}
+
+/* LIVE pill pulse */
+@keyframes live-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.live-pulse {
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+
+/* Floating reaction animations */
+@keyframes live-float-up {
+  0% {
+    opacity: 1;
+    transform: translateY(0) translateX(var(--float-x, 0px)) scale(1);
+  }
+
+  70% {
+    opacity: 0.7;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-320px) translateX(var(--float-x, 0px)) scale(0.6);
+  }
+}
+
+.live-float-emoji {
+  position: absolute;
+  bottom: 60px;
+  font-size: 28px;
+  pointer-events: none;
+  animation: live-float-up 3s ease-out forwards;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4));
+}
+
+/* Comment fade-in */
+@keyframes live-comment-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.live-comment-bubble {
+  animation: live-comment-in 0.3s ease-out both;
+}
+
+/* Reaction selector scale-in */
+@keyframes live-selector-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.live-reaction-selector {
+  animation: live-selector-in 0.2s ease-out both;
+}
+
+/* ── MOBILE (phone frame) ── */
+.live-mobile-frame {
+  width: 100%;
+  max-width: 380px;
+  height: 760px;
+  margin: 0 auto;
+  border-radius: 40px;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  position: relative;
+  background: #000;
+}
+
+.live-mobile-frame video,
+.live-mobile-frame #live-viewer-player {
+  border-radius: 0 !important;
+}
+
+.live-mobile-frame #live-viewer-player video {
+  border-radius: 0 !important;
+}
+
+/* Mobile top bar */
+.live-mobile-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 10px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
+}
+
+/* Mobile bottom area */
+.live-mobile-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: 0 12px 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.25) 60%, transparent 100%);
+}
+
+/* Mobile comments */
+.live-mobile-comments {
+  /* NOTE: Legacy block (kept for cascade compatibility).
+     Real sizing/scrolling is defined later under "MOBILE CONTENT" and the
+     full-bleed overlay rules. Avoid constraints that break mobile scroll. */
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.live-mobile-comment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 75%;
+  padding: 5px 10px;
+  margin-bottom: 4px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 12px;
+  color: #fff;
+  animation: live-comment-in 0.25s ease-out both;
+}
+
+.live-mobile-comment .comment-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+}
+
+.live-mobile-comment .comment-user {
+  font-weight: 700;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.live-mobile-comment .comment-text {
+  word-break: break-word;
+}
+
+/* Mobile input bar */
+.live-mobile-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-mobile-input-bar input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 38px 0 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  caret-color: #ec4899;
+}
+
+.live-mobile-input-bar input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.live-mobile-input-bar input:focus {
+  border-color: rgba(236, 72, 153, 0.4);
+}
+
+/* Reaction button (big circle) */
+.live-reaction-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s ease;
+  user-select: none;
+}
+
+.live-reaction-btn:active {
+  transform: scale(0.92);
+}
+
+/* Reaction selector popup */
+.live-reaction-selector-popup {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 28px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  z-index: 50;
+}
+
+.live-reaction-selector-popup button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.12s;
+}
+
+.live-reaction-selector-popup button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.15);
+}
+
+/* ── DESKTOP (two-column) ── */
+.live-desktop-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+  max-width: 72rem;
+  margin: 0 auto;
+  height: 620px;
+}
+
+/* Desktop video panel */
+.live-desktop-video-panel {
+  position: relative;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 50px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  background: #000;
+  height: 100%;
+}
+
+.live-desktop-video-panel video {
+  border-radius: 0 !important;
+}
+
+.live-desktop-video-panel #live-viewer-player video {
+  border-radius: 0 !important;
+}
+
+/* Desktop overlay top */
+.live-desktop-overlay-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55) 0%, transparent 100%);
+}
+
+/* Desktop overlay bottom controls */
+.live-desktop-overlay-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px 14px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65) 0%, transparent 100%);
+}
+
+/* Desktop chat panel */
+.live-desktop-chat-panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #111827;
+  height: 100%;
+  overflow: hidden;
+}
+
+.live-desktop-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.live-desktop-chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.live-desktop-chat-messages::-webkit-scrollbar {
+  width: 4px;
+}
+
+.live-desktop-chat-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.live-desktop-chat-messages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+.live-desktop-chat-input-area {
+  position: relative;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.live-desktop-chat-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-desktop-chat-input-row input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0 38px 0 14px;
+  border-radius: 21px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+  caret-color: #ec4899;
+}
+
+.live-desktop-chat-input-row input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.live-desktop-chat-input-row input:focus {
+  border-color: rgba(236, 72, 153, 0.4);
+}
+
+/* Desktop comment row */
+.live-desktop-comment {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: live-comment-in 0.3s ease-out both;
+}
+
+.live-desktop-comment .comment-avatar-wrap {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.live-desktop-comment .comment-body {
+  min-width: 0;
+}
+
+.live-desktop-comment .comment-user {
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+}
+
+.live-desktop-comment .comment-time {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-left: 6px;
+}
+
+.live-desktop-comment .comment-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 2px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* ── Shared live root (base defaults, overridden below) ── */
+.live-root {
+  min-height: calc(100vh - 7rem);
+  background: #0a0e1a;
+  border-radius: 28px;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Input smile icon */
+.live-input-smile {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+
+/* ── Live Root ── */
+.live-root {
+  background: #0b1120;
+  overflow: hidden;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  height: 100%;
+  min-height: calc(100vh - 4rem);
+  min-height: calc(100dvh - 4rem);
+}
+
+/* Mobile: use fixed positioning to bypass grid/flex height chain issues */
+@media (max-width: 960px) {
+  .live-root:not(.live-is-desktop) {
+    position: fixed !important;
+    top: 4rem;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: calc(100vh - 4rem) !important;
+    height: calc(100dvh - 4rem) !important;
+    min-height: 0 !important;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* live-layout must fill the fixed root exactly */
+  .live-root:not(.live-is-desktop) > .live-layout {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+  }
+
+  /* live-video-col takes only needed height in normal view, allowing chat to fill the rest */
+  .live-root:not(.live-is-desktop) .live-video-col {
+    flex: 0 0 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* live-mobile-content fills remaining space after video */
+  .live-root:not(.live-is-desktop) .live-mobile-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* On mobile, remove parent grid margins/padding so the live root fills edge-to-edge */
+@media (max-width: 960px) {
+  body:has(.live-root:not(.live-is-desktop)) {
+    overflow: hidden; /* prevent body scroll — live view fills viewport exactly */
+  }
+
+  body:has(.live-root:not(.live-is-desktop))>.max-w-7xl {
+    max-width: none;
+    padding-left: 0;
+    padding-right: 0;
+    height: calc(100vh - 4rem);
+    height: calc(100dvh - 4rem);
+    overflow: hidden;
+  }
+
+  body:has(.live-root:not(.live-is-desktop))>.max-w-7xl>.grid {
+    gap: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    height: 100%;
+  }
+
+  body:has(.live-root:not(.live-is-desktop)) #app-view {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* section.w-full is the direct wrapper of #live-shell — must be in height chain */
+  body:has(.live-root:not(.live-is-desktop)) #app-view > section {
+    height: 100%;
+    display: block;
+  }
+}
+
+.live-is-desktop .live-root,
+.live-root.live-is-desktop {
+  border-radius: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+  min-height: auto;
+  height: calc(100vh - 7rem);
+  max-height: none;
+}
+
+@media (max-width: 960px) {
+
+  .live-is-desktop .live-root,
+  .live-root.live-is-desktop {
+    height: calc(100vh - 5rem);
+    border-radius: 20px;
+  }
+}
+
+/* ── Device-based visibility utilities ── */
+.live-desktop-only {
+  display: none !important;
+}
+
+.live-mobile-only {
+  display: flex;
+}
+
+.live-is-desktop .live-desktop-only,
+.live-root.live-is-desktop .live-desktop-only {
+  display: block !important;
+}
+
+.live-is-desktop .live-desktop-flex,
+.live-root.live-is-desktop .live-desktop-flex {
+  display: flex !important;
+}
+
+.live-is-desktop .live-mobile-only,
+.live-root.live-is-desktop .live-mobile-only {
+  display: none !important;
+}
+
+/* ── Glassmorphism ── */
+.glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ── Gradient Live (neon pink/red) ── */
+.gradient-live {
+  background: linear-gradient(135deg, #ec4899, #ef4444, #f43f5e);
+}
+
+/* ── Glow shadow ── */
+.shadow-glow {
+  box-shadow: 0 0 20px rgba(236, 72, 153, 0.35), 0 0 40px rgba(239, 68, 68, 0.15);
+}
+
+/* ── Live pulse animation ── */
+.live-pulse {
+  animation: live-badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-badge-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+}
+
+/* ── Custom scrollbar ── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ══════════════════════════════════════════════
+   LIVE LAYOUT – device-based + responsive scaling
+   ══════════════════════════════════════════════ */
+
+/* ── Layout container ── */
+.live-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Desktop default: side-by-side (video left, chat right) — Twitch style */
+.live-is-desktop .live-layout {
+  flex-direction: row;
+  height: 100%;
+}
+
+/* Desktop narrow windows: stack vertically */
+@media (max-width: 960px) {
+  .live-is-desktop .live-layout {
+    flex-direction: column;
+  }
+}
+
+/* ── Video column ── */
+.live-video-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  height: 100%; /* critical: makes flex children fill correctly */
+}
+
+.live-is-desktop .live-video-col {
+  padding: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  height: auto; /* desktop: let content determine height */
+}
+
+/* ── Video wrapper ── */
+.live-video-wrap {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  flex-shrink: 0;
+  border-radius: 0;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+}
+
+/* ═════════════════════════════════════════
+   FULL-BLEED MODE: applies to both
+   - .live-host-mobile  (host on phone)
+   - .live-cam-stream   (viewer watching phone camera)
+   Video fills full screen, chat overlays on top (TikTok style)
+   ═════════════════════════════════════════ */
+.live-host-mobile .live-video-wrap,
+.live-cam-stream .live-video-wrap {
+  aspect-ratio: unset;
+  flex: 1;
+  height: 100%;
+}
+
+/* Chat becomes an absolute overlay on the video column */
+.live-host-mobile .live-video-col,
+.live-cam-stream .live-video-col {
+  position: relative;
+  flex: 1; /* override flex: 0 0 auto from normal view to fill screen */
+}
+
+.live-host-mobile .live-mobile-content,
+.live-cam-stream .live-mobile-content {
+  display: flex !important;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 26;
+  background: transparent;
+  /* Allow touch scrolling inside comments on mobile. */
+  pointer-events: auto;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: 55%; /* increased: more comments visible */
+}
+
+.live-host-mobile .live-mobile-content>*,
+.live-cam-stream .live-mobile-content>* {
+  pointer-events: auto;
+}
+
+/* Title hidden in overlay mode (already shown via top badge area) */
+.live-host-mobile .live-mobile-content>div:first-child,
+.live-cam-stream .live-mobile-content>div:first-child {
+  display: none;
+}
+
+/* Comments fade from transparent at top, visible at bottom */
+.live-host-mobile .live-mobile-comments,
+.live-cam-stream .live-mobile-comments {
+  /* Avoid mask-image here: it can break touch scrolling on some mobile browsers. */
+  background: transparent;
+  padding: 8px 12px 2px;
+  /* Concrete viewport-based max-height so overflow-y:auto actually triggers scroll */
+  max-height: calc(55vh - 72px) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  /* Keep the container scrollable; bottom pinning is handled by the first child auto margin. */
+  display: flex !important;
+  flex-direction: column;
+}
+
+
+/* Input row: gradient background (no solid border) */
+.live-host-mobile .live-mobile-input-row,
+.live-cam-stream .live-mobile-input-row {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65) 0%, transparent 100%);
+  border-top: none;
+  padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
+}
+
+/* Viewer gets object-cover for vertical streams — mobile viewers only */
+.live-cam-stream:not(.live-is-desktop) #live-viewer-player video {
+  object-fit: cover !important;
+}
+/* Desktop viewer of portrait stream: always contain (no zoom) */
+.live-cam-stream.live-is-desktop #live-viewer-player video,
+.live-is-desktop #live-viewer-player video {
+  object-fit: contain !important;
+}
+
+/* ── Player controls on video (mobile) - smooth transition ── */
+#live-player-controls {
+  transition: opacity 0.3s ease;
+}
+
+.live-is-desktop .live-video-wrap {
+  border-radius: 18px;
+  aspect-ratio: 16 / 9;
+  min-height: 220px;
+  height: auto;
+  flex: 1 1 auto;
+}
+
+/* Narrow desktop: reduce video dominance, let chat have more room */
+@media (max-width: 960px) {
+  .live-is-desktop .live-video-col {
+    padding: 12px 12px 0 12px;
+    flex: 0 1 auto;
+  }
+
+  .live-is-desktop .live-video-wrap {
+    border-radius: 14px;
+    min-height: 180px;
+    max-height: 50vh;
+    flex: 0 0 auto;
+  }
+}
+
+.live-video-wrap:fullscreen {
+  border-radius: 0;
+  aspect-ratio: unset;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+}
+
+.live-video-wrap:fullscreen video {
+  object-fit: contain !important;
+}
+
+/* ══════════════════════════════════════
+   UNIFIED CHAT PANEL (desktop)
+   Comments + input + actions = one block
+   ══════════════════════════════════════ */
+.live-chat-col {
+  width: 100%;
+  min-width: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111827;
+  display: flex;
+  flex-direction: column;
+  min-height: 340px;
+  overflow: hidden;
+  border-radius: 0 0 28px 28px;
+}
+
+/* Desktop side-by-side: chat is a right sidebar column */
+.live-is-desktop .live-chat-col {
+  width: 380px;
+  max-width: 400px;
+  flex-shrink: 0;
+  border-top: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0 28px 28px 0;
+  min-height: auto;
+  max-height: 100%;
+  flex-direction: column;
+  /* vertical: header → comments → input */
+}
+
+/* Desktop narrow: chat goes full-width below video */
+@media (max-width: 960px) {
+  .live-is-desktop .live-chat-col {
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 auto;
+    min-height: 200px;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0 0 28px 28px;
+  }
+}
+
+/* Chat header (desktop) */
+.live-is-desktop .live-chat-col>div:first-child {
+  flex-shrink: 0;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Comments area — fills remaining space */
+.live-is-desktop .live-chat-col #live-comments {
+  flex: 1 1 0;
+  min-height: 0 !important;
+  max-height: none;
+  height: 0;
+  /* key: flex-basis 0 so flex-grow fills space */
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+/* Input area — anchored at bottom, never pushed out */
+.live-is-desktop .live-chat-col>div:last-child {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 16px;
+}
+
+/* ════════════════════════════════
+   IMMERSIVE MODE
+   ════════════════════════════════ */
+body.live-immersive-active {
+  padding-top: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Hide all top-level page elements (header, nav, sidebar wrapper) */
+body.live-immersive-active>app-header,
+body.live-immersive-active>.max-w-7xl app-sidebar,
+body.live-immersive-active>.max-w-7xl .grid>*:not(#app-view) {
+  display: none !important;
+}
+
+/* Make the main content container fill the viewport */
+body.live-immersive-active>.max-w-7xl {
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.live-immersive-active>.max-w-7xl>.grid {
+  display: block !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  min-height: 100vh !important;
+}
+
+body.live-immersive-active #app-view {
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* The live shell itself becomes fixed fullscreen */
+.live-immersive-shell {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  max-height: none !important;
+  /* Use dvh + -webkit-fill-available for cross-browser mobile support */
+  height: 100vh !important;
+  height: 100dvh !important;
+  height: -webkit-fill-available !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  width: 100vw !important;
+  max-width: none !important;
+}
+
+/* In immersive, video wrapper fills edge-to-edge */
+.live-immersive-shell .live-video-wrap {
+  border-radius: 0 !important;
+}
+
+.live-immersive-shell .live-root {
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+}
+
+/* In immersive mode (mobile only): X button escapes overlay parent, JS controls visibility */
+.live-immersive-shell:not(.live-is-desktop) #live-immersive-btn {
+  position: fixed !important;
+  top: 12px;
+  right: 12px;
+  z-index: 10001 !important;
+  transition: opacity 0.3s ease;
+}
+
+/* In immersive: video-col fills the entire shell */
+.live-immersive-shell .live-video-col {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Smooth exit transition */
+.live-root {
+  transition: opacity 0.15s ease;
+}
+
+/* ═══════════════════════════
+   MOBILE CONTENT (below video, flow layout)
+   ═══════════════════════════ */
+.live-mobile-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #0b1120;
+}
+
+/* Cam-stream overlay: needs overflow:auto so child comments can scroll */
+.live-cam-stream .live-mobile-content,
+.live-host-mobile .live-mobile-content {
+  /* Keep overlay stable; the comments container itself scrolls. */
+  overflow: hidden;
+}
+
+/* ── Mobile comments ── */
+.live-mobile-comments {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 12px 8px;
+}
+
+/* Push short chats to the bottom without breaking scroll when content overflows. */
+.live-mobile-comments > :first-child {
+  margin-top: auto;
+}
+
+/* ── Mobile input row (default: separate section below video) ── */
+.live-mobile-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 12px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  flex-shrink: 0;
+  background: rgba(11, 17, 32, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Only full-bleed mobile modes pin the composer to the viewport bottom */
+@media (max-width: 960px) {
+  body:has(.live-root.live-host-mobile) .live-mobile-input-row,
+  body:has(.live-root.live-cam-stream) .live-mobile-input-row {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 95;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+    background: rgba(11, 17, 32, 0.98);
+  }
+  /* Pad comments only when the composer is fixed over the video */
+  body:has(.live-root.live-host-mobile) .live-mobile-comments,
+  body:has(.live-root.live-cam-stream) .live-mobile-comments {
+    padding-bottom: 68px;
+  }
+  /* In standard mobile layout, keep the composer in flow and the comments flush to the bottom */
+  body:has(.live-root:not(.live-is-desktop):not(.live-host-mobile):not(.live-cam-stream)) .live-mobile-input-row {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    z-index: auto;
+  }
+  body:has(.live-root:not(.live-is-desktop):not(.live-host-mobile):not(.live-cam-stream)) .live-mobile-comments {
+    padding-bottom: 8px;
+  }
+}
+
+.live-mobile-comment {
+  align-self: flex-start;
+  margin-right: auto;
+}
+
+/* ── Mobile textarea ── */
+.live-mobile-input {
+  flex: 1;
+  min-height: 42px;
+  max-height: 80px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 10px 16px;
+  font-size: 14px;
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  caret-color: #ec4899;
+  outline: none;
+  resize: none;
+}
+
+.live-mobile-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.live-mobile-input:focus {
+  border-color: rgba(236, 72, 153, 0.4);
+}
+
+/* ── Overlay auto-hide transition ── */
+.live-overlay {
+  transition: opacity 0.3s ease;
+}
+
+/* ── Reaction selector popup animation ── */
+@keyframes live-selector-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.85);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Floating emoji animation ── */
+.live-float-emoji {
+  position: absolute;
+  bottom: 0;
+  font-size: 28px;
+  animation: live-float-up 3s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes live-float-up {
+  0% {
+    opacity: 1;
+    transform: translateY(0) translateX(0) scale(1);
+  }
+
+  60% {
+    opacity: 0.8;
+    transform: translateY(-40vh) translateX(var(--float-x, 0)) scale(1.2);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-60vh) translateX(var(--float-x, 0)) scale(0.6);
+  }
+}
+
+/* ── Comment fade-in animation ── */
+@keyframes live-comment-in {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

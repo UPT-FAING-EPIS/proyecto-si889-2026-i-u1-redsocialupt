@@ -177,6 +177,18 @@ class AuthService
     }
 
     /**
+     * Renueva el JWT del usuario autenticado (si sigue activo).
+     */
+    public function refreshToken(int $userId): array
+    {
+        $user = $this->markPresence($this->ensureUserIsActive($this->findOrFail($userId)));
+        return [
+            'token' => $this->generateJwt($user),
+            'user'  => $this->formatUser($user),
+        ];
+    }
+
+    /**
      * Lista todos los usuarios (RF-09 — solo admin).
      */
     public function listUsers()
@@ -503,4 +515,3 @@ class AuthService
         ];
     }
 }
-

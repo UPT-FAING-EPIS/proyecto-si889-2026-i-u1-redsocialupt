@@ -107,7 +107,7 @@ class AuthController extends BaseController
         ]);
 
         $data = $request->only(['bio', 'avatar_url', 'banner_url', 'academic_cycle']);
-        
+
         $uploadDir = $this->publicUploadsPath('auth-uploads');
         if (!is_dir($uploadDir)) {
             mkdir($uploadDir, 0775, true);
@@ -184,6 +184,27 @@ class AuthController extends BaseController
         try {
             $user = $this->authService->touchPresence($request->auth->sub);
             return response()->json(['message' => 'Presencia actualizada', 'user' => $user], 200);
+        } catch (\Exception $e) {
+            [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
+            return response()->json(array_filter([
+                'error' => $message,
+                'code' => $code,
+                'reason' => $reason,
+                'blocked_until' => $blockedUntil,
+                'is_indefinite' => $isIndefinite,
+            ], fn ($value) => $value !== null), is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() < 600 ? $e->getCode() : 500);
+        }
+    }
+
+    /**
+     * POST /api/auth/refresh
+     * Renueva el JWT del usuario autenticado.
+     */
+    public function refreshToken(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->authService->refreshToken($request->auth->sub);
+            return response()->json($result, 200);
         } catch (\Exception $e) {
             [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
             return response()->json(array_filter([
@@ -363,4 +384,3 @@ class AuthController extends BaseController
         return [$e->getMessage(), null, null, null, null];
     }
 }
-

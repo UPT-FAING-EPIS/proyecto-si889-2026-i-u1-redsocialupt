@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\LikeService;
+use App\Services\LivestreamService;
 use App\Services\PostService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,6 +13,7 @@ class PostController extends BaseController
 {
     private PostService $postService;
     private LikeService $reactionService;
+    private LivestreamService $livestreamService;
 
     private function publicUploadsPath(string $directory): string
     {
@@ -22,6 +24,7 @@ class PostController extends BaseController
     {
         $this->postService = new PostService();
         $this->reactionService = new LikeService();
+        $this->livestreamService = new LivestreamService();
     }
 
     public function store(Request $request): JsonResponse
@@ -174,6 +177,9 @@ class PostController extends BaseController
         $post->reactions_count = $this->reactionService->getReactionSummary($post->id);
         $post->comments_count = $post->comments()->count();
         $post->current_reaction = $this->reactionService->currentReaction($userId, $post->id);
+        if (($post->post_type ?? 'standard') === 'livestream') {
+            $post->viewer_count = $this->livestreamService->getViewerCount((int) $post->id);
+        }
         return $post;
     }
 

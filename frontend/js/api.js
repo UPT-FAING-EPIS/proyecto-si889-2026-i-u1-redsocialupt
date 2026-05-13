@@ -257,6 +257,35 @@ const PostsAPI = {
       body: JSON.stringify({ content, visibility }),
     });
   },
+  createLivestream: ({ liveTitle, content = '', visibility = 'all', liveSource = 'camera', streamKey, playbackUrl }) => apiFetch(`/api/livestreams`, {
+    method: 'POST',
+    body: JSON.stringify({
+      live_title: liveTitle,
+      content,
+      visibility,
+      live_source: liveSource,
+      stream_key: streamKey,
+      playback_url: playbackUrl,
+    }),
+  }),
+  getActiveLivestreams: () => apiFetch(`/api/livestreams/active`, {
+    headers: {
+      ...authHeaders(),
+      'X-Friend-Ids': JSON.stringify((window.__friendIdsCache || [])),
+      'X-User-Faculty': getUser()?.faculty || '',
+    },
+  }),
+  getLivestream: (id) => apiFetch(`/api/livestreams/${id}`),
+  endLivestream: (id, durationSeconds = 0) => apiFetch(`/api/livestreams/${id}/end`, {
+    method: 'PUT',
+    body: JSON.stringify({ duration_seconds: durationSeconds }),
+  }),
+  livestreamHeartbeat: (id) => apiFetch(`/api/livestreams/${id}/heartbeat`, { method: 'POST' }),
+  reactLivestream: (id, reactionType) => apiFetch(`/api/livestreams/${id}/reaction`, {
+    method: 'POST',
+    body: JSON.stringify({ reaction_type: reactionType }),
+  }),
+  getLivestreamEvents: (id, after = 0) => apiFetch(`/api/livestreams/${id}/events?after=${after}`),
 
   deletePost: (id) => apiFetch(`${API.posts}/${id}`, { method: 'DELETE' }),
   adminDeletePost: (id) => apiFetch(`${API.posts}/${id}/admin`, { method: 'DELETE' }),
@@ -527,7 +556,7 @@ function showToast(msg, type = '') {
   }
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.textContent = msg;
+      toast.textContent = msg;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3600);
 }
@@ -536,6 +565,56 @@ function showToast(msg, type = '') {
 function requireAuth() {
   if (!isLoggedIn()) { window.location.href = '/index.html'; }
 }
+
+/* ── Activity-based JWT refresh ──────────────────────────────── */
+(function initTokenRefresh() {
+  let lastActivity = Date.now();
+
+  // Track user activity
+  const activityEvents = ['click', 'keydown', 'scroll', 'touchstart', 'mousemove'];
+  const markActivity = () => { lastActivity = Date.now(); };
+  activityEvents.forEach(evt => document.addEventListener(evt, markActivity, { passive: true }));
+
+  // Check session state every 1 minute
+  setInterval(async () => {
+    if (!isLoggedIn()) return;
+
+    const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 min in ms
+    // Skip inactivity logout if user is in a livestream (watching or streaming)
+    const isInLive = document.body.classList.contains('live-immersive-active')
+                  || !!document.querySelector('#live-shell')
+                  || window.location.hash?.includes('/live/');
+    if (!isInLive && Date.now() - lastActivity >= INACTIVITY_LIMIT) {
+      logout();
+      return;
+    }
+
+    const token = getToken();
+    const payload = decodeJwtPayload(token);
+    if (!payload || !payload.exp) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    const timeLeft = payload.exp - now;
+    const REFRESH_THRESHOLD = 30 * 60; // refresh if less than 30 min left
+
+    if (timeLeft < REFRESH_THRESHOLD) {
+      try {
+        const res = await fetch(`${API.auth}/auth/refresh`, {
+          method: 'POST',
+          headers: authHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            saveSession(data.token, data.user || getUser());
+          }
+        }
+      } catch (e) {
+        // Silent fail — will retry next interval
+      }
+    }
+  }, 60 * 1000); // every 1 minute
+})();
 
 /* ── Guard: redirect to feed if already authenticated ─────────── */
 function requireGuest() {

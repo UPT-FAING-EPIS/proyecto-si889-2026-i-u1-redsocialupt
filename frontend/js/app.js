@@ -49,7 +49,10 @@
       }
 
       if (window.AppRouter?.currentRoute) {
-        window.AppRouter.render();
+        const currentRouteName = String(window.AppRouter.currentRoute?.route || '');
+        if (currentRouteName !== 'live') {
+          window.AppRouter.render();
+        }
       }
     }).catch((error) => {
       console.error('No se pudo hidratar la sesion desde /auth/me:', error);
@@ -509,7 +512,157 @@
     document.title = title ? `${title} - UPT Connect` : 'UPT Connect';
   }
 
+  function getLivestreamEngineHost() {
+    return window.location.hostname || 'localhost';
+  }
+
+  function buildLivestreamHlsUrl(streamKey) {
+    return `${window.location.origin}/ome/app/${encodeURIComponent(streamKey)}/master.m3u8`;
+  }
+
+  function normalizeLivestreamPlaybackUrl(streamKey, _playbackUrl) {
+    // Always rebuild from stream_key to ensure the viewer uses the frontend proxy
+    return buildLivestreamHlsUrl(streamKey);
+  }
+
+  function buildLivestreamPublishUrl(streamKey) {
+    return `${window.location.origin}/ome/app/${encodeURIComponent(streamKey)}?direction=whip&transport=tcp`;
+  }
+
+  function buildLivestreamStreamKey(userId) {
+    return `upt-live-${userId}-${Date.now().toString(36)}`;
+  }
+
+  function isDesktopClient() {
+    // Real device detection: UA + pointer + touch — NOT viewport size
+    const ua = navigator.userAgent || '';
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i.test(ua);
+    const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const hasFinePointer = window.matchMedia('(pointer: fine)').matches;
+    const isTouchOnly = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && !hasFinePointer;
+    // Desktop = not a mobile UA, has a fine pointer (mouse), and is not touch-only
+    if (isMobileUA || (hasCoarsePointer && !hasFinePointer) || isTouchOnly) return false;
+    return true;
+  }
+
+  function isMobileDevice() {
+    return !isDesktopClient();
+  }
+
+  function loadExternalScript(src, globalName) {
+    if (globalName && window[globalName]) {
+      return Promise.resolve(window[globalName]);
+    }
+
+    const existing = document.querySelector(`script[data-external-src="${src}"]`);
+    if (existing) {
+      return new Promise((resolve, reject) => {
+        if (globalName && window[globalName]) {
+          resolve(window[globalName]);
+          return;
+        }
+
+        existing.addEventListener('load', () => resolve(globalName ? window[globalName] : true), { once: true });
+        existing.addEventListener('error', () => reject(new Error(`No se pudo cargar ${src}`)), { once: true });
+      });
+    }
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.dataset.externalSrc = src;
+      script.onload = () => resolve(globalName ? window[globalName] : true);
+      script.onerror = () => reject(new Error(`No se pudo cargar ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  function loadExternalStyle(href) {
+    if (document.querySelector(`link[data-external-style="${href}"]`)) {
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.dataset.externalStyle = href;
+    document.head.appendChild(link);
+  }
+
+  async function ensureLivestreamLibraries() {
+    await loadExternalScript('https://cdn.jsdelivr.net/npm/hls.js@latest', 'Hls');
+    await loadExternalScript('https://cdn.jsdelivr.net/npm/ovenlivekit@latest/dist/OvenLiveKit.min.js', 'OvenLiveKit');
+  }
+
+  function renderLivestreamCard(post, currentUserId, options = {}) {
+    const author = resolveProfileData({
+      id: post.user_id,
+      user_name: post.user_name,
+      user_faculty: post.user_faculty,
+      user_school: post.user_school,
+      user_avatar: post.user_avatar,
+    });
+    const isLive = post.live_status === 'live';
+    const canDelete = options.canDelete ?? Number(post.user_id) === Number(currentUserId);
+    const badgeTone = isLive ? 'bg-[#ff0b53] text-white' : 'bg-slate-200 text-slate-700';
+
+    return `
+      <article class="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm overflow-hidden">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <button type="button" class="flex items-center gap-3 text-left" data-action="open-profile" data-user-id="${post.user_id}">
+            ${renderAvatar(author, { sizeClass: 'w-11 h-11', textClass: 'text-white font-bold', showOnline: true })}
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-bold text-sm text-slate-900">${escapeHtml(displayName(author))}</span>
+                <span class="text-white text-[10px] font-bold px-2 py-0.5 rounded-full" style="background:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(timeAgo(post.created_at))}</p>
+            </div>
+          </button>
+          ${canDelete ? `
+            <button type="button" data-action="delete-post" data-post-id="${post.id}" class="text-slate-400 hover:bg-slate-50 p-1 rounded-full shrink-0">
+              <span class="material-symbols-outlined">delete</span>
+            </button>
+          ` : ''}
+        </div>
+        <button type="button" data-action="open-livestream" data-live-id="${post.id}" class="block w-full text-left">
+          <div class="rounded-[28px] overflow-hidden relative min-h-[280px] bg-[radial-gradient(circle_at_top_left,_#6d28d9,_#0f172a_55%,_#020617)]">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,132,0,0.26),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(236,72,153,0.20),_transparent_26%)]"></div>
+            <div class="absolute top-4 left-4 right-4 flex items-center justify-between gap-3 z-10">
+              <div class="flex items-center gap-2">
+                <span class="px-3 py-1 rounded-full text-xs font-black tracking-[0.18em] ${badgeTone}">${isLive ? 'LIVE' : 'FINALIZADO'}</span>
+                <span class="px-3 py-1 rounded-full bg-black/45 text-white text-xs font-semibold flex items-center gap-1">
+                  <span class="material-symbols-outlined text-[14px]">visibility</span>
+                  ${Number(post.viewer_count || 0)} 
+                </span>
+              </div>
+              <span class="px-3 py-1 rounded-full bg-white/10 text-white text-xs font-semibold">${escapeHtml(post.live_source === 'screen' ? 'Pantalla' : 'Camara')}</span>
+            </div>
+            <div class="relative z-10 h-full min-h-[280px] flex flex-col justify-end p-5 text-white">
+              <h3 class="text-xl md:text-2xl font-black leading-tight max-w-[80%]">${escapeHtml(post.live_title || 'Directo UPT')}</h3>
+              <p class="text-sm text-white/80 mt-2 max-w-[80%]">${escapeHtml((post.content || '').slice(0, 140) || 'Transmision en vivo de la comunidad UPT')}</p>
+              <div class="mt-5 flex items-center gap-3">
+                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white/12 text-xs font-semibold">
+                  <span class="material-symbols-outlined text-[14px]">favorite</span>
+                  ${escapeHtml(reactionCountSummary(post.reactions_count)) || `${post.reactions_total || 0} reacciones`}
+                </span>
+                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white/12 text-xs font-semibold">
+                  <span class="material-symbols-outlined text-[14px]">chat</span>
+                  ${Number(post.comments_count || 0)} comentarios
+                </span>
+              </div>
+            </div>
+          </div>
+        </button>
+      </article>
+    `;
+  }
+
   function renderPostCard(post, currentUserId, options = {}) {
+    if ((post.post_type || 'standard') === 'livestream') {
+      return renderLivestreamCard(post, currentUserId, options);
+    }
     const canDelete = options.canDelete ?? Number(post.user_id) === Number(currentUserId);
     const interactive = options.interactive !== false;
     const clickable = options.clickable !== false;
@@ -1450,10 +1603,25 @@
     async function ensureLocalStream(mode = 'audio') {
       const needsVideo = mode === 'video';
       if (!callState.localStream) {
-        callState.localStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: needsVideo,
-        });
+        try {
+          callState.localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: needsVideo,
+          });
+        } catch (err) {
+          // If device is busy (another app using mic/camera), release and retry once
+          if (err.name === 'NotReadableError' || err.name === 'AbortError') {
+            // Release any partial streams held by other contexts
+            releaseCallRuntime();
+            await new Promise(r => setTimeout(r, 600));
+            callState.localStream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: needsVideo,
+            });
+          } else {
+            throw err;
+          }
+        }
       } else {
         if (!getLocalAudioTrack()) {
           const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -1858,7 +2026,11 @@
       try {
         await ensureLocalStream(mode);
       } catch (error) {
-        showToast(mode === 'video' ? 'Debes permitir microfono y camara para iniciar la videollamada' : 'Debes permitir el microfono para iniciar la llamada', 'error');
+        const busy = error?.name === 'NotReadableError' || error?.name === 'AbortError';
+        showToast(busy
+          ? (mode === 'video' ? 'Otro app usa el micrófono/cámara. Ciérrala e inténtalo de nuevo.' : 'Otro app usa el micrófono. Ciérralo e inténtalo de nuevo.')
+          : (mode === 'video' ? 'Debes permitir microfono y camara para iniciar la videollamada' : 'Debes permitir el microfono para iniciar la llamada'),
+        'error');
         return;
       }
 
@@ -1890,7 +2062,11 @@
       try {
         await ensureLocalStream(callState.mode);
       } catch (error) {
-        showToast(callState.mode === 'video' ? 'Debes permitir microfono y camara para aceptar la videollamada' : 'Debes permitir el microfono para aceptar la llamada', 'error');
+        const busy = error?.name === 'NotReadableError' || error?.name === 'AbortError';
+        showToast(busy
+          ? (callState.mode === 'video' ? 'Otro app usa el micrófono/cámara. Ciérrala e inténtalo de nuevo.' : 'Otro app usa el micrófono. Ciérralo e inténtalo de nuevo.')
+          : (callState.mode === 'video' ? 'Debes permitir microfono y camara para aceptar la videollamada' : 'Debes permitir el microfono para aceptar la llamada'),
+        'error');
         return;
       }
       const result = await ChatAPI.acceptCall(callState.session.id);
@@ -2759,6 +2935,9 @@
                     <button id="pick-image-btn" type="button" class="feed-composer-tool">
                       <span class="material-symbols-outlined text-[19px]">image</span>
                     </button>
+                    <button id="open-live-modal-btn" type="button" class="feed-composer-tool" title="Iniciar directo">
+                      <span class="material-symbols-outlined text-[19px]">broadcast_on_personal</span>
+                    </button>
                     <div class="relative feed-composer-emoji-anchor">
                       <button id="toggle-emoji-btn" type="button" class="feed-composer-tool">
                         <span class="material-symbols-outlined text-[19px]">mood</span>
@@ -2865,6 +3044,62 @@
               </div>
             </div>
           </div>
+          <div id="livestream-modal" class="fixed inset-0 bg-slate-950/70 hidden items-center justify-center z-50 px-4 py-6">
+            <div class="w-full max-w-2xl bg-[#0f172a] text-white rounded-[32px] border border-white/10 shadow-2xl overflow-hidden">
+              <div class="px-6 py-5 border-b border-white/10 flex items-center justify-between gap-3">
+                <div>
+                  <h3 class="text-xl font-black">Iniciar directo</h3>
+                  <p class="text-sm text-white/65 mt-1">Crearas una publicacion en vivo con comentarios y reacciones en tiempo real.</p>
+                </div>
+                <button id="close-live-modal-btn" type="button" class="w-10 h-10 rounded-full bg-white/8 hover:bg-white/14 flex items-center justify-center">
+                  <span class="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <div class="p-6 space-y-5">
+                <label class="block">
+                  <span class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Titulo</span>
+                  <input id="live-title-input" type="text" maxlength="180" class="mt-2 w-full rounded-2xl bg-slate-950/70 border border-white/10 px-4 py-3 text-sm text-white caret-[#ff0b53] outline-none focus:border-[#ff0b53] placeholder:text-white/35" style="-webkit-text-fill-color:#fff;" placeholder="Ponle un titulo a tu directo"/>
+                </label>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
+                    <p class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Fuente</p>
+                    <div class="mt-3 grid gap-2" id="live-source-options">
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <input type="radio" name="live-source" value="camera" checked/>
+                        <span class="text-sm font-semibold">Camara + microfono</span>
+                      </label>
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3" id="live-screen-option">
+                        <input type="radio" name="live-source" value="screen"/>
+                        <span class="text-sm font-semibold">Compartir pantalla + audio del sistema/microfono</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
+                    <p class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Visibilidad</p>
+                    <div class="mt-3 grid gap-2">
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <input type="radio" name="live-visibility" value="all" checked/>
+                        <span class="text-sm font-semibold">Toda la comunidad UPT</span>
+                      </label>
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <input type="radio" name="live-visibility" value="friends"/>
+                        <span class="text-sm font-semibold">Solo amigos</span>
+                      </label>
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <input type="radio" name="live-visibility" value="faculty"/>
+                        <span class="text-sm font-semibold">Solo mi facultad</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="px-6 py-5 border-t border-white/10 flex items-center justify-end gap-3">
+                <button id="cancel-live-modal-btn" type="button" class="px-5 py-3 rounded-full bg-white/10 hover:bg-white/14 text-sm font-semibold">Cancelar</button>
+                <button id="confirm-live-create-btn" type="button" class="px-5 py-3 rounded-full bg-[#ff0b53] hover:bg-[#e00549] text-sm font-black tracking-[0.12em]">EMPEZAR</button>
+              </div>
+            </div>
+          </div>
         `;
       },
       mount({ container, user, router }) {
@@ -2891,11 +3126,17 @@
         const emojiGrid = container.querySelector('#emoji-grid');
         const deleteModal = container.querySelector('#delete-modal');
         const commentModal = container.querySelector('#comment-modal');
+        const livestreamModal = container.querySelector('#livestream-modal');
         const commentPostPreview = container.querySelector('#comment-post-preview');
         const commentList = container.querySelector('#comment-list');
         const commentSort = container.querySelector('#comment-sort');
         const commentInput = container.querySelector('#comment-input');
         const publishButton = container.querySelector('#btn-publish');
+        const openLiveModalButton = container.querySelector('#open-live-modal-btn');
+        const liveTitleInput = container.querySelector('#live-title-input');
+
+        const confirmLiveCreateButton = container.querySelector('#confirm-live-create-btn');
+        const liveScreenOption = container.querySelector('#live-screen-option');
         const visibilityLabels = {
           all: 'Toda la comunidad UPT',
           friends: 'Solo amigos',
@@ -2980,6 +3221,25 @@
         function closeDeleteModal() {
           pendingDeleteId = null;
           deleteModal.classList.add('hidden');
+        }
+
+        function openLivestreamModal() {
+          livestreamModal.classList.remove('hidden');
+          livestreamModal.classList.add('flex');
+          liveTitleInput.value = '';
+
+          if (!isDesktopClient() && liveScreenOption) {
+            liveScreenOption.classList.add('hidden');
+            const cameraOption = livestreamModal.querySelector('input[name="live-source"][value="camera"]');
+            if (cameraOption) cameraOption.checked = true;
+          } else if (liveScreenOption) {
+            liveScreenOption.classList.remove('hidden');
+          }
+        }
+
+        function closeLivestreamModal() {
+          livestreamModal.classList.add('hidden');
+          livestreamModal.classList.remove('flex');
         }
 
         async function loadComments(postId = pendingCommentId, sort = currentCommentSort) {
@@ -3090,6 +3350,74 @@
           showToast(result?.data?.error || 'Error al publicar', 'error');
         }
 
+        async function createLivestream() {
+          const liveTitle = liveTitleInput.value.trim();
+
+          const visibility = livestreamModal.querySelector('input[name="live-visibility"]:checked')?.value || 'all';
+          const liveSource = livestreamModal.querySelector('input[name="live-source"]:checked')?.value || 'camera';
+
+          if (!liveTitle) {
+            showToast('Ponle un titulo al directo', 'error');
+            return;
+          }
+
+          confirmLiveCreateButton.disabled = true;
+          confirmLiveCreateButton.textContent = 'PREPARANDO...';
+
+          // If screen source, request screen selection BEFORE creating the livestream
+          let preCapturedStream = null;
+          if (liveSource === 'screen' && isDesktopClient()) {
+            try {
+              preCapturedStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: true,
+              });
+            } catch (err) {
+              // User cancelled the screen picker
+              confirmLiveCreateButton.disabled = false;
+              confirmLiveCreateButton.textContent = 'EMPEZAR';
+              showToast('No se selecciono ninguna pantalla para compartir', 'error');
+              return;
+            }
+          }
+
+          confirmLiveCreateButton.textContent = 'CREANDO...';
+
+          const streamKey = buildLivestreamStreamKey(user.id);
+          const playbackUrl = buildLivestreamHlsUrl(streamKey);
+
+          const result = await PostsAPI.createLivestream({
+            liveTitle,
+
+            visibility,
+            liveSource,
+            streamKey,
+            playbackUrl,
+          });
+
+          confirmLiveCreateButton.disabled = false;
+          confirmLiveCreateButton.textContent = 'EMPEZAR';
+
+          if (!result?.ok) {
+            // Release pre-captured stream if creation failed
+            if (preCapturedStream) {
+              preCapturedStream.getTracks().forEach(t => t.stop());
+            }
+            showToast(result?.data?.error || 'No se pudo crear el directo', 'error');
+            return;
+          }
+
+          // Store pre-captured stream for the live page to use
+          if (preCapturedStream) {
+            window.__uptLivePreCapturedStream = preCapturedStream;
+          }
+
+          postContent.value = '';
+          closeLivestreamModal();
+          showToast('Directo creado', 'success');
+          router.navigate('live', { id: result.data.id, host: '1' });
+        }
+
         async function confirmComment() {
           const content = commentInput.value.trim();
           if (!pendingCommentId || !content) return;
@@ -3150,6 +3478,10 @@
         container.querySelector('#confirm-delete-btn').addEventListener('click', confirmDelete);
         container.querySelector('#close-comment-top-btn').addEventListener('click', closeCommentModal);
         container.querySelector('#confirm-comment-btn').addEventListener('click', confirmComment);
+        openLiveModalButton?.addEventListener('click', openLivestreamModal);
+        container.querySelector('#close-live-modal-btn')?.addEventListener('click', closeLivestreamModal);
+        container.querySelector('#cancel-live-modal-btn')?.addEventListener('click', closeLivestreamModal);
+        confirmLiveCreateButton?.addEventListener('click', createLivestream);
         commentSort.addEventListener('change', () => {
           if (!pendingCommentId) return;
           loadComments(pendingCommentId, commentSort.value);
@@ -3214,6 +3546,10 @@
             }
             if (actionTarget.dataset.action === 'comment-post') {
               openCommentModal(postId);
+              return;
+            }
+            if (actionTarget.dataset.action === 'open-livestream') {
+              router.navigate('live', { id: actionTarget.dataset.liveId });
               return;
             }
             if (actionTarget.dataset.action === 'report-post') {
@@ -3294,6 +3630,1565 @@
           };
         },
       },
+    live: {
+      title: 'Directo',
+      activeNav: 'feed',
+      render() {
+        return `
+          <section class="w-full">
+            <div id="live-shell" class="live-root text-white">
+              <div class="live-layout">
+
+                <!-- ═══ VIDEO PANEL ═══ -->
+                <div class="live-video-col">
+                  <div id="live-video-wrap" class="live-video-wrap">
+                    <div id="live-viewer-player" class="absolute inset-0 hidden"></div>
+                    <video id="live-host-preview" class="absolute inset-0 w-full h-full object-cover bg-black hidden" style="object-fit:cover" playsinline autoplay muted></video>
+
+                    <!-- Fallback -->
+                    <div id="live-video-fallback" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-[5]">
+                      <div class="w-20 h-20 rounded-full bg-white/10 border border-white/15 flex items-center justify-center mb-5">
+                        <span class="material-symbols-outlined text-[36px]">sensors</span>
+                      </div>
+                      <h3 id="live-fallback-title" class="text-2xl font-black">Preparando directo</h3>
+                      <p id="live-fallback-copy" class="text-white/70 text-sm mt-3 max-w-md">Conecta la fuente del directo para comenzar a transmitir.</p>
+                    </div>
+
+                    <!-- ── OVERLAY (top) ── -->
+                    <div data-live-overlay class="live-overlay absolute top-0 left-0 right-0 z-30 flex items-start justify-between p-4 bg-gradient-to-b from-black/60 to-transparent transition-opacity duration-300">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <div id="live-status-chip" class="flex items-center gap-2 rounded-full gradient-live live-pulse shadow-glow px-3 py-1.5">
+                          <div id="live-status-dot" class="w-2 h-2 rounded-full bg-white"></div>
+                          <span id="live-status-badge" class="text-[10px] font-black tracking-[0.18em]">LIVE</span>
+                        </div>
+                        <div class="rounded-full glass px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5">
+                          <span class="material-symbols-outlined text-[14px]">visibility</span>
+                          <span id="live-viewer-count">0</span>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button id="live-immersive-btn" type="button" class="w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Modo inmersivo">
+                          <span class="material-symbols-outlined text-[20px]">open_in_full</span>
+                        </button>
+                        <button id="live-fullscreen-btn" type="button" class="w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition live-desktop-only" title="Pantalla completa (video)">
+                          <span class="material-symbols-outlined text-[20px]">fullscreen</span>
+                        </button>
+                        <button id="live-host-end-btn" type="button" class="hidden rounded-full bg-[#ff0b53] hover:bg-[#e00549] px-4 py-2 text-xs font-black tracking-[0.16em] transition">FINALIZAR</button>
+                      </div>
+                    </div>
+
+                    <!-- ── OVERLAY (bottom – title + host tools, desktop only) ── -->
+                    <div data-live-overlay class="live-overlay live-desktop-only absolute bottom-0 left-0 right-0 z-30 p-4 bg-gradient-to-t from-black/70 via-black/30 to-transparent transition-opacity duration-300">
+                      <div class="flex items-end justify-between gap-4">
+                        <div class="min-w-0 flex items-center gap-3">
+                          <h2 id="live-title" class="text-xl md:text-2xl font-black leading-tight break-words drop-shadow-lg">Cargando directo...</h2>
+                          <button id="live-viewer-mute-btn" type="button" class="hidden w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Silenciar / Activar sonido">
+                            <span class="material-symbols-outlined text-[20px]">volume_up</span>
+                          </button>
+                        </div>
+                        <div id="live-host-tools" class="hidden items-center gap-2 shrink-0">
+                          <button id="live-toggle-mic-btn" type="button" class="w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar microfono">
+                            <span class="material-symbols-outlined text-[20px]">mic</span>
+                          </button>
+                          <button id="live-toggle-system-audio-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar audio del sistema">
+                            <span class="material-symbols-outlined text-[20px]">volume_up</span>
+                          </button>
+                          <button id="live-flip-camera-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Cambiar camara">
+                            <span class="material-symbols-outlined text-[20px]">flip_camera_ios</span>
+                          </button>
+                          <button id="live-switch-source-btn" type="button" class="rounded-full glass hover:bg-white/20 px-3 py-1.5 text-xs font-semibold transition">Cambiar fuente</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- ── PLAYER CONTROLS (mobile only, bottom-right of video) ── -->
+                    <div id="live-player-controls" class="live-mobile-only absolute bottom-3 right-3 z-30 flex items-center gap-2">
+                      <button id="live-player-mute-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar / Activar sonido">
+                        <span class="material-symbols-outlined text-[20px]">volume_up</span>
+                      </button>
+                      <button id="live-player-fs-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Pantalla completa">
+                        <span class="material-symbols-outlined text-[20px]">fullscreen</span>
+                      </button>
+                    </div>
+
+                    <!-- Floating reactions -->
+                    <div id="live-floating-reactions" class="pointer-events-none absolute inset-y-0 right-2 w-20 overflow-visible z-20"></div>
+                  </div>
+
+                  <!-- ═══ MOBILE CONTENT: title + comments + input (BELOW video, not overlaid) ═══ -->
+                  <div id="live-mobile-overlay" class="live-mobile-content live-mobile-only">
+                    <div class="px-4 pb-1 pt-3">
+                      <h2 id="live-title-mobile" class="text-lg font-black leading-tight break-words drop-shadow-lg">Cargando directo...</h2>
+                    </div>
+                    <div id="live-comments-mobile" class="live-mobile-comments custom-scrollbar" style="overflow-y:auto;touch-action:pan-y;"></div>
+                    <div class="live-mobile-input-row">
+                      <!-- Mobile mic button (host only, hidden for viewers) -->
+                      <button id="live-toggle-mic-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Silenciar micrófono">
+                        <span class="material-symbols-outlined text-[20px]">mic</span>
+                      </button>
+                      <!-- Flip camera button (host mobile only) -->
+                      <button id="live-flip-camera-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Cambiar cámara">
+                        <span class="material-symbols-outlined text-[20px]">flip_camera_ios</span>
+                      </button>
+                      <textarea id="live-comment-input-mobile" rows="1" class="live-mobile-input" placeholder="Escribe algo..."></textarea>
+                      <div class="relative">
+                        <button id="live-reaction-trigger" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
+                        <div id="live-reaction-selector" class="hidden absolute bottom-[120%] right-0 glass rounded-2xl px-1.5 py-2 flex flex-col items-center gap-1 shadow-xl z-50" style="animation:live-selector-pop 0.2s ease-out both;">
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_gusta">❤️</button>
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_encanta">😍</button>
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_divierte">😂</button>
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_sorprende">😮</button>
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_enoja">😡</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ═══ CHAT PANEL (desktop only) ═══ -->
+                <aside class="live-chat-col live-desktop-only live-desktop-flex">
+                  <div class="px-5 py-4 border-b border-white/10">
+                    <p class="text-xs uppercase tracking-[0.24em] text-white/45 font-black">Chat en vivo</p>
+                    <h3 class="font-black text-xl mt-1">Comentarios</h3>
+                  </div>
+                  <div id="live-comments" class="custom-scrollbar flex-1 h-0 min-h-[220px] overflow-y-auto px-5 py-4 space-y-4">
+                    <p class="text-sm text-white/55">Cargando comentarios...</p>
+                  </div>
+                  <div class="px-5 py-4 border-t border-white/10">
+                    <div class="flex items-end gap-3">
+                      <textarea id="live-comment-input" rows="1" class="flex-1 min-h-[48px] max-h-28 rounded-[22px] bg-slate-950/70 border border-white/10 focus:border-[#ec4899]/40 px-4 py-3 text-sm text-white caret-[#ec4899] outline-none resize-none placeholder:text-white/35 transition" style="-webkit-text-fill-color:#fff;" placeholder="Escribe algo..."></textarea>
+                      <div class="relative">
+                        <button id="live-reaction-trigger-desktop" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow hover:brightness-110 flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
+                        <div id="live-reaction-selector-desktop" class="hidden absolute bottom-[120%] right-0 glass rounded-2xl px-1.5 py-2 flex flex-col items-center gap-1 shadow-xl z-50" style="animation:live-selector-pop 0.2s ease-out both;">
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_gusta">❤️</button>
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_encanta">😍</button>
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_divierte">😂</button>
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_sorprende">😮</button>
+                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_enoja">😡</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </aside>
+
+              </div>
+            </div>
+          </section>
+        `;
+      },
+      mount({ container, user, params, router }) {
+        const liveId = Number(params.id || 0);
+        const isHostRoute = String(params.host || '') === '1';
+
+        // Apply device class to root (controls entire layout via CSS)
+        const liveShell = container.querySelector('#live-shell');
+        if (isDesktopClient() && liveShell) {
+          liveShell.classList.add('live-is-desktop');
+        }
+        // Host broadcasting from mobile: full-bleed camera mode
+        if (isHostRoute && !isDesktopClient() && liveShell) {
+          liveShell.classList.add('live-host-mobile');
+        }
+
+        const viewerPlayerRoot = container.querySelector('#live-viewer-player');
+        const hostPreviewVideo = container.querySelector('#live-host-preview');
+        const liveVideoFallback = container.querySelector('#live-video-fallback');
+        const liveFallbackTitle = container.querySelector('#live-fallback-title');
+        const liveFallbackCopy = container.querySelector('#live-fallback-copy');
+        const liveTitle = container.querySelector('#live-title');
+        const liveViewerCount = container.querySelector('#live-viewer-count');
+        const liveStatusChip = container.querySelector('#live-status-chip');
+        const liveStatusDot = container.querySelector('#live-status-dot');
+        const liveStatusBadge = container.querySelector('#live-status-badge');
+        const liveComments = container.querySelector('#live-comments');
+        const liveCommentInput = container.querySelector('#live-comment-input');
+        const liveCommentsMobile = container.querySelector('#live-comments-mobile');
+        const liveCommentInputMobile = container.querySelector('#live-comment-input-mobile');
+        const liveTitleMobile = container.querySelector('#live-title-mobile');
+        const floatingReactions = container.querySelector('#live-floating-reactions');
+        const hostEndButton = container.querySelector('#live-host-end-btn');
+        const hostTools = container.querySelector('#live-host-tools');
+        const toggleMicButton = container.querySelector('#live-toggle-mic-btn');
+        const toggleMicMobileButton = container.querySelector('#live-toggle-mic-mobile-btn');
+        const toggleSystemAudioButton = container.querySelector('#live-toggle-system-audio-btn');
+        const switchSourceButton = container.querySelector('#live-switch-source-btn');
+        const flipCameraButton = container.querySelector('#live-flip-camera-btn');
+        const flipCameraMobileButton = container.querySelector('#live-flip-camera-mobile-btn');
+
+        const fullscreenBtn = container.querySelector('#live-fullscreen-btn');
+        const immersiveBtn = container.querySelector('#live-immersive-btn');
+        const reactionTrigger = container.querySelector('#live-reaction-trigger');
+        const reactionSelector = container.querySelector('#live-reaction-selector');
+        const reactionTriggerDesktop = container.querySelector('#live-reaction-trigger-desktop');
+        const reactionSelectorDesktop = container.querySelector('#live-reaction-selector-desktop');
+        const liveVideoWrap = container.querySelector('#live-video-wrap');
+        const overlays = container.querySelectorAll('[data-live-overlay]');
+
+        let liveData = null;
+        let activeReaction = 'me_gusta';
+        let commentsTimer = null;
+        let heartbeatTimer = null;
+        let liveStateTimer = null;
+        let lastEventId = 0;
+        let sourceBusy = false;
+        let startedAt = Date.now();
+        let ovenLivekit = null;
+        let viewerVideo = null;
+        let viewerHls = null;
+        let hostMediaBundle = null;
+        let hostMicMuted = false;
+        let hostSystemMuted = false;
+        let endedByHost = false;
+        let hostPublishing = false;
+        let hostPublishedSource = null;
+        let viewerPlayerSourceUrl = null;
+        let viewerPlayerCreatedAt = 0;
+        let viewerPlayerLastRetryAt = 0;
+        let viewerBootstrapInFlight = false;
+        let commentsInitialized = false;
+        let overlayTimer = null;
+        let longPressTimer = null;
+        let selectorOpen = false;
+        let lastKnownSource = null;
+        let currentFacingMode = 'environment'; // default: rear camera on mobile
+        let wakeLock = null; // Screen Wake Lock to prevent black screen
+
+        // Mobile-only player controls (on the video itself)
+        const playerMuteBtn = container.querySelector('#live-player-mute-btn');
+        const playerFsBtn = container.querySelector('#live-player-fs-btn');
+
+        // Wake Lock: keep screen awake during livestream
+        async function requestWakeLock() {
+          try {
+            if ('wakeLock' in navigator) {
+              wakeLock = await navigator.wakeLock.request('screen');
+              wakeLock.addEventListener('release', () => { wakeLock = null; });
+            }
+          } catch (e) { /* not critical */ }
+        }
+
+        // If the user is scrolling the chat, avoid snapping back to bottom on the next poll.
+        let lastCommentsUserScrollAt = 0;
+        function markCommentsUserScroll() {
+          lastCommentsUserScrollAt = Date.now();
+        }
+        function userRecentlyScrolledComments() {
+          return (Date.now() - lastCommentsUserScrollAt) < 1500;
+        }
+        function releaseWakeLock() {
+          if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+        }
+        // Re-acquire wake lock when page becomes visible again
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible' && liveData?.live_status === 'live') {
+            requestWakeLock();
+          }
+        });
+        requestWakeLock();
+
+        function cleanupMediaBundle(bundle) {
+          if (!bundle) {
+            return;
+          }
+
+          const tracks = [];
+          [bundle.previewStream, bundle.publishedStream, bundle.micStream].forEach((stream) => {
+            if (stream?.getTracks) {
+              tracks.push(...stream.getTracks());
+            }
+          });
+
+          const seen = new Set();
+          tracks.forEach((track) => {
+            if (!track || seen.has(track.id)) {
+              return;
+            }
+            seen.add(track.id);
+            try {
+              track.stop();
+            } catch (error) {
+              console.warn('No se pudo detener un track del directo:', error);
+            }
+          });
+
+          if (bundle.audioContext) {
+            bundle.audioContext.close().catch(() => {});
+          }
+        }
+
+        function stopHostStreams() {
+          cleanupMediaBundle(hostMediaBundle);
+          hostMediaBundle = null;
+          hostPreviewVideo.srcObject = null;
+        }
+
+        function destroyPlayer() {
+          if (viewerHls && typeof viewerHls.destroy === 'function') {
+            viewerHls.destroy();
+          }
+          viewerHls = null;
+          if (viewerVideo) {
+            viewerVideo.pause();
+            viewerVideo.removeAttribute('src');
+            viewerVideo.load();
+          }
+          viewerVideo = null;
+          viewerPlayerSourceUrl = null;
+          viewerPlayerCreatedAt = 0;
+          viewerPlayerRoot.innerHTML = '';
+        }
+
+        function showFallback(title, copy) {
+          viewerPlayerRoot.classList.add('hidden');
+          hostPreviewVideo.classList.add('hidden');
+          liveVideoFallback.classList.remove('hidden');
+          liveFallbackTitle.textContent = title;
+          liveFallbackCopy.textContent = copy;
+        }
+
+        function showHostPreview() {
+          viewerPlayerRoot.classList.add('hidden');
+          hostPreviewVideo.classList.remove('hidden');
+          liveVideoFallback.classList.add('hidden');
+        }
+
+        function showViewerPlayer() {
+          hostPreviewVideo.classList.add('hidden');
+          viewerPlayerRoot.classList.remove('hidden');
+          // Don't hide fallback yet — wait until video actually has frames
+          // The fallback will be hidden in the 'playing' event listener on the video
+          if (viewerVideo && viewerVideo.readyState >= 2) {
+            liveVideoFallback.classList.add('hidden');
+          }
+        }
+
+
+        const commentMarkup = (comment) => {
+          const author = resolveProfileData({
+            id: comment.user_id,
+            user_name: comment.user_name,
+            user_faculty: comment.user_faculty,
+            user_avatar: comment.user_avatar,
+          });
+          const avatarBg = author.avatar_url ? `background-image:url('${safeUrl(author.avatar_url)}');background-color:${userColor(author)}` : `background:${userColor(author)}`;
+          const avatarContent = author.avatar_url ? '' : escapeHtml(initials(displayName(author)));
+
+          return `
+            <div class="flex items-start gap-3" data-comment-id="${comment.id}" style="animation:live-comment-in 0.3s ease-out both;">
+              <div class="w-10 h-10 rounded-full bg-slate-600 shrink-0 flex items-center justify-center text-white text-xs font-bold" style="${avatarBg};background-size:cover;background-position:center;">${avatarContent}</div>
+              <div class="min-w-0">
+                <span class="font-bold text-[13px] text-white">${escapeHtml(displayName(author))}</span>
+                <span class="text-[11px] text-white/35 ml-1.5">${escapeHtml(timeAgo(comment.created_at))}</span>
+                <p class="text-[13px] text-white/80 mt-0.5 break-words whitespace-pre-wrap">${escapeHtml(comment.content || '')}</p>
+              </div>
+            </div>
+          `;
+        };
+
+
+
+        function addFloatingReaction(type) {
+          const emojiMap = {
+            me_gusta: '❤️',
+            me_divierte: '😂',
+            me_sorprende: '😮',
+            me_enoja: '😡',
+            me_entristece: '😢',
+          };
+          const emoji = emojiMap[type] || '❤️';
+          const xOffset = (Math.random() - 0.5) * 30;
+
+          [floatingReactions].forEach((target) => {
+            if (!target) return;
+            const bubble = document.createElement('div');
+            bubble.textContent = emoji;
+            bubble.className = 'live-float-emoji';
+            bubble.style.right = `${Math.random() * 40}px`;
+            bubble.style.setProperty('--float-x', `${xOffset}px`);
+            target.appendChild(bubble);
+            window.setTimeout(() => bubble.remove(), 3200);
+          });
+        }
+
+        function refreshReactionButtons() {
+          const emojiLookup = { me_gusta: '❤️', me_divierte: '😂', me_sorprende: '😮', me_enoja: '😡', me_entristece: '😢', me_encanta: '😍' };
+          const activeEmoji = emojiLookup[activeReaction] || '❤️';
+          // Update BOTH trigger buttons to show the currently active emoji
+          [reactionTrigger, reactionTriggerDesktop].forEach(btn => {
+            if (!btn) return;
+            btn.textContent = activeEmoji;
+          });
+          // Update ALL selector items: highlight only the active one
+          container.querySelectorAll('[data-live-set-reaction]').forEach((button) => {
+            const isActive = button.dataset.liveSetReaction === activeReaction;
+            button.style.background = isActive ? 'rgba(255,255,255,0.2)' : '';
+            button.style.transform = isActive ? 'scale(1.2)' : '';
+            button.style.boxShadow = isActive ? '0 0 0 2px rgba(236,72,153,0.5)' : '';
+          });
+        }
+
+        function setAudioTrackEnabled(tracks, enabled) {
+          (tracks || []).forEach((track) => {
+            try {
+              track.enabled = enabled;
+            } catch (error) {
+              console.warn('No se pudo cambiar el estado de un track de audio:', error);
+            }
+          });
+        }
+
+        function applyHostAudioState(bundle = hostMediaBundle) {
+          if (!bundle) {
+            return;
+          }
+
+          if (bundle.micGainNode) {
+            bundle.micGainNode.gain.value = hostMicMuted ? 0 : 1;
+          } else {
+            setAudioTrackEnabled(bundle.micAudioTracks, !hostMicMuted);
+          }
+
+          if (bundle.systemGainNode) {
+            bundle.systemGainNode.gain.value = hostSystemMuted ? 0 : 1;
+          } else {
+            setAudioTrackEnabled(bundle.systemAudioTracks, !hostSystemMuted);
+          }
+        }
+
+        function refreshHostAudioButtons() {
+          const allMicBtns = [toggleMicButton].filter(Boolean);
+          const allSysBtns = [toggleSystemAudioButton].filter(Boolean);
+
+          allMicBtns.forEach((btn) => {
+            const icon = btn.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = hostMicMuted ? 'mic_off' : 'mic';
+            btn.classList.toggle('gradient-live', hostMicMuted);
+            btn.title = hostMicMuted ? 'Activar microfono' : 'Silenciar microfono';
+          });
+
+          const isScreenSource = liveData?.live_source === 'screen' && isDesktopClient();
+          allSysBtns.forEach((btn) => {
+            btn.classList.toggle('hidden', !isScreenSource);
+            btn.classList.toggle('flex', isScreenSource);
+            const icon = btn.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = hostSystemMuted ? 'volume_off' : 'volume_up';
+            btn.classList.toggle('gradient-live', hostSystemMuted);
+            btn.title = hostSystemMuted ? 'Activar audio del sistema' : 'Silenciar audio del sistema';
+          });
+
+          // Flip camera button: only on mobile, camera source, and owner
+          const isMobileCamera = !isDesktopClient() && (liveData?.live_source || 'camera') === 'camera' && isHostOwner();
+          if (flipCameraButton) {
+            flipCameraButton.classList.toggle('hidden', !isMobileCamera);
+            flipCameraButton.classList.toggle('flex', isMobileCamera);
+          }
+          // Also show/hide the mobile input row flip button
+          if (flipCameraMobileButton) {
+            flipCameraMobileButton.classList.toggle('hidden', !isMobileCamera);
+            flipCameraMobileButton.classList.toggle('flex', isMobileCamera);
+          }
+          // Hide switch source button on mobile (only desktop has screen share)
+          if (switchSourceButton && !isDesktopClient()) {
+            switchSourceButton.classList.add('hidden');
+          }
+        }
+
+        function isHostOwner() {
+          return isHostRoute && Number(liveData?.user_id || 0) === Number(user.id);
+        }
+
+        function refreshLiveStatusBadge() {
+          const isLive = liveData?.live_status === 'live';
+          liveStatusBadge.textContent = isLive ? 'LIVE' : 'FINALIZADO';
+          liveStatusChip.classList.toggle('gradient-live', isLive);
+          liveStatusChip.classList.toggle('live-pulse', isLive);
+          liveStatusChip.classList.toggle('bg-slate-700/85', !isLive);
+        }
+
+        // Show fullscreen button only for landscape streams (from PC, not mobile camera)
+        function updateFullscreenButtonVisibility() {
+          if (!fullscreenBtn || isDesktopClient()) return; // always show on desktop
+          // Check if the stream is from a screen share (always landscape)
+          if (liveData?.live_source === 'screen') {
+            fullscreenBtn.classList.remove('hidden');
+            return;
+          }
+          // For camera source: check actual video dimensions if available
+          const video = viewerVideo || hostPreviewVideo;
+          if (video && video.videoWidth && video.videoHeight) {
+            const isLandscape = video.videoWidth > video.videoHeight;
+            fullscreenBtn.classList.toggle('hidden', !isLandscape);
+          } else {
+            // No video yet — hide on mobile by default (will re-check)
+            fullscreenBtn.classList.add('hidden');
+          }
+        }
+
+        // Show mobile-only player controls (mute + fullscreen on the video itself)
+        function updateMobilePlayerControls() {
+          if (isDesktopClient()) return;
+          const isOwner = Number(liveData?.user_id) === Number(user.id) && isHostRoute;
+          // Show mute button for viewers on mobile
+          if (playerMuteBtn) {
+            playerMuteBtn.classList.toggle('hidden', isOwner);
+            playerMuteBtn.classList.toggle('flex', !isOwner);
+          }
+          // Show fullscreen button only for landscape/PC streams on mobile
+          if (playerFsBtn) {
+            let showFs = false;
+            if (liveData?.live_source === 'screen') {
+              showFs = true;
+            } else {
+              const video = viewerVideo || hostPreviewVideo;
+              if (video && video.videoWidth && video.videoHeight) {
+                showFs = video.videoWidth > video.videoHeight;
+              }
+            }
+            playerFsBtn.classList.toggle('hidden', !showFs);
+            playerFsBtn.classList.toggle('flex', showFs);
+          }
+        }
+
+        // Detect portrait/phone camera streams for viewer → apply full-bleed TikTok layout
+        function updateStreamLayout() {
+          if (isDesktopClient() || isHostRoute) return; // only for mobile viewers
+          const video = viewerVideo;
+          if (!video || !video.videoWidth || !video.videoHeight) return;
+          // Only treat as portrait if significantly taller than wide (ratio < 0.75)
+          const ratio = video.videoWidth / video.videoHeight;
+          const isPortrait = ratio < 0.75;
+          if (liveShell) {
+            liveShell.classList.toggle('live-cam-stream', isPortrait);
+          }
+          // Set object-fit based on stream orientation
+          video.style.objectFit = isPortrait ? 'cover' : 'contain';
+        }
+
+        function viewerPlaybackLooksStalled() {
+          if (!viewerVideo || !viewerPlayerSourceUrl) {
+            return false;
+          }
+
+          const now = Date.now();
+          // Give player plenty of time before declaring stalled (mobile needs more time)
+          if ((now - viewerPlayerCreatedAt) < 8000 || (now - viewerPlayerLastRetryAt) < 8000) {
+            return false;
+          }
+
+          // Only stall if HAVE_NOTHING (no data at all) AND paused — be very conservative
+          if (viewerVideo.readyState < 1 && viewerVideo.paused) return true;
+          return false;
+        }
+
+        function syncViewerToLiveEdge(force = false) {
+          if (!viewerHls || !viewerVideo) {
+            return;
+          }
+
+          const syncPosition = viewerHls.liveSyncPosition;
+          if (!Number.isFinite(syncPosition) || syncPosition <= 0) {
+            return;
+          }
+
+          const currentTime = Number(viewerVideo.currentTime || 0);
+          const drift = syncPosition - currentTime;
+
+          // Only seek on force or very large drift — seeking causes black frames
+          // Seek on initial load OR if truly stuck/looping (drift > 4s)
+          if ((force && currentTime <= 0) || drift > 4) {
+            try {
+              viewerVideo.currentTime = syncPosition;
+            } catch (error) {
+              console.warn('No se pudo saltar al borde en vivo del directo:', error);
+            }
+          }
+
+          // Speed up gently if behind — avoids stutter but corrects drift
+          if (drift > 1.5) {
+            viewerVideo.playbackRate = Math.min(1.06, 1 + drift / 14);
+            return;
+          }
+
+          viewerVideo.playbackRate = 1;
+        }
+
+        async function ensureViewerManifest(url) {
+          const attempts = 5;
+          const pauseMs = 650;
+
+          for (let attempt = 0; attempt < attempts; attempt += 1) {
+            try {
+              const controller = new AbortController();
+              const timeoutId = window.setTimeout(() => controller.abort(), 2200);
+              const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: controller.signal,
+              });
+              window.clearTimeout(timeoutId);
+              if (response.ok) {
+                const manifest = await response.text();
+                if (manifest.includes('#EXTM3U')) {
+                  return true;
+                }
+              }
+            } catch (error) {
+              // seguimos intentando unos segundos antes de rendirnos
+            }
+
+            if (attempt < attempts - 1) {
+              await new Promise((resolve) => window.setTimeout(resolve, pauseMs));
+            }
+          }
+
+          return false;
+        }
+
+        function createViewerVideo() {
+          const video = document.createElement('video');
+          video.className = 'w-full h-full object-contain bg-black absolute inset-0';
+          video.style.objectFit = 'contain';
+          video.autoplay = true;
+          video.controls = false;
+          video.playsInline = true;
+          video.setAttribute('playsinline', '');
+          video.muted = true;
+          // Don't clear innerHTML yet — keep old video visible until new one is ready
+          viewerPlayerRoot.appendChild(video);
+          viewerVideo = video;
+          // Tap on video to unmute (only fires once)
+          const unmuteHandler = () => {
+            if (viewerVideo && viewerVideo.muted) {
+              viewerVideo.muted = false;
+            }
+            liveVideoWrap?.removeEventListener('click', unmuteHandler);
+          };
+          liveVideoWrap?.addEventListener('click', unmuteHandler);
+          // Re-check layout once dimensions are known
+          video.addEventListener('loadedmetadata', () => {
+            updateFullscreenButtonVisibility();
+            updateMobilePlayerControls();
+            updateStreamLayout();
+            // Now safe to remove previous video elements
+            Array.from(viewerPlayerRoot.children).forEach(el => {
+              if (el !== video) viewerPlayerRoot.removeChild(el);
+            });
+          }, { once: true });
+          // Hide fallback once video is actually rendering frames
+          const hideFallback = () => { liveVideoFallback.classList.add('hidden'); };
+          video.addEventListener('playing', hideFallback, { once: true });
+          video.addEventListener('canplay', hideFallback, { once: true });
+          // Generous timeout: only hide fallback after 8s as last resort
+          setTimeout(() => {
+            if (viewerVideo === video && !liveVideoFallback.classList.contains('hidden')) {
+              hideFallback();
+            }
+          }, 8000);
+          return video;
+        }
+
+        async function ensureViewerPlayer(forceRestart = false) {
+          if (viewerBootstrapInFlight) {
+            return;
+          }
+
+          if (!liveData?.stream_key) {
+            showFallback('Preparando directo', 'La transmision todavia esta preparando su senal en vivo.');
+            return;
+          }
+
+          viewerBootstrapInFlight = true;
+
+          try {
+            await ensureLivestreamLibraries();
+            const sourceUrl = normalizeLivestreamPlaybackUrl(liveData.stream_key, liveData.playback_url);
+            if (!forceRestart && viewerVideo && viewerPlayerSourceUrl === sourceUrl) {
+              showViewerPlayer();
+              // Don't call play() — HLS is already streaming, play() interrupts and causes black frames
+              return;
+            }
+
+            const manifestReady = await ensureViewerManifest(sourceUrl);
+            if (!manifestReady) {
+              showFallback('Esperando directo', 'El stream todavia se esta preparando para los espectadores.');
+              return;
+            }
+
+            // Destroy old player first, then show viewer container, then create new video
+            destroyPlayer();
+            showViewerPlayer();
+            const video = createViewerVideo();
+            const readyAt = Date.now();
+
+            if (window.Hls && window.Hls.isSupported()) {
+              viewerHls = new window.Hls({
+                lowLatencyMode: true,
+                liveDurationInfinity: true,
+                backBufferLength: 8,          // reduce to avoid old-segment loop playback
+                maxBufferLength: 12,
+                liveSyncDurationCount: 2,     // stay 2 segments behind live edge (more stable)
+                liveMaxLatencyDurationCount: 5,
+                maxLiveSyncPlaybackRate: 1.06,
+              });
+              viewerHls.loadSource(sourceUrl);
+              viewerHls.attachMedia(video);
+              viewerHls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                syncViewerToLiveEdge(true);
+                video.play().catch(() => {});
+              });
+              viewerHls.on(window.Hls.Events.LEVEL_UPDATED, () => {
+                syncViewerToLiveEdge();
+              });
+              viewerHls.on(window.Hls.Events.FRAG_BUFFERED, () => {
+                syncViewerToLiveEdge();
+              });
+              viewerHls.on(window.Hls.Events.ERROR, (_event, data) => {
+                if (!data?.fatal) {
+                  return;
+                }
+
+                if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                  viewerHls.startLoad();
+                  return;
+                }
+
+                if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+                  viewerHls.recoverMediaError();
+                  return;
+                }
+
+                destroyPlayer();
+                showFallback('No se pudo reproducir el directo', 'Intenta entrar de nuevo en unos segundos.');
+              });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+              video.src = sourceUrl;
+              video.addEventListener('loadedmetadata', () => {
+                const seekable = video.seekable;
+                if (seekable && seekable.length > 0) {
+                  try {
+                    video.currentTime = Math.max(0, seekable.end(seekable.length - 1) - 1);
+                  } catch (error) {
+                    console.warn('No se pudo ajustar el viewer nativo al borde del live:', error);
+                  }
+                }
+                video.play().catch(() => {});
+              }, { once: true });
+            } else {
+              showFallback('Reproduccion no compatible', 'Este navegador no pudo cargar el directo.');
+                return;
+            }
+
+            viewerPlayerSourceUrl = sourceUrl;
+            viewerPlayerCreatedAt = readyAt;
+            viewerPlayerLastRetryAt = readyAt;
+          } finally {
+            viewerBootstrapInFlight = false;
+          }
+        }
+
+        async function buildHostInputStream(source) {
+          const bundle = {
+            source,
+            previewStream: null,
+            publishedStream: null,
+            micStream: null,
+            audioContext: null,
+            systemAudioTracks: [],
+            micAudioTracks: [],
+            systemGainNode: null,
+            micGainNode: null,
+          };
+
+          if (source === 'screen' && isDesktopClient()) {
+            // Reuse pre-captured stream from the modal if available
+            let displayStream;
+            if (window.__uptLivePreCapturedStream) {
+              displayStream = window.__uptLivePreCapturedStream;
+              window.__uptLivePreCapturedStream = null;
+            } else {
+              displayStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: true,
+              });
+            }
+            let micStream = null;
+
+            try {
+              micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            } catch (error) {
+              micStream = null;
+            }
+
+            bundle.previewStream = displayStream;
+            bundle.micStream = micStream;
+
+            const finalStream = new MediaStream();
+            displayStream.getVideoTracks().forEach((track) => finalStream.addTrack(track));
+
+            const displayAudioTracks = displayStream.getAudioTracks();
+            const micAudioTracks = micStream?.getAudioTracks() || [];
+            bundle.systemAudioTracks = displayAudioTracks;
+            bundle.micAudioTracks = micAudioTracks;
+
+            if (displayAudioTracks.length && micAudioTracks.length) {
+              bundle.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+              const destination = bundle.audioContext.createMediaStreamDestination();
+              const displaySource = bundle.audioContext.createMediaStreamSource(new MediaStream([displayAudioTracks[0]]));
+              const micSource = bundle.audioContext.createMediaStreamSource(new MediaStream([micAudioTracks[0]]));
+              bundle.systemGainNode = bundle.audioContext.createGain();
+              bundle.micGainNode = bundle.audioContext.createGain();
+              displaySource.connect(bundle.systemGainNode).connect(destination);
+              micSource.connect(bundle.micGainNode).connect(destination);
+              destination.stream.getAudioTracks().forEach((track) => finalStream.addTrack(track));
+            } else if (displayAudioTracks.length) {
+              finalStream.addTrack(displayAudioTracks[0]);
+            } else if (micAudioTracks.length) {
+              finalStream.addTrack(micAudioTracks[0]);
+            }
+
+            bundle.publishedStream = finalStream;
+            applyHostAudioState(bundle);
+            return bundle;
+          }
+
+          // On mobile use facingMode for front/rear camera; on desktop just { video: true }
+          const videoConstraints = isDesktopClient()
+            ? true
+            : { facingMode: { ideal: currentFacingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+          const cameraStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
+          bundle.previewStream = cameraStream;
+          bundle.publishedStream = cameraStream;
+          bundle.micAudioTracks = cameraStream.getAudioTracks();
+          applyHostAudioState(bundle);
+          return bundle;
+        }
+
+        async function startHostSource(nextSource = null, forceRestart = false) {
+          if (sourceBusy || !liveData?.stream_key) return;
+          sourceBusy = true;
+
+          try {
+            await ensureLivestreamLibraries();
+            const source = nextSource || liveData?.live_source || 'camera';
+            if (hostPublishing && !forceRestart && hostPublishedSource === source) {
+              return;
+            }
+
+            if (!ovenLivekit) {
+              ovenLivekit = window.OvenLiveKit.create({
+                callbacks: {
+                  error: (error) => {
+                    console.error('OvenLiveKit error:', error);
+                  },
+                },
+              });
+            }
+
+            const previousBundle = hostMediaBundle;
+            const nextBundle = await buildHostInputStream(source);
+            liveData.live_source = source;
+            ovenLivekit.attachMedia(hostPreviewVideo);
+            await ovenLivekit.setMediaStream(nextBundle.publishedStream);
+            hostMediaBundle = nextBundle;
+            hostPreviewVideo.srcObject = nextBundle.previewStream || nextBundle.publishedStream;
+            // PC host (screen share or desktop camera): contain to preserve 16:9 frame
+            // Mobile host (camera): cover to fill vertical frame
+            hostPreviewVideo.style.objectFit = (!isDesktopClient() && source === 'camera') ? 'cover' : 'contain';
+
+            showHostPreview();
+            await hostPreviewVideo.play().catch(() => {});
+            if (!hostPublishing) {
+              await ovenLivekit.startStreaming(buildLivestreamPublishUrl(liveData.stream_key));
+              hostPublishing = true;
+            }
+            hostPublishing = true;
+            hostPublishedSource = source;
+            refreshHostAudioButtons();
+            cleanupMediaBundle(previousBundle);
+          } catch (error) {
+            console.error('No se pudo iniciar el directo con OME:', error);
+            hostPublishing = false;
+            hostPublishedSource = null;
+            showFallback('Fuente no disponible', 'No se pudo acceder a la camara o pantalla compartida para el directo.');
+            showToast('No se pudo iniciar la transmision en vivo', 'error');
+          } finally {
+            sourceBusy = false;
+          }
+        }
+
+        async function loadLivestream() {
+          const result = await PostsAPI.getLivestream(liveId);
+          if (!result?.ok) {
+            liveTitle.textContent = 'No se pudo cargar el directo';
+            showFallback('No se pudo cargar el directo', result?.data?.error || 'Este directo ya no esta disponible.');
+            return;
+          }
+
+          liveData = result.data;
+          const titleText = liveData.live_title || 'Directo UPT';
+          liveTitle.textContent = titleText;
+          if (liveTitleMobile) liveTitleMobile.textContent = titleText;
+          const viewCount = String(liveData.live_status === 'live' ? Number(liveData.viewer_count || 0) : 0);
+          liveViewerCount.textContent = viewCount;
+
+          activeReaction = liveData.current_reaction || activeReaction;
+          refreshReactionButtons();
+          refreshLiveStatusBadge();
+
+          const isOwner = Number(liveData.user_id) === Number(user.id) && isHostRoute;
+          hostEndButton.classList.toggle('hidden', !isOwner);
+          hostTools.classList.toggle('hidden', !isOwner);
+          hostTools.classList.toggle('flex', isOwner);
+
+          refreshHostAudioButtons();
+
+          // Show viewer mute button only for viewers (not host) — desktop
+          const viewerMuteBtn = container.querySelector('#live-viewer-mute-btn');
+          if (viewerMuteBtn) {
+            viewerMuteBtn.classList.toggle('hidden', isOwner);
+            viewerMuteBtn.classList.toggle('flex', !isOwner);
+          }
+          // Mobile mic button — host only
+          if (toggleMicMobileButton) {
+            toggleMicMobileButton.classList.toggle('hidden', !isOwner);
+            toggleMicMobileButton.classList.toggle('flex', isOwner && !isDesktopClient());
+          }
+
+          if (!isOwner && liveData.live_status === 'live') {
+            // Detect source change → force viewer restart
+            const currentSource = liveData.live_source || 'camera';
+            const sourceChanged = lastKnownSource && lastKnownSource !== currentSource;
+            lastKnownSource = currentSource;
+            await ensureViewerPlayer(sourceChanged || viewerPlaybackLooksStalled());
+            syncViewerToLiveEdge();
+            updateFullscreenButtonVisibility();
+            updateMobilePlayerControls();
+            updateStreamLayout();
+          }
+
+          if (liveData.live_status !== 'live') {
+            destroyPlayer();
+            showFallback('Directo finalizado', 'La transmision termino, pero puedes seguir viendo su registro y comentarios.');
+          }
+        }
+
+        function isCommentsNearBottom(element) {
+          if (!element || element.clientHeight <= 0) return true;
+          return (element.scrollHeight - element.scrollTop - element.clientHeight) < 72;
+        }
+
+        function shouldStickCommentsToBottom() {
+          if (!commentsInitialized) return true;
+          const activeCommentsContainer = (!isDesktopClient() && liveCommentsMobile) ? liveCommentsMobile : liveComments;
+          return isCommentsNearBottom(activeCommentsContainer);
+        }
+
+        async function loadComments() {
+          const stickToBottom = shouldStickCommentsToBottom();
+          const result = await PostsAPI.getComments(liveId, 'newest');
+          const comments = getList(result).slice().reverse().slice(-40);
+          if (!result?.ok) {
+            const errHtml = '<p class="text-sm text-white/55">No se pudieron cargar los comentarios.</p>';
+            liveComments.innerHTML = errHtml;
+            if (liveCommentsMobile) liveCommentsMobile.innerHTML = errHtml;
+            return;
+          }
+          if (!comments.length) {
+            if (!commentsInitialized) {
+              const emptyHtml = '<p class="text-sm text-white/55">Todavia no hay comentarios en este directo.</p>';
+              liveComments.innerHTML = emptyHtml;
+              if (liveCommentsMobile) liveCommentsMobile.innerHTML = '';
+            }
+            commentsInitialized = true;
+            return;
+          }
+
+          // Build set of new comment IDs
+          const newIds = new Set(comments.map(c => String(c.id)));
+          const existingIds = new Set();
+          liveComments.querySelectorAll('[data-comment-id]').forEach(el => existingIds.add(el.dataset.commentId));
+
+          // First load or major mismatch: full render
+          if (!commentsInitialized || existingIds.size === 0) {
+            const html = comments.map(c => commentMarkup(c)).join('');
+            liveComments.innerHTML = html;
+            if (liveCommentsMobile) liveCommentsMobile.innerHTML = html;
+          } else {
+            // Remove comments that are no longer in the list (old ones rotated out)
+            liveComments.querySelectorAll('[data-comment-id]').forEach(el => {
+              if (!newIds.has(el.dataset.commentId)) el.remove();
+            });
+            if (liveCommentsMobile) {
+              liveCommentsMobile.querySelectorAll('[data-comment-id]').forEach(el => {
+                if (!newIds.has(el.dataset.commentId)) el.remove();
+              });
+            }
+            // Append only truly new comments
+            const fragment = document.createDocumentFragment();
+            const fragmentMobile = document.createDocumentFragment();
+            comments.forEach(c => {
+              if (!existingIds.has(String(c.id))) {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = commentMarkup(c);
+                const node = wrapper.firstElementChild;
+                if (node) {
+                  fragment.appendChild(node);
+                  fragmentMobile.appendChild(node.cloneNode(true));
+                }
+              }
+            });
+            if (fragment.childNodes.length) {
+              liveComments.appendChild(fragment);
+              if (liveCommentsMobile) liveCommentsMobile.appendChild(fragmentMobile);
+            }
+          }
+
+          commentsInitialized = true;
+          if (stickToBottom && !userRecentlyScrolledComments()) {
+            liveComments.scrollTop = liveComments.scrollHeight;
+            if (liveCommentsMobile) liveCommentsMobile.scrollTop = liveCommentsMobile.scrollHeight;
+          }
+        }
+
+        async function sendComment() {
+          const content = (liveCommentInput?.value || liveCommentInputMobile?.value || '').trim();
+          if (!content) return;
+          const result = await PostsAPI.addComment(liveId, content);
+          if (!result?.ok) {
+            showToast(result?.data?.error || 'No se pudo comentar en el directo', 'error');
+            return;
+          }
+          if (liveCommentInput) liveCommentInput.value = '';
+          if (liveCommentInputMobile) liveCommentInputMobile.value = '';
+          await loadComments();
+        }
+
+        async function heartbeat() {
+          if (liveData?.live_status !== 'live') {
+            liveViewerCount.textContent = '0';
+            return;
+          }
+          const result = await PostsAPI.livestreamHeartbeat(liveId);
+          if (result?.ok) {
+            const count = String(Number(result.data?.viewer_count || 0));
+            liveViewerCount.textContent = count;
+          }
+        }
+
+        async function pollReactionEvents() {
+          const result = await PostsAPI.getLivestreamEvents(liveId, lastEventId);
+          const events = getList(result);
+          if (!result?.ok || !events.length) return;
+          events.forEach((event) => {
+            lastEventId = Math.max(lastEventId, Number(event.id || 0));
+            addFloatingReaction(event.reaction_type);
+          });
+        }
+
+        async function sendActiveReaction() {
+          const result = await PostsAPI.reactLivestream(liveId, activeReaction);
+          if (!result?.ok) {
+            showToast(result?.data?.error || 'No se pudo enviar la reaccion', 'error');
+            return;
+          }
+          lastEventId = Math.max(lastEventId, Number(result.data?.event_id || 0));
+          addFloatingReaction(activeReaction);
+        }
+
+        let endingLivestream = false;
+        async function endLivestream() {
+          if (endingLivestream) return;
+          endingLivestream = true;
+          const durationSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+          const result = await PostsAPI.endLivestream(liveId, durationSeconds);
+          if (!result?.ok) {
+            showToast(result?.data?.error || 'No se pudo finalizar el directo', 'error');
+            endingLivestream = false; // allow retry
+            return;
+          }
+          endedByHost = true;
+          if (ovenLivekit && typeof ovenLivekit.stopStreaming === 'function') {
+            try {
+              ovenLivekit.stopStreaming();
+            } catch (error) {
+              console.warn('No se pudo detener OvenLiveKit al finalizar:', error);
+            }
+          }
+          showToast('Directo finalizado', 'success');
+          // Reset stuck flag then navigate
+          exitingLivestream = false;
+          exitLivestream();
+        }
+
+        const commentsLoop = () => loadComments().catch(() => {});
+        const heartbeatLoop = () => heartbeat().catch(() => {});
+        const stateLoop = async () => {
+          await loadLivestream();
+          await pollReactionEvents();
+        };
+
+        // ── Auto-hide overlay (desktop hover / mobile tap-to-toggle) ──
+        const mobileOverlay = container.querySelector('#live-mobile-overlay');
+        const playerControls = container.querySelector('#live-player-controls');
+        let inVideoFullscreen = false; // landscape fullscreen (video only)
+        let overlayVisible = true;
+        const isHostOnMobile = isHostRoute && !isDesktopClient();
+
+        function showOverlay() {
+          overlayVisible = true;
+          overlays.forEach(el => { el.style.opacity = '1'; el.style.pointerEvents = 'auto'; });
+          if (playerControls) { playerControls.style.opacity = '1'; playerControls.style.pointerEvents = 'auto'; }
+          // Show X button on mobile viewers only (host never sees X)
+          if (immersiveBtn && !isDesktopClient() && !isHostOnMobile) {
+            immersiveBtn.classList.remove('hidden'); // clear display:none from video-fullscreen
+            immersiveBtn.style.opacity = '1';
+            immersiveBtn.style.pointerEvents = 'auto';
+          }
+          clearTimeout(overlayTimer);
+          overlayTimer = setTimeout(hideOverlay, 5000);
+        }
+        function hideOverlay() {
+          if (selectorOpen) return;
+          overlayVisible = false;
+          overlays.forEach(el => { el.style.opacity = '0'; el.style.pointerEvents = 'none'; });
+          // Hide player controls
+          if (playerControls) { playerControls.style.opacity = '0'; playerControls.style.pointerEvents = 'none'; }
+          // Hide X button
+          if (immersiveBtn && !isDesktopClient()) {
+            immersiveBtn.style.opacity = '0';
+            immersiveBtn.style.pointerEvents = 'none';
+          }
+          // DO NOT hide mobile-overlay (title/comments/input/reactions must always be visible)
+        }
+        function toggleOverlay() {
+          if (overlayVisible) { clearTimeout(overlayTimer); hideOverlay(); }
+          else { showOverlay(); }
+        }
+        let lastTouchTime = 0; // guard against synthetic mouse events after touch
+        if (liveVideoWrap) {
+          liveVideoWrap.addEventListener('mouseenter', () => { if (Date.now() - lastTouchTime > 600) showOverlay(); });
+          liveVideoWrap.addEventListener('mousemove',  () => { if (Date.now() - lastTouchTime > 600) showOverlay(); });
+          liveVideoWrap.addEventListener('mouseleave', () => { if (Date.now() - lastTouchTime > 600) { clearTimeout(overlayTimer); overlayTimer = setTimeout(hideOverlay, 1200); } });
+          // Mobile: touchend toggles overlay
+          let lastTouchToggleTime = 0;
+          liveVideoWrap.addEventListener('touchend', (e) => {
+            if (e.target.closest('button')) return;
+            lastTouchTime = Date.now();
+            lastTouchToggleTime = Date.now();
+            toggleOverlay();
+          }, { passive: true });
+          // Prevent click from re-toggling after a touch-toggle
+          let lastVideoWrapTouchTime = 0;
+          liveVideoWrap.addEventListener('touchend', () => {
+            lastVideoWrapTouchTime = Date.now();
+          }, { passive: true, capture: true }); // capture phase to record time before other handlers
+          liveVideoWrap.addEventListener('click', (e) => {
+            if (Date.now() - lastTouchToggleTime < 600) e.stopImmediatePropagation();
+          }, true);
+        }
+        // Also toggle on tap anywhere on the live shell (not just video wrap)
+        if (liveShell && !isDesktopClient()) {
+          let lastShellTouchTime = 0;
+          liveShell.addEventListener('touchend', (e) => {
+            if (e.target.closest('button, input, textarea, #live-comments-mobile, .live-mobile-input')) return;
+            // Skip if video wrap already handled this touch (same timestamp within 50ms)
+            if (liveVideoWrap && liveVideoWrap.contains(e.target)) return;
+            const now = Date.now();
+            if (now - lastShellTouchTime < 400) return;
+            lastShellTouchTime = now;
+            toggleOverlay();
+          }, { passive: true });
+        }
+        // On desktop show overlay initially, on mobile start hidden (tap to reveal)
+        if (isDesktopClient()) {
+          showOverlay();
+        } else {
+          hideOverlay();
+          // Host on mobile: always hide X button
+          if (isHostOnMobile && immersiveBtn) {
+            immersiveBtn.style.display = 'none';
+          }
+        }
+
+        // ── Video Fullscreen (landscape, video only) ──
+        let pendingVideoFs = false;
+        if (fullscreenBtn && liveVideoWrap) {
+          fullscreenBtn.addEventListener('click', async () => {
+            if (document.fullscreenElement === liveVideoWrap) {
+              document.exitFullscreen().catch(() => {});
+              try { screen.orientation.unlock(); } catch(e) {}
+            } else {
+              pendingVideoFs = true;
+              try {
+                await liveVideoWrap.requestFullscreen();
+                try { await screen.orientation.lock('landscape'); } catch(e) {}
+              } catch(e) {}
+              pendingVideoFs = false;
+            }
+          });
+        }
+
+        // ── Immersive mode (hides page chrome, keeps chat) ──
+        let immersiveActive = false;
+        let immersiveBtnOriginalParent = immersiveBtn?.parentElement || null;
+        let exitingLivestream = false;
+
+        function activateImmersive() {
+          immersiveActive = true;
+          document.body.classList.add('live-immersive-active');
+          liveShell.classList.add('live-immersive-shell');
+
+          if (!isDesktopClient()) {
+            // Mobile: use Fullscreen API for true immersive (hides browser chrome)
+            liveShell.requestFullscreen().catch(() => {});
+            // Move the X button out of the overlay so overlay timer can't hide it
+            if (immersiveBtn && liveShell) {
+              liveShell.appendChild(immersiveBtn);
+            }
+            const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = 'close';
+          } else {
+            const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = 'close_fullscreen';
+          }
+        }
+
+        function deactivateImmersive() {
+          immersiveActive = false;
+          document.body.classList.remove('live-immersive-active');
+          liveShell.classList.remove('live-immersive-shell');
+
+          // Exit fullscreen if shell is the fullscreen element
+          if (document.fullscreenElement === liveShell) {
+            document.exitFullscreen().catch(() => {});
+          }
+
+          // Mobile: move button back to its original parent (the overlay)
+          if (!isDesktopClient() && immersiveBtn && immersiveBtnOriginalParent) {
+            immersiveBtnOriginalParent.appendChild(immersiveBtn);
+          }
+
+          const icon = immersiveBtn?.querySelector('.material-symbols-outlined');
+          if (icon) icon.textContent = 'open_in_full';
+        }
+
+        function exitLivestream() {
+          if (exitingLivestream) return;
+          exitingLivestream = true;
+          // Fade to black instantly to prevent flicker of normal layout
+          if (liveShell) liveShell.style.opacity = '0';
+          // Exit fullscreen then navigate
+          const doNav = () => {
+            setTimeout(() => {
+              if (window.history.length > 1) history.back();
+              else router.navigate('feed');
+            }, 50);
+          };
+          if (document.fullscreenElement) {
+            document.exitFullscreen().then(doNav).catch(doNav);
+          } else {
+            doNav();
+          }
+        }
+
+        if (immersiveBtn && liveShell) {
+          immersiveBtn.addEventListener('click', () => {
+            if (!isDesktopClient()) {
+              // Mobile: X button always exits the livestream
+              exitLivestream();
+            } else {
+              // Desktop: toggle immersive mode
+              if (immersiveActive) { deactivateImmersive(); } else { activateImmersive(); }
+            }
+          });
+        }
+
+        // Unified fullscreenchange handler
+        document.addEventListener('fullscreenchange', () => {
+          if (exitingLivestream || pendingVideoFs) return;
+
+          const fsEl = document.fullscreenElement;
+
+          if (fsEl === liveVideoWrap) {
+            // Entered video fullscreen (landscape)
+            inVideoFullscreen = true;
+            const icon = fullscreenBtn?.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = 'fullscreen_exit';
+            if (mobileOverlay) { mobileOverlay.style.opacity = '0'; mobileOverlay.style.pointerEvents = 'none'; }
+            if (immersiveBtn && !isDesktopClient()) immersiveBtn.classList.add('hidden');
+          } else if (fsEl === liveShell) {
+            // Shell fullscreen active — show overlay so X reappears
+            if (!isDesktopClient()) {
+              // Ensure mobileOverlay is visible
+              if (mobileOverlay) { mobileOverlay.style.opacity = ''; mobileOverlay.style.pointerEvents = ''; }
+              showOverlay();
+            }
+          } else if (!fsEl) {
+            if (inVideoFullscreen) {
+              // Exited video fullscreen → restore mobileOverlay, re-enter shell fullscreen
+              inVideoFullscreen = false;
+              try { screen.orientation.unlock(); } catch(e) {}
+              const icon = fullscreenBtn?.querySelector('.material-symbols-outlined');
+              if (icon) icon.textContent = 'fullscreen';
+              // Restore mobile overlay immediately
+              if (mobileOverlay) { mobileOverlay.style.opacity = ''; mobileOverlay.style.pointerEvents = ''; }
+              if (immersiveBtn && !isDesktopClient() && !isHostOnMobile) {
+                immersiveBtn.classList.remove('hidden');
+              }
+              if (!isDesktopClient() && liveShell) {
+                // Always try to re-enter shell fullscreen on mobile
+                liveShell.requestFullscreen().catch(() => {
+                  // requestFullscreen failed (e.g. browser policy) — still show overlay
+                  showOverlay();
+                });
+              } else {
+                showOverlay();
+              }
+            } else if (immersiveActive && !isDesktopClient()) {
+              // User exited shell fullscreen via browser back → exit livestream
+              exitLivestream();
+            }
+          }
+        });
+
+        // On mobile, auto-enter immersive mode immediately (uses Fullscreen API)
+        if (!isDesktopClient() && liveShell) {
+          activateImmersive();
+        }
+
+        // ── Viewer mute/unmute button (desktop) ──
+        const viewerMuteBtn = container.querySelector('#live-viewer-mute-btn');
+        if (viewerMuteBtn) {
+          viewerMuteBtn.addEventListener('click', () => {
+            if (viewerVideo) {
+              viewerVideo.muted = !viewerVideo.muted;
+              const icon = viewerMuteBtn.querySelector('.material-symbols-outlined');
+              if (icon) icon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
+              // Sync mobile mute icon
+              const mIcon = playerMuteBtn?.querySelector('.material-symbols-outlined');
+              if (mIcon) mIcon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
+            }
+          });
+        }
+
+        // ── Mobile player mute button ──
+        if (playerMuteBtn) {
+          playerMuteBtn.addEventListener('click', () => {
+            if (viewerVideo) {
+              viewerVideo.muted = !viewerVideo.muted;
+              const icon = playerMuteBtn.querySelector('.material-symbols-outlined');
+              if (icon) icon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
+              // Sync desktop mute icon
+              const dIcon = viewerMuteBtn?.querySelector('.material-symbols-outlined');
+              if (dIcon) dIcon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
+            }
+          });
+        }
+
+        // ── Mobile mic button (in input row, host only) ──
+        if (toggleMicMobileButton) {
+          toggleMicMobileButton.addEventListener('click', () => {
+            hostMicMuted = !hostMicMuted;
+            applyHostAudioState();
+            refreshHostAudioButtons();
+            const icon = toggleMicMobileButton.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = hostMicMuted ? 'mic_off' : 'mic';
+          });
+        }
+
+        // ── Mobile player fullscreen button (video-only landscape) ──
+        if (playerFsBtn && liveVideoWrap) {
+          playerFsBtn.addEventListener('click', async () => {
+            if (document.fullscreenElement === liveVideoWrap) {
+              document.exitFullscreen().catch(() => {});
+              try { screen.orientation.unlock(); } catch(e) {}
+            } else {
+              pendingVideoFs = true;
+              try {
+                await liveVideoWrap.requestFullscreen();
+                try { await screen.orientation.lock('landscape'); } catch(e) {}
+              } catch(e) {}
+              pendingVideoFs = false;
+            }
+          });
+        }
+
+        // ── Long-press reaction selector (both mobile + desktop) ──
+        let selectorAutoCloseTimer = null;
+        function openSelector(sel) {
+          if (!sel) return;
+          sel.classList.remove('hidden'); sel.classList.add('flex');
+          selectorOpen = true;
+          // Auto-close after 5s if no interaction
+          if (selectorAutoCloseTimer) clearTimeout(selectorAutoCloseTimer);
+          selectorAutoCloseTimer = setTimeout(() => closeAllSelectors(), 5000);
+        }
+        function closeAllSelectors() {
+          [reactionSelector, reactionSelectorDesktop].forEach(sel => {
+            if (sel) { sel.classList.add('hidden'); sel.classList.remove('flex'); }
+          });
+          selectorOpen = false;
+          if (selectorAutoCloseTimer) { clearTimeout(selectorAutoCloseTimer); selectorAutoCloseTimer = null; }
+        }
+
+        function bindTrigger(trigger, selector) {
+          if (!trigger) return;
+          let lpTimer = null;
+          let openedByLongPress = false;
+          trigger.addEventListener('click', () => {
+            // If selector was just opened by long-press, don't close it on the click release
+            if (openedByLongPress) { openedByLongPress = false; return; }
+            if (selectorOpen) { closeAllSelectors(); return; }
+            sendActiveReaction();
+          });
+          trigger.addEventListener('pointerdown', () => {
+            openedByLongPress = false;
+            lpTimer = setTimeout(() => { openSelector(selector); openedByLongPress = true; }, 400);
+          });
+          trigger.addEventListener('pointerup', () => clearTimeout(lpTimer));
+          trigger.addEventListener('pointerleave', () => clearTimeout(lpTimer));
+        }
+        bindTrigger(reactionTrigger, reactionSelector);
+        bindTrigger(reactionTriggerDesktop, reactionSelectorDesktop);
+
+        // Selector item click (all)
+        container.querySelectorAll('[data-live-set-reaction]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            activeReaction = button.dataset.liveSetReaction || 'me_gusta';
+            refreshReactionButtons();
+            closeAllSelectors();
+            await sendActiveReaction();
+          });
+        });
+
+        // Close selectors on outside click
+        document.addEventListener('click', (e) => {
+          if (!selectorOpen) return;
+          const clickedInsideTrigger = (reactionTrigger?.contains(e.target)) || (reactionTriggerDesktop?.contains(e.target));
+          const clickedInsideSelector = (reactionSelector?.contains(e.target)) || (reactionSelectorDesktop?.contains(e.target));
+          if (!clickedInsideTrigger && !clickedInsideSelector) closeAllSelectors();
+        });
+
+        // ─── Comment events (Enter to send, no send button) ───
+        function bindCommentInput(input) {
+          if (!input) return;
+          input.addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              const text = input.value.trim();
+              if (!text) return;
+              // Copy value to canonical input for sendComment
+              liveCommentInput && (liveCommentInput.value = text);
+              liveCommentInputMobile && (liveCommentInputMobile.value = text);
+              await sendComment();
+              input.value = '';
+              if (liveCommentInput) liveCommentInput.value = '';
+              if (liveCommentInputMobile) liveCommentInputMobile.value = '';
+            }
+          });
+        }
+        bindCommentInput(liveCommentInput);
+        bindCommentInput(liveCommentInputMobile);
+
+        // Mark user interaction with comments so polling doesn't fight touch scrolling.
+        [liveComments, liveCommentsMobile].forEach((el) => {
+          if (!el) return;
+          el.addEventListener('scroll', markCommentsUserScroll, { passive: true });
+          el.addEventListener('touchstart', markCommentsUserScroll, { passive: true });
+          el.addEventListener('touchmove', markCommentsUserScroll, { passive: true });
+        });
+
+        // ─── Host buttons ───
+        hostEndButton.addEventListener('click', endLivestream);
+        const toggleMicHandler = () => {
+          hostMicMuted = !hostMicMuted;
+          applyHostAudioState();
+          refreshHostAudioButtons();
+        };
+        toggleMicButton.addEventListener('click', toggleMicHandler);
+
+        toggleSystemAudioButton.addEventListener('click', () => {
+          hostSystemMuted = !hostSystemMuted;
+          applyHostAudioState();
+          refreshHostAudioButtons();
+        });
+        switchSourceButton.addEventListener('click', async () => {
+          const next = liveData?.live_source === 'screen' ? 'camera' : 'screen';
+          liveData.live_source = next;
+          await startHostSource(next, true);
+        });
+
+        // Flip camera on mobile (front ↔ rear) — desktop host tool button
+        if (flipCameraButton) {
+          flipCameraButton.addEventListener('click', async () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            await startHostSource('camera', true);
+            if (hostPreviewVideo) {
+              hostPreviewVideo.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : '';
+            }
+          });
+        }
+        // Flip camera — mobile input row button (same logic)
+        if (flipCameraMobileButton) {
+          flipCameraMobileButton.addEventListener('click', async () => {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            await startHostSource('camera', true);
+            if (hostPreviewVideo) {
+              hostPreviewVideo.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : '';
+            }
+          });
+        }
+
+        loadLivestream().then(async () => {
+          refreshReactionButtons();
+          await loadComments();
+          await heartbeat();
+          await pollReactionEvents();
+          if (isHostOwner()) {
+            startedAt = Date.now();
+            await startHostSource(liveData?.live_source || 'camera');
+          }
+          // Show fullscreen button only for landscape streams (from PC)
+          updateFullscreenButtonVisibility();
+        });
+
+        commentsTimer = window.setInterval(commentsLoop, 2200);
+        heartbeatTimer = window.setInterval(heartbeatLoop, 10000);
+        liveStateTimer = window.setInterval(stateLoop, 1200);
+
+        return () => {
+          if (commentsTimer) window.clearInterval(commentsTimer);
+          if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+          if (liveStateTimer) window.clearInterval(liveStateTimer);
+          if (overlayTimer) clearTimeout(overlayTimer);
+          if (longPressTimer) clearTimeout(longPressTimer);
+          // Clean up immersive mode
+          document.body.classList.remove('live-immersive-active');
+          if (liveShell) liveShell.classList.remove('live-immersive-shell');
+          releaseWakeLock();
+          // If host mobile navigates away while stream is active, auto-end the stream via API
+          if (isHostRoute && !isDesktopClient() && !endedByHost && liveId) {
+            const dur = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+            PostsAPI.endLivestream(liveId, dur).catch(() => {});
+          }
+          if (!endedByHost && ovenLivekit && typeof ovenLivekit.stopStreaming === 'function') {
+            try {
+              ovenLivekit.stopStreaming();
+            } catch (error) {
+              console.warn('No se pudo detener la transmision al salir del live:', error);
+            }
+          }
+          hostPublishing = false;
+          hostPublishedSource = null;
+          if (ovenLivekit && typeof ovenLivekit.remove === 'function') {
+            ovenLivekit.remove();
+          }
+          ovenLivekit = null;
+          destroyPlayer();
+          stopHostStreams();
+        };
+      },
+    },
     messages: {
       title: 'Mensajes',
       activeNav: 'messages',
@@ -4755,6 +6650,12 @@
               return;
             }
 
+            const liveButton = event.target.closest('[data-action="open-livestream"]');
+            if (liveButton) {
+              router.navigate('live', { id: liveButton.dataset.liveId });
+              return;
+            }
+
             const reportButton = event.target.closest('[data-action="report-post"]');
             if (reportButton) {
               const result = await PostsAPI.reportPost(reportButton.dataset.postId);
@@ -6128,6 +8029,10 @@
             }
             if (button.dataset.action === 'comment-post') {
               openProfileCommentModal(button.dataset.postId);
+              return;
+            }
+            if (button.dataset.action === 'open-livestream') {
+              router.navigate('live', { id: button.dataset.liveId });
               return;
             }
             if (button.dataset.action === 'report-post') {
