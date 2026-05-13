@@ -4574,7 +4574,7 @@
           return result.data;
         }
 
-        async function publishHostBundle(bundle, source, restartExisting = false) {
+        function createOvenLivekit() {
           if (!ovenLivekit) {
             ovenLivekit = window.OvenLiveKit.create({
               callbacks: {
@@ -4584,26 +4584,53 @@
               },
             });
           }
+          return ovenLivekit;
+        }
 
-          if (restartExisting && hostPublishing && typeof ovenLivekit.stopStreaming === 'function') {
+        async function disposeOvenLivekit() {
+          if (!ovenLivekit) {
+            hostPublishing = false;
+            hostPublishedSource = null;
+            return;
+          }
+
+          if (typeof ovenLivekit.stopStreaming === 'function') {
             try {
               await Promise.resolve(ovenLivekit.stopStreaming());
             } catch (error) {
-              console.warn('No se pudo detener la transmision antes de cambiar la fuente:', error);
+              console.warn('No se pudo detener la transmision antes de reiniciar la fuente:', error);
             }
-            hostPublishing = false;
-            await delay(250);
           }
 
-          ovenLivekit.attachMedia(hostPreviewVideo);
-          await ovenLivekit.setMediaStream(bundle.publishedStream);
+          if (typeof ovenLivekit.remove === 'function') {
+            try {
+              ovenLivekit.remove();
+            } catch (error) {
+              console.warn('No se pudo limpiar OvenLiveKit antes de reiniciar la fuente:', error);
+            }
+          }
+
+          ovenLivekit = null;
+          hostPublishing = false;
+          hostPublishedSource = null;
+        }
+
+        async function publishHostBundle(bundle, source, restartExisting = false) {
+          if (restartExisting && hostPublishing) {
+            await disposeOvenLivekit();
+            await delay(350);
+          }
+
+          const livekit = createOvenLivekit();
+          livekit.attachMedia(hostPreviewVideo);
+          await livekit.setMediaStream(bundle.publishedStream);
           hostPreviewVideo.srcObject = bundle.previewStream || bundle.publishedStream;
           hostPreviewVideo.style.objectFit = (!isDesktopClient() && source === 'camera') ? 'cover' : 'contain';
           showHostPreview();
           await hostPreviewVideo.play().catch(() => {});
 
           if (!hostPublishing) {
-            await ovenLivekit.startStreaming(buildLivestreamPublishUrl(liveData.stream_key));
+            await livekit.startStreaming(buildLivestreamPublishUrl(liveData.stream_key));
           }
 
           hostPublishing = true;
@@ -4644,7 +4671,7 @@
             let restored = false;
             if (previousBundle && interruptedExistingStream) {
               try {
-                await publishHostBundle(previousBundle, previousSource, hostPublishing);
+                await publishHostBundle(previousBundle, previousSource, true);
                 hostMediaBundle = previousBundle;
                 liveData.live_source = previousSource;
                 restored = true;
@@ -4662,6 +4689,7 @@
             }
 
             if (!restored) {
+              await disposeOvenLivekit();
               hostPublishing = false;
               hostPublishedSource = null;
               showFallback('Fuente no disponible', 'No se pudo acceder a la camara o pantalla compartida para el directo.');
@@ -4734,10 +4762,16 @@
           return (element.scrollHeight - element.scrollTop - element.clientHeight) < 72;
         }
 
+        function getActiveCommentsContainer() {
+          if (!isDesktopClient() && liveCommentsMobile) {
+            return liveCommentsMobile;
+          }
+          return liveComments;
+        }
+
         function shouldStickCommentsToBottom() {
           if (!commentsInitialized) return true;
-          const activeCommentsContainer = (!isDesktopClient() && liveCommentsMobile) ? liveCommentsMobile : liveComments;
-          return isCommentsNearBottom(activeCommentsContainer);
+          return isCommentsNearBottom(getActiveCommentsContainer());
         }
 
         async function loadComments() {
@@ -4802,8 +4836,10 @@
 
           commentsInitialized = true;
           if (stickToBottom && !userRecentlyScrolledComments()) {
-            liveComments.scrollTop = liveComments.scrollHeight;
-            if (liveCommentsMobile) liveCommentsMobile.scrollTop = liveCommentsMobile.scrollHeight;
+            const activeCommentsContainer = getActiveCommentsContainer();
+            if (activeCommentsContainer) {
+              activeCommentsContainer.scrollTop = activeCommentsContainer.scrollHeight;
+            }
           }
         }
 

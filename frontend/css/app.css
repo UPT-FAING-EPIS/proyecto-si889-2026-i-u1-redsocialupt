@@ -1728,7 +1728,7 @@ body {
 .live-cam-stream .live-mobile-comments {
   /* Avoid mask-image here: it can break touch scrolling on some mobile browsers. */
   background: transparent;
-  padding: 8px 12px 2px;
+  padding: 8px 12px 8px;
   /* Concrete viewport-based max-height so overflow-y:auto actually triggers scroll */
   max-height: calc(55vh - 72px) !important;
   overflow-y: auto !important;
@@ -1736,9 +1736,11 @@ body {
   touch-action: pan-y;
   overscroll-behavior: contain;
   pointer-events: auto;
-  /* Keep the container scrollable; bottom pinning is handled by the first child auto margin. */
+  /* Keep the container scrollable and let short chats sit at the bottom. */
   display: flex !important;
   flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
 }
 
 
@@ -1989,13 +1991,14 @@ body.live-immersive-active #app-view {
   touch-action: pan-y;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 10px;
   padding: 8px 12px 8px;
+  scrollbar-gutter: stable;
 }
 
-/* Push short chats to the bottom without breaking scroll when content overflows. */
-.live-mobile-comments > :first-child {
-  margin-top: auto;
+.live-mobile-comments > * {
+  flex-shrink: 0;
 }
 
 /* ── Mobile input row (default: separate section below video) ── */
@@ -2012,31 +2015,16 @@ body.live-immersive-active #app-view {
 
 /* Only full-bleed mobile modes pin the composer to the viewport bottom */
 @media (max-width: 960px) {
-  body:has(.live-root.live-host-mobile) .live-mobile-input-row,
-  body:has(.live-root.live-cam-stream) .live-mobile-input-row {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 95;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
-    background: rgba(11, 17, 32, 0.98);
-  }
-  /* Pad comments only when the composer is fixed over the video */
   body:has(.live-root.live-host-mobile) .live-mobile-comments,
   body:has(.live-root.live-cam-stream) .live-mobile-comments {
-    padding-bottom: 68px;
+    padding-bottom: 8px;
   }
-  /* In standard mobile layout, keep the composer in flow and the comments flush to the bottom */
-  body:has(.live-root:not(.live-is-desktop):not(.live-host-mobile):not(.live-cam-stream)) .live-mobile-input-row {
+  body:has(.live-root:not(.live-is-desktop)) .live-mobile-input-row {
     position: relative;
     bottom: auto;
     left: auto;
     right: auto;
     z-index: auto;
-  }
-  body:has(.live-root:not(.live-is-desktop):not(.live-host-mobile):not(.live-cam-stream)) .live-mobile-comments {
-    padding-bottom: 8px;
   }
 }
 
