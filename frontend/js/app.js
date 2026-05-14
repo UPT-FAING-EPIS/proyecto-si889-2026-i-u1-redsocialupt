@@ -3655,7 +3655,7 @@
                 <div class="live-video-col">
                   <div id="live-video-wrap" class="live-video-wrap">
                     <div id="live-viewer-player" class="absolute inset-0 hidden"></div>
-                    <video id="live-host-preview" class="absolute inset-0 w-full h-full object-cover bg-black hidden" style="object-fit:cover" playsinline autoplay muted></video>
+                    <video id="live-host-preview" class="absolute inset-0 w-full h-full object-cover bg-black hidden pointer-events-none" style="object-fit:cover" playsinline autoplay muted></video>
 
                     <!-- Fallback -->
                     <div id="live-video-fallback" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-[5]">
@@ -3866,13 +3866,14 @@
         let viewerPendingSourceUrl = null;
         let viewerSwitchPrepared = false;
         let viewerFreezeFrame = null;
-        let viewerLastStreamKey = null;
+        let viewerRetrySpinner = null;
         let commentsInitialized = false;
         let overlayTimer = null;
         let longPressTimer = null;
         let selectorOpen = false;
         let lastKnownSource = null;
         let lastKnownStreamKey = null;
+        let lastKnownSourceRevision = null;
         let currentFacingMode = 'environment'; // default: rear camera on mobile
         let currentVideoDeviceId = '';
         let wakeLock = null; // Screen Wake Lock to prevent black screen
@@ -3999,6 +4000,7 @@
         }
 
         function destroyPlayer() {
+          hideViewerRetrySpinner();
           if (viewerHls && typeof viewerHls.destroy === 'function') {
             viewerHls.destroy();
           }
@@ -4017,9 +4019,34 @@
           viewerSwitchPrepared = false;
           viewerPlayerRoot.innerHTML = '';
           viewerFreezeFrame = null;
+          viewerRetrySpinner = null;
         }
 
-        function captureViewerFreezeFrame() {
+        function showViewerRetrySpinner() {
+          if (!viewerPlayerRoot) {
+            return;
+          }
+
+          if (!viewerRetrySpinner) {
+            viewerRetrySpinner = document.createElement('div');
+            viewerRetrySpinner.className = 'live-retry-spinner';
+            viewerRetrySpinner.innerHTML = '<div class="live-retry-spinner__ring"></div>';
+          }
+
+          if (!viewerRetrySpinner.parentElement) {
+            viewerPlayerRoot.appendChild(viewerRetrySpinner);
+          }
+          viewerRetrySpinner.classList.remove('hidden');
+        }
+
+        function hideViewerRetrySpinner() {
+          if (!viewerRetrySpinner) {
+            return;
+          }
+          viewerRetrySpinner.classList.add('hidden');
+        }
+
+        function captureViewerFreezeFrame(options = {}) {
           if (!viewerVideo || !viewerPlayerRoot || !viewerVideo.videoWidth || !viewerVideo.videoHeight) {
             return;
           }
@@ -4046,6 +4073,9 @@
               viewerPlayerRoot.appendChild(viewerFreezeFrame);
             }
             viewerFreezeFrame.classList.remove('hidden');
+            if (options.hideVideo && viewerVideo) {
+              viewerVideo.style.opacity = '0';
+            }
           } catch (error) {
             console.warn('No se pudo capturar el ultimo frame del directo:', error);
           }
@@ -4058,10 +4088,18 @@
 
           viewerFreezeFrame.remove();
           viewerFreezeFrame = null;
+          if (viewerVideo) {
+            viewerVideo.style.opacity = '1';
+          }
         }
 
-        function disposeViewerHlsKeepFrame(nextSourceUrl = null) {
-          captureViewerFreezeFrame();
+        function disposeViewerHlsKeepFrame(nextSourceUrl = null, options = {}) {
+          captureViewerFreezeFrame({ hideVideo: true });
+          if (options.showSpinner) {
+            showViewerRetrySpinner();
+          } else {
+            hideViewerRetrySpinner();
+          }
 
           if (viewerHls) {
             try {
@@ -4099,6 +4137,7 @@
         }
 
         function showFallback(title, copy) {
+          hideViewerRetrySpinner();
           viewerPlayerRoot.classList.add('hidden');
           hostPreviewVideo.classList.add('hidden');
           liveVideoFallback.classList.remove('hidden');
@@ -4119,6 +4158,7 @@
           // The fallback will be hidden in the 'playing' event listener on the video
           if (viewerVideo && viewerVideo.readyState >= 2) {
             liveVideoFallback.classList.add('hidden');
+            viewerVideo.style.opacity = '1';
           }
         }
 
@@ -4388,6 +4428,10 @@
             return;
           }
 
+          if (viewerFreezeFrame && viewerVideo.readyState >= 2) {
+            viewerVideo.style.opacity = '1';
+            clearViewerFreezeFrame();
+          }
           viewerVideo.playbackRate = 1;
         }
 
@@ -4475,6 +4519,7 @@
           video.style.zIndex = '1';
           video.style.opacity = '0';
           video.style.transition = 'opacity 160ms ease';
+          video.style.pointerEvents = 'none';
           video.autoplay = true;
           video.controls = false;
           video.playsInline = true;
@@ -4506,6 +4551,7 @@
             liveVideoFallback.classList.add('hidden');
             video.style.opacity = '1';
             clearViewerFreezeFrame();
+            hideViewerRetrySpinner();
             endLiveSourceTransition(transitionToken, 1000).catch(() => {});
           };
           video.addEventListener('playing', hideFallback, { once: true });
@@ -4537,7 +4583,8 @@
             const sourceUrl = normalizeLivestreamPlaybackUrl(liveData.stream_key, liveData.playback_url, sourceRevision);
             const probeUrl = buildLivestreamProbeUrl(liveData.stream_key, sourceRevision);
             const switchingExistingStream = !!(viewerVideo && viewerPlayerSourceUrl && viewerPlayerSourceUrl !== sourceUrl);
-            if (forceRestart || switchingExistingStream) {
+            const restartingCurrentStream = !!(forceRestart && viewerVideo && viewerPlayerSourceUrl === sourceUrl);
+            if (switchingExistingStream) {
               beginLiveSourceTransition();
             }
             if (!forceRestart && viewerVideo && viewerPlayerSourceUrl === sourceUrl) {
@@ -4549,6 +4596,9 @@
             if (switchingExistingStream && (!viewerSwitchPrepared || viewerPendingSourceUrl !== sourceUrl)) {
               disposeViewerHlsKeepFrame(sourceUrl);
             }
+            if (restartingCurrentStream && (!viewerSwitchPrepared || viewerPendingSourceUrl !== sourceUrl)) {
+              disposeViewerHlsKeepFrame(sourceUrl, { showSpinner: true });
+            }
 
             const manifestReady = await ensureViewerManifest(
               sourceUrl,
@@ -4557,16 +4607,18 @@
                 : { attempts: 5, pauseMs: 650, requestTimeoutMs: 2200, probeUrl }
             );
             if (!manifestReady) {
-              if (switchingExistingStream) {
+              if (switchingExistingStream || restartingCurrentStream) {
                 showViewerPlayer();
-                await endLiveSourceTransition(transitionToken, 1000);
+                if (switchingExistingStream) {
+                  await endLiveSourceTransition(transitionToken, 1000);
+                }
                 return;
               }
               showFallback('Esperando directo', 'El stream todavia se esta preparando para los espectadores.');
               return;
             }
 
-            if (!switchingExistingStream) {
+            if (!switchingExistingStream && !restartingCurrentStream) {
               destroyPlayer();
             }
 
@@ -4618,8 +4670,8 @@
 
                 if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
                   if (liveData?.live_status === 'live') {
-                    captureViewerFreezeFrame();
-                    beginLiveSourceTransition();
+                    captureViewerFreezeFrame({ hideVideo: true });
+                    showViewerRetrySpinner();
                     showViewerPlayer();
                   }
                   hls.startLoad();
@@ -4968,7 +5020,8 @@
         async function startHostSource(nextSource = null, forceRestart = false, options = {}) {
           if (sourceBusy || !liveData?.stream_key) return false;
           sourceBusy = true;
-          const transitionId = beginLiveSourceTransition();
+          const shouldShowTransition = hostPublishing || forceRestart;
+          const transitionId = shouldShowTransition ? beginLiveSourceTransition() : 0;
 
           let nextBundle = null;
           let nextLivekit = null;
@@ -4978,6 +5031,7 @@
           const previousSource = hostPublishedSource || previousBundle?.source || liveData?.live_source || 'camera';
           const previousFacingMode = options.previousFacingMode || currentFacingMode;
           const isMobileCameraFlip = !!(options.isCameraFlip && !isDesktopClient() && previousSource === 'camera');
+          const isInitialPublish = !hostPublishing && !forceRestart;
           let releasedPreviousCamera = false;
 
           try {
@@ -4987,13 +5041,9 @@
               return true;
             }
 
-            const nextStreamKey = (hostPublishing || forceRestart)
-              ? nextLivestreamStreamKey()
-              : (liveData?.stream_key || nextLivestreamStreamKey());
-
-            if (isMobileCameraFlip && previousLivekit) {
-              await disposeOvenLivekit(previousLivekit);
-            }
+            const nextStreamKey = isInitialPublish
+              ? (liveData?.stream_key || nextLivestreamStreamKey())
+              : nextLivestreamStreamKey();
 
             if (isMobileCameraFlip && previousBundle) {
               releaseBundleVideoTracks(previousBundle);
@@ -5003,27 +5053,31 @@
 
             nextBundle = await buildHostInputStream(source);
             nextLivekit = await publishHostBundle(nextBundle, source, nextStreamKey);
+            const manifestReady = await waitForPublishedManifest(nextStreamKey, {
+              attempts: isInitialPublish ? 60 : (isMobileCameraFlip ? 48 : 42),
+              pauseMs: isInitialPublish ? 220 : (isMobileCameraFlip ? 180 : 200),
+              requestTimeoutMs: 1500,
+            });
+            if (!manifestReady && !isInitialPublish) {
+              throw new Error('OME no termino de preparar el manifiesto del directo');
+            }
+
+            if (!manifestReady) {
+              console.warn('OME aun no genero el manifiesto inicial; el viewer seguira reintentando.');
+            }
+
             liveData.live_source = source;
             liveData.stream_key = nextStreamKey;
             liveData.updated_at = new Date().toISOString();
             await syncLivestreamSourceState(source, nextStreamKey);
-            const manifestReady = await waitForPublishedManifest(nextStreamKey, {
-              attempts: isMobileCameraFlip ? 24 : 18,
-              pauseMs: isMobileCameraFlip ? 160 : 180,
-              requestTimeoutMs: 1500,
-            });
-            if (!manifestReady) {
-              throw new Error('OME no termino de preparar el manifiesto del directo');
-            }
-
             ovenLivekit = nextLivekit;
             hostMediaBundle = nextBundle;
             hostPublishing = true;
             hostPublishedSource = source;
             refreshHostAudioButtons();
             showHostPreview();
-            if (previousLivekit && previousLivekit !== nextLivekit && !isMobileCameraFlip) {
-              await delay(2200);
+            if (previousLivekit && previousLivekit !== nextLivekit) {
+              await delay(1800);
               await disposeOvenLivekit(previousLivekit, { clearCurrent: false });
             }
             if (previousBundle && previousBundle !== nextBundle) {
@@ -5052,7 +5106,7 @@
               refreshHostAudioButtons();
               showHostPreview();
               restored = true;
-            } else if (previousSource) {
+            } else if ((hostPublishing || forceRestart || releasedPreviousCamera) && previousSource) {
               try {
                 currentFacingMode = previousFacingMode;
                 const recoveredBundle = await buildHostInputStream(previousSource);
@@ -5077,6 +5131,9 @@
                 restored = true;
                 showHostPreview();
                 refreshHostAudioButtons();
+                if (previousLivekit && previousLivekit !== recoveredLivekit) {
+                  await disposeOvenLivekit(previousLivekit, { clearCurrent: false });
+                }
                 if (previousBundle && previousBundle !== recoveredBundle) {
                   cleanupMediaBundle(previousBundle);
                 }
@@ -5097,7 +5154,9 @@
             return false;
           } finally {
             sourceBusy = false;
-            endLiveSourceTransition(transitionId, 1000).catch(() => {});
+            if (transitionId) {
+              endLiveSourceTransition(transitionId, 1000).catch(() => {});
+            }
           }
         }
 
@@ -5147,12 +5206,15 @@
             // Detect source change → force viewer restart
             const currentSource = liveData.live_source || 'camera';
             const currentStreamKey = liveData.stream_key || '';
+            const currentRevision = liveData.updated_at || liveData.playback_url || '';
             const sourceChanged = (lastKnownSource && lastKnownSource !== currentSource)
-              || (lastKnownStreamKey && lastKnownStreamKey !== currentStreamKey);
+              || (lastKnownStreamKey && lastKnownStreamKey !== currentStreamKey)
+              || (lastKnownSourceRevision && lastKnownSourceRevision !== currentRevision);
             lastKnownSource = currentSource;
             lastKnownStreamKey = currentStreamKey;
+            lastKnownSourceRevision = currentRevision;
             if (sourceChanged) {
-              captureViewerFreezeFrame();
+              captureViewerFreezeFrame({ hideVideo: true });
               beginLiveSourceTransition();
               showViewerPlayer();
             }
@@ -5164,6 +5226,7 @@
           } else if (!isOwner && liveData.live_status === 'live') {
             lastKnownSource = liveData.live_source || 'camera';
             lastKnownStreamKey = liveData.stream_key || '';
+            lastKnownSourceRevision = liveData.updated_at || liveData.playback_url || '';
             destroyPlayer();
             showFallback('Preparando directo', 'El stream todavia se esta preparando para los espectadores.');
           }
@@ -5368,6 +5431,7 @@
         let inVideoFullscreen = false; // landscape fullscreen (video only)
         let overlayVisible = true;
         const isHostOnMobile = isHostRoute && !isDesktopClient();
+        const isHostOnDesktop = isHostRoute && isDesktopClient();
 
         function showOverlay() {
           overlayVisible = true;
@@ -5380,9 +5444,12 @@
             immersiveBtn.style.pointerEvents = 'auto';
           }
           clearTimeout(overlayTimer);
-          overlayTimer = setTimeout(hideOverlay, 5000);
+          if (!isHostOnDesktop) {
+            overlayTimer = setTimeout(hideOverlay, 5000);
+          }
         }
         function hideOverlay() {
+          if (isHostOnDesktop) return;
           if (selectorOpen) return;
           overlayVisible = false;
           overlays.forEach(el => { el.style.opacity = '0'; el.style.pointerEvents = 'none'; });
@@ -5403,7 +5470,13 @@
         if (liveVideoWrap) {
           liveVideoWrap.addEventListener('mouseenter', () => { if (Date.now() - lastTouchTime > 600) showOverlay(); });
           liveVideoWrap.addEventListener('mousemove',  () => { if (Date.now() - lastTouchTime > 600) showOverlay(); });
-          liveVideoWrap.addEventListener('mouseleave', () => { if (Date.now() - lastTouchTime > 600) { clearTimeout(overlayTimer); overlayTimer = setTimeout(hideOverlay, 1200); } });
+          liveVideoWrap.addEventListener('mouseleave', () => {
+            if (isHostOnDesktop) return;
+            if (Date.now() - lastTouchTime > 600) {
+              clearTimeout(overlayTimer);
+              overlayTimer = setTimeout(hideOverlay, 1200);
+            }
+          });
           // Mobile: touchend toggles overlay
           let lastTouchToggleTime = 0;
           liveVideoWrap.addEventListener('touchend', (e) => {
@@ -5803,7 +5876,7 @@
 
         commentsTimer = window.setInterval(commentsLoop, 2200);
         heartbeatTimer = window.setInterval(heartbeatLoop, 10000);
-        liveStateTimer = window.setInterval(stateLoop, 1200);
+        liveStateTimer = window.setInterval(stateLoop, 650);
 
         return () => {
           if (commentsTimer) window.clearInterval(commentsTimer);

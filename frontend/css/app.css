@@ -2165,6 +2165,36 @@ body.live-immersive-active #app-view {
   transition-duration: 260ms;
 }
 
+.live-retry-spinner {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.live-retry-spinner.hidden {
+  display: none;
+}
+
+.live-retry-spinner__ring {
+  width: 42px;
+  height: 42px;
+  border-radius: 9999px;
+  border: 3px solid rgba(255, 255, 255, 0.24);
+  border-top-color: #fff;
+  box-shadow: 0 0 28px rgba(15, 23, 42, 0.34);
+  animation: live-retry-spin 0.8s linear infinite;
+}
+
+@keyframes live-retry-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes live-source-sheen {
   from {
     transform: translateX(-110%);
