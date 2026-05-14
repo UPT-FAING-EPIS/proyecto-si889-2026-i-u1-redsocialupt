@@ -3381,7 +3381,11 @@
           if (liveSource === 'screen' && isDesktopClient()) {
             try {
               preCapturedStream = await navigator.mediaDevices.getDisplayMedia({
-                video: true,
+                video: {
+                  width: { ideal: 1920, max: 1920 },
+                  height: { ideal: 1080, max: 1080 },
+                  frameRate: { ideal: 60, max: 60 },
+                },
                 audio: true,
               });
             } catch (err) {
@@ -4242,13 +4246,13 @@
           }
 
           if (bundle.micGainNode) {
-            bundle.micGainNode.gain.value = hostMicMuted ? 0 : 1;
+            bundle.micGainNode.gain.value = hostMicMuted ? 0 : (bundle.micBaseGain ?? 1);
           } else {
             setAudioTrackEnabled(bundle.micAudioTracks, !hostMicMuted);
           }
 
           if (bundle.systemGainNode) {
-            bundle.systemGainNode.gain.value = hostSystemMuted ? 0 : 1;
+            bundle.systemGainNode.gain.value = hostSystemMuted ? 0 : (bundle.systemBaseGain ?? 0.85);
           } else {
             setAudioTrackEnabled(bundle.systemAudioTracks, !hostSystemMuted);
           }
@@ -4631,11 +4635,11 @@
               const hls = new window.Hls({
                 lowLatencyMode: false,
                 liveDurationInfinity: true,
-                backBufferLength: 6,
-                maxBufferLength: 8,
-                liveSyncDurationCount: 1,
-                liveMaxLatencyDurationCount: 3,
-                maxLiveSyncPlaybackRate: 1.08,
+                backBufferLength: 8,
+                maxBufferLength: 12,
+                liveSyncDurationCount: 2,
+                liveMaxLatencyDurationCount: 5,
+                maxLiveSyncPlaybackRate: 1.05,
                 startFragPrefetch: true,
               });
               viewerHls = hls;
@@ -4761,6 +4765,115 @@
           );
         }
 
+        function getLiveAudioConstraints() {
+          return {
+            echoCancellation: { ideal: true },
+            noiseSuppression: { ideal: true },
+            autoGainControl: { ideal: true },
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 48000 },
+            sampleSize: { ideal: 16 },
+          };
+        }
+
+        function getLiveVideoConstraints(source, overrides = {}) {
+          const desktop = isDesktopClient();
+          const base = source === 'screen'
+            ? {
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 },
+                frameRate: { ideal: 60, max: 60 },
+              }
+            : desktop
+              ? {
+                  width: { ideal: 1280, max: 1920 },
+                  height: { ideal: 720, max: 1080 },
+                  frameRate: { ideal: 30, max: 30 },
+                  aspectRatio: { ideal: 16 / 9 },
+                }
+              : {
+                  width: { ideal: 1280, max: 1280 },
+                  height: { ideal: 720, max: 720 },
+                  frameRate: { ideal: 24, max: 30 },
+                };
+
+          return { ...base, ...overrides };
+        }
+
+        function applyLiveTrackHints(stream, source) {
+          if (!stream?.getTracks) {
+            return;
+          }
+
+          stream.getVideoTracks().forEach((track) => {
+            try {
+              track.contentHint = source === 'screen' ? 'detail' : 'motion';
+            } catch (_error) {}
+          });
+
+          stream.getAudioTracks().forEach((track) => {
+            try {
+              track.contentHint = 'speech';
+            } catch (_error) {}
+          });
+        }
+
+        function createMixedAudioTrack(displayAudioTrack, micAudioTrack) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContextClass || !displayAudioTrack || !micAudioTrack) {
+            return null;
+          }
+
+          try {
+            let audioContext;
+            try {
+              audioContext = new AudioContextClass({ sampleRate: 48000 });
+            } catch (_error) {
+              audioContext = new AudioContextClass();
+            }
+
+            const destination = audioContext.createMediaStreamDestination();
+            const compressor = audioContext.createDynamicsCompressor();
+            compressor.threshold.value = -18;
+            compressor.knee.value = 24;
+            compressor.ratio.value = 4;
+            compressor.attack.value = 0.003;
+            compressor.release.value = 0.25;
+
+            const displaySource = audioContext.createMediaStreamSource(new MediaStream([displayAudioTrack]));
+            const micSource = audioContext.createMediaStreamSource(new MediaStream([micAudioTrack]));
+            const systemGainNode = audioContext.createGain();
+            const micGainNode = audioContext.createGain();
+            systemGainNode.gain.value = 0.85;
+            micGainNode.gain.value = 1;
+
+            displaySource.connect(systemGainNode).connect(compressor);
+            micSource.connect(micGainNode).connect(compressor);
+            compressor.connect(destination);
+
+            const mixedTrack = destination.stream.getAudioTracks()[0] || null;
+            if (mixedTrack) {
+              try {
+                mixedTrack.contentHint = 'speech';
+              } catch (_error) {}
+            }
+
+            if (audioContext.state === 'suspended') {
+              audioContext.resume().catch(() => {});
+            }
+
+            return {
+              audioContext,
+              systemGainNode,
+              micGainNode,
+              mixedTrack,
+            };
+          } catch (error) {
+            console.warn('No se pudo crear la mezcla optimizada de audio:', error);
+            return null;
+          }
+        }
+
         async function buildHostInputStream(source) {
           const bundle = {
             source,
@@ -4772,6 +4885,8 @@
             micAudioTracks: [],
             systemGainNode: null,
             micGainNode: null,
+            systemBaseGain: 0.85,
+            micBaseGain: 1,
           };
 
           if (source === 'screen' && isDesktopClient()) {
@@ -4782,14 +4897,14 @@
               window.__uptLivePreCapturedStream = null;
             } else {
               displayStream = await navigator.mediaDevices.getDisplayMedia({
-                video: true,
+                video: getLiveVideoConstraints('screen'),
                 audio: true,
               });
             }
             let micStream = null;
 
             try {
-              micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+              micStream = await navigator.mediaDevices.getUserMedia({ audio: getLiveAudioConstraints(), video: false });
             } catch (error) {
               micStream = null;
             }
@@ -4806,15 +4921,15 @@
             bundle.micAudioTracks = micAudioTracks;
 
             if (displayAudioTracks.length && micAudioTracks.length) {
-              bundle.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-              const destination = bundle.audioContext.createMediaStreamDestination();
-              const displaySource = bundle.audioContext.createMediaStreamSource(new MediaStream([displayAudioTracks[0]]));
-              const micSource = bundle.audioContext.createMediaStreamSource(new MediaStream([micAudioTracks[0]]));
-              bundle.systemGainNode = bundle.audioContext.createGain();
-              bundle.micGainNode = bundle.audioContext.createGain();
-              displaySource.connect(bundle.systemGainNode).connect(destination);
-              micSource.connect(bundle.micGainNode).connect(destination);
-              destination.stream.getAudioTracks().forEach((track) => finalStream.addTrack(track));
+              const mixedAudio = createMixedAudioTrack(displayAudioTracks[0], micAudioTracks[0]);
+              if (mixedAudio?.mixedTrack) {
+                bundle.audioContext = mixedAudio.audioContext;
+                bundle.systemGainNode = mixedAudio.systemGainNode;
+                bundle.micGainNode = mixedAudio.micGainNode;
+                finalStream.addTrack(mixedAudio.mixedTrack);
+              } else {
+                finalStream.addTrack(displayAudioTracks[0]);
+              }
             } else if (displayAudioTracks.length) {
               finalStream.addTrack(displayAudioTracks[0]);
             } else if (micAudioTracks.length) {
@@ -4822,6 +4937,8 @@
             }
 
             bundle.publishedStream = finalStream;
+            applyLiveTrackHints(bundle.previewStream, 'screen');
+            applyLiveTrackHints(bundle.publishedStream, 'screen');
             applyHostAudioState(bundle);
             return bundle;
           }
@@ -4829,7 +4946,10 @@
           // On mobile use facingMode for front/rear camera; on desktop just { video: true }
           let cameraStream = null;
           if (isDesktopClient()) {
-            cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+              video: getLiveVideoConstraints('camera'),
+              audio: getLiveAudioConstraints(),
+            });
           } else {
             const videoInputs = await navigator.mediaDevices.enumerateDevices()
               .then((devices) => devices.filter((device) => device.kind === 'videoinput'))
@@ -4839,22 +4959,24 @@
 
             if (preferredDevice?.deviceId) {
               candidateConstraints.push({
+                ...getLiveVideoConstraints('camera'),
                 deviceId: { exact: preferredDevice.deviceId },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
               });
             }
 
             candidateConstraints.push(
-              { facingMode: { exact: currentFacingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-              { facingMode: { ideal: currentFacingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-              { width: { ideal: 1920 }, height: { ideal: 1080 } }
+              getLiveVideoConstraints('camera', { facingMode: { exact: currentFacingMode } }),
+              getLiveVideoConstraints('camera', { facingMode: { ideal: currentFacingMode } }),
+              getLiveVideoConstraints('camera')
             );
 
             let lastCameraError = null;
             for (const videoConstraints of candidateConstraints) {
               try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                  video: videoConstraints,
+                  audio: getLiveAudioConstraints(),
+                });
                 break;
               } catch (error) {
                 lastCameraError = error;
@@ -4877,6 +4999,7 @@
           bundle.previewStream = cameraStream;
           bundle.publishedStream = cameraStream;
           bundle.micAudioTracks = cameraStream.getAudioTracks();
+          applyLiveTrackHints(bundle.previewStream, 'camera');
           applyHostAudioState(bundle);
           return bundle;
         }
