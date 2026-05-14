@@ -28,13 +28,14 @@ docker compose up -d --build frontend
 docker compose ps
 node --check frontend/js/app.js
 node --check frontend/js/app-shared.js
+node --check frontend/js/app-live-media.js
 git status --short --branch
 ```
 
 Subir cambios:
 
 ```powershell
-git add frontend/app.html frontend/js/app.js frontend/js/app-shared.js CONTEXTO_CODEX.md
+git add frontend/app.html frontend/js/app.js frontend/js/app-shared.js frontend/js/app-live-media.js CONTEXTO_CODEX.md
 git commit -m "mensaje"
 git push origin main
 ```
@@ -59,29 +60,40 @@ docker compose -p uptconnect -f docker-compose.server.yml up -d --build frontend
 
 Commits relevantes recientes:
 
-- `ae50a0c optimizar live` esta localmente encima de `origin/main`.
-- `ac8f89e estable v1.3.0` esta en `origin/main`.
+- `464227e extraer utilidades app y contexto codex` esta en `origin/main`.
+- `ae50a0c optimizar live` esta incluido debajo de ese commit.
+- `ac8f89e estable v1.3.0` es la base estable anterior.
 - Antes hubo fixes de live: transicion, OME, proxy `/ome`, scroll movil, cierre WHIP, layout movil.
 
 Importante: evitar `git add .` porque hay muchos archivos temporales y recursos locales sin versionar. Stagear solo archivos necesarios.
 
-## Cambios locales no confirmados al crear este contexto
+## Cambios locales no confirmados actuales
 
-Hay una refactorizacion iniciada para reducir `frontend/js/app.js`:
+La primera refactorizacion de utilidades compartidas ya esta commiteada en `464227e`.
 
-- `frontend/app.html` ahora carga `/js/app-shared.js?v=1` antes de `/js/app.js?v=50`.
-- Nuevo archivo `frontend/js/app-shared.js` con utilidades puras compartidas.
-- `frontend/js/app.js` importa esas utilidades desde `window.UPTAppShared`.
+Continuacion actual iniciada:
+
+- Nuevo archivo `frontend/js/app-live-media.js` con helpers de media live:
+  - `getLiveAudioConstraints()`
+  - `getLiveVideoConstraints(source, overrides)`
+  - `applyLiveTrackHints(stream, source)`
+  - `createMixedAudioTrack(displayAudioTrack, micAudioTrack)`
+- `frontend/app.html` carga `/js/app-live-media.js?v=1` despues de `app-shared` y antes de `/js/app.js?v=51`.
+- `frontend/js/app.js` importa esos helpers desde `window.UPTLiveMedia`.
+- `frontend/js/app.js` bajo de 10,024 a 9,927 lineas.
 
 Validaciones ya ejecutadas:
 
 - `node --check frontend/js/app.js`
 - `node --check frontend/js/app-shared.js`
-- `docker compose up -d --build frontend`
-- `http://localhost/js/app-shared.js` responde `200`
-- `http://localhost/js/app.js` responde `200`
+- `node --check frontend/js/app-live-media.js`
+- `docker compose -p uptconnect -f docker-compose.server.yml up -d --build frontend`
+- Dentro de `uptconnect-frontend-1`, Nginx responde `200 OK` para `/js/app-live-media.js`.
+- Dentro de `uptconnect-frontend-1`, Nginx responde `200 OK` para `/js/app.js`.
 
-Esta refactorizacion todavia no estaba commiteada al crear este archivo.
+Pendiente antes de publicar:
+
+- Commit/push stageando solo los archivos necesarios.
 
 ## Live / livestream
 
@@ -91,7 +103,7 @@ Objetivo actual del live:
 - No cambiar arquitectura a WebRTC viewer directo ni multi-bitrate por ahora.
 - Mejorar audio, fluidez, recuperacion y estabilidad sin romper comentarios, reacciones, finalizar live ni cambio de fuente.
 
-Optimizacion ya aplicada en `frontend/js/app.js`:
+Optimizacion ya aplicada en live (helpers ahora en `frontend/js/app-live-media.js` y usados por `frontend/js/app.js`):
 
 - `getLiveAudioConstraints()`
 - `getLiveVideoConstraints(source, overrides)`
@@ -144,9 +156,14 @@ Primera etapa hecha:
 - Extraidas utilidades puras a `frontend/js/app-shared.js`.
 - `app.js` bajo de aproximadamente 10,386 lineas a unas 10,024 lineas.
 
+Segunda etapa iniciada:
+
+- Extraidos helpers de media live a `frontend/js/app-live-media.js`.
+- `app.js` bajo a 9,927 lineas.
+
 Siguientes etapas recomendadas:
 
-- Extraer modulo live cuando este suficientemente estable.
+- Extraer mas piezas pequenas del live cuando esten suficientemente estables (por ejemplo helpers de viewer HLS o UI de comentarios/reacciones), evitando mover el mount completo de golpe.
 - Extraer modulo de llamadas/videollamadas.
 - Extraer helpers de rutas/render solo si no dependen de estado interno complejo.
 - Evitar mover vistas grandes sin pruebas, porque `app.js` tiene mucho estado compartido.
@@ -160,4 +177,3 @@ C:\Users\Win\Desktop\rollout-2026-05-12T22-42-31-019e1f6d-d3b8-7250-928e-f228733
 ```
 
 Pesa aproximadamente 165 MB. Sirve como respaldo, pero para trabajar en la VPS es mejor usar este resumen.
-
