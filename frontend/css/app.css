@@ -1709,6 +1709,7 @@ body {
   pointer-events: auto;
   flex-direction: column;
   justify-content: flex-end;
+  height: min(55dvh, 55%);
   max-height: 55%; /* increased: more comments visible */
 }
 
@@ -1730,6 +1731,7 @@ body {
   background: transparent;
   padding: 8px 12px 8px;
   /* Concrete viewport-based max-height so overflow-y:auto actually triggers scroll */
+  height: calc(55vh - 72px) !important;
   max-height: calc(55vh - 72px) !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
@@ -1741,6 +1743,10 @@ body {
   flex-direction: column;
   justify-content: flex-end;
   min-height: 0;
+}
+
+.live-mobile-comments.live-comments-overflowing {
+  justify-content: flex-start;
 }
 
 
@@ -1957,16 +1963,17 @@ body.live-immersive-active #app-view {
   overflow: hidden;
 }
 
-/* Desktop immersive in a narrow window: stack video + chat with saner proportions */
+/* Desktop immersive in a narrow window: use fixed rows so chat sizing stays sane */
 @media (max-width: 1180px) {
   .live-immersive-shell.live-is-desktop .live-layout {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(230px, min(52vh, 430px)) minmax(220px, 1fr);
     height: 100%;
     min-height: 0;
   }
 
   .live-immersive-shell.live-is-desktop .live-video-col {
-    flex: 0 0 auto;
     height: auto;
     min-height: 0;
     padding: 12px 12px 0;
@@ -1975,16 +1982,17 @@ body.live-immersive-active #app-view {
 
   .live-immersive-shell.live-is-desktop .live-video-wrap {
     border-radius: 16px !important;
-    min-height: 180px;
-    max-height: 46vh;
-    aspect-ratio: 16 / 9;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto;
     flex: 0 0 auto;
   }
 
   .live-immersive-shell.live-is-desktop .live-chat-col {
     width: 100%;
     max-width: none;
-    flex: 1 1 auto;
     min-height: 0;
     max-height: none;
     border-left: none;
@@ -2123,6 +2131,50 @@ body.live-immersive-active #app-view {
 }
 
 /* ── Overlay auto-hide transition ── */
+.live-source-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.12), transparent 55%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.24), rgba(15, 23, 42, 0.3));
+  backdrop-filter: blur(18px) saturate(118%);
+  -webkit-backdrop-filter: blur(18px) saturate(118%);
+  transition: opacity 180ms ease;
+}
+
+.live-source-transition__glow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 20%, rgba(255, 255, 255, 0.12) 50%, transparent 80%);
+  transform: translateX(-100%);
+}
+
+.live-source-transition.is-active {
+  opacity: 1;
+}
+
+.live-source-transition.is-active .live-source-transition__glow {
+  animation: live-source-sheen 900ms ease forwards;
+}
+
+.live-source-transition.is-exiting {
+  opacity: 0;
+  transition-duration: 260ms;
+}
+
+@keyframes live-source-sheen {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(110%);
+  }
+}
+
 .live-overlay {
   transition: opacity 0.3s ease;
 }

@@ -113,7 +113,7 @@ class LivestreamService
         return $this->getViewerCount($post->id);
     }
 
-    public function updateSource(int $userId, int $postId, string $source): Post
+    public function updateSource(int $userId, int $postId, string $source, ?string $streamKey = null): Post
     {
         $post = $this->getById($postId);
         if ((int) $post->user_id !== $userId) {
@@ -121,6 +121,9 @@ class LivestreamService
         }
 
         $post->live_source = $this->normalizeSource($source);
+        if ($streamKey !== null && trim($streamKey) !== '') {
+            $post->stream_key = trim($streamKey);
+        }
         $post->updated_at = Carbon::now();
         $post->save();
 

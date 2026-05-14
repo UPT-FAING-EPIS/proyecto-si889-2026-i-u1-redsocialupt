@@ -92,6 +92,7 @@ class LivestreamController extends BaseController
     {
         $this->validate($request, [
             'live_source' => 'required|in:camera,screen',
+            'stream_key' => 'nullable|string|max:120',
         ]);
 
         try {
@@ -100,7 +101,8 @@ class LivestreamController extends BaseController
                     $this->livestreamService->updateSource(
                         (int) $request->auth->sub,
                         $id,
-                        $request->input('live_source')
+                        $request->input('live_source'),
+                        $request->input('stream_key')
                     ),
                     (int) $request->auth->sub
                 ),

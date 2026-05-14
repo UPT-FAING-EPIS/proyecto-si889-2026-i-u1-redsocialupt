@@ -276,9 +276,12 @@ const PostsAPI = {
     },
   }),
   getLivestream: (id) => apiFetch(`/api/livestreams/${id}`),
-  updateLivestreamSource: (id, liveSource = 'camera') => apiFetch(`/api/livestreams/${id}/source`, {
+  updateLivestreamSource: (id, liveSource = 'camera', streamKey = null) => apiFetch(`/api/livestreams/${id}/source`, {
     method: 'PUT',
-    body: JSON.stringify({ live_source: liveSource }),
+    body: JSON.stringify({
+      live_source: liveSource,
+      ...(streamKey ? { stream_key: streamKey } : {}),
+    }),
   }),
   endLivestream: (id, durationSeconds = 0) => apiFetch(`/api/livestreams/${id}/end`, {
     method: 'PUT',

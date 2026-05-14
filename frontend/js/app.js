@@ -524,6 +524,14 @@
     return `${baseUrl}?v=${encodeURIComponent(revision)}`;
   }
 
+  function buildLivestreamProbeUrl(streamKey, revision = '') {
+    const baseUrl = `${window.location.origin}/ome-ready/app/${encodeURIComponent(streamKey)}/master.m3u8`;
+    if (!revision) {
+      return baseUrl;
+    }
+    return `${baseUrl}?v=${encodeURIComponent(revision)}`;
+  }
+
   function normalizeLivestreamPlaybackUrl(streamKey, _playbackUrl, revision = '') {
     // Always rebuild from stream_key to ensure the viewer uses the frontend proxy
     return buildLivestreamHlsUrl(streamKey, revision);
@@ -3659,6 +3667,9 @@
                     </div>
 
                     <!-- ── OVERLAY (top) ── -->
+                    <div id="live-source-transition-mask" class="live-source-transition hidden" aria-hidden="true">
+                      <div class="live-source-transition__glow"></div>
+                    </div>
                     <div data-live-overlay class="live-overlay absolute top-0 left-0 right-0 z-30 flex items-start justify-between p-4 bg-gradient-to-b from-black/60 to-transparent transition-opacity duration-300">
                       <div class="flex items-center gap-2 flex-wrap">
                         <div id="live-status-chip" class="flex items-center gap-2 rounded-full gradient-live live-pulse shadow-glow px-3 py-1.5">
@@ -3810,6 +3821,7 @@
         const liveCommentInputMobile = container.querySelector('#live-comment-input-mobile');
         const liveTitleMobile = container.querySelector('#live-title-mobile');
         const floatingReactions = container.querySelector('#live-floating-reactions');
+        const liveSourceTransitionMask = container.querySelector('#live-source-transition-mask');
         const hostEndButton = container.querySelector('#live-host-end-btn');
         const hostTools = container.querySelector('#live-host-tools');
         const toggleMicButton = container.querySelector('#live-toggle-mic-btn');
@@ -3851,14 +3863,22 @@
         let viewerBootstrapInFlight = false;
         let viewerLastMediaTime = 0;
         let viewerLastMediaProgressAt = 0;
+        let viewerPendingSourceUrl = null;
+        let viewerSwitchPrepared = false;
+        let viewerFreezeFrame = null;
+        let viewerLastStreamKey = null;
         let commentsInitialized = false;
         let overlayTimer = null;
         let longPressTimer = null;
         let selectorOpen = false;
         let lastKnownSource = null;
+        let lastKnownStreamKey = null;
         let currentFacingMode = 'environment'; // default: rear camera on mobile
         let currentVideoDeviceId = '';
         let wakeLock = null; // Screen Wake Lock to prevent black screen
+        let transitionToken = 0;
+        let transitionStartedAt = 0;
+        let transitionHideTimer = null;
 
         // Mobile-only player controls (on the video itself)
         const playerMuteBtn = container.querySelector('#live-player-mute-btn');
@@ -3933,6 +3953,51 @@
           return new Promise((resolve) => window.setTimeout(resolve, ms));
         }
 
+        function beginLiveSourceTransition() {
+          if (!liveSourceTransitionMask) {
+            return 0;
+          }
+
+          transitionToken += 1;
+          transitionStartedAt = Date.now();
+          window.clearTimeout(transitionHideTimer);
+          liveSourceTransitionMask.classList.remove('hidden', 'is-exiting');
+          void liveSourceTransitionMask.offsetWidth;
+          liveSourceTransitionMask.classList.add('is-active');
+          return transitionToken;
+        }
+
+        async function endLiveSourceTransition(token, minDurationMs = 1000) {
+          if (!liveSourceTransitionMask) {
+            return;
+          }
+
+          if (token && token !== transitionToken) {
+            return;
+          }
+
+          const elapsed = Date.now() - transitionStartedAt;
+          const remaining = Math.max(0, minDurationMs - elapsed);
+          if (remaining > 0) {
+            await delay(remaining);
+          }
+
+          if (token && token !== transitionToken) {
+            return;
+          }
+
+          liveSourceTransitionMask.classList.remove('is-active');
+          liveSourceTransitionMask.classList.add('is-exiting');
+          const currentToken = transitionToken;
+          transitionHideTimer = window.setTimeout(() => {
+            if (currentToken !== transitionToken) {
+              return;
+            }
+            liveSourceTransitionMask.classList.add('hidden');
+            liveSourceTransitionMask.classList.remove('is-exiting');
+          }, 280);
+        }
+
         function destroyPlayer() {
           if (viewerHls && typeof viewerHls.destroy === 'function') {
             viewerHls.destroy();
@@ -3948,7 +4013,89 @@
           viewerPlayerCreatedAt = 0;
           viewerLastMediaTime = 0;
           viewerLastMediaProgressAt = 0;
+          viewerPendingSourceUrl = null;
+          viewerSwitchPrepared = false;
           viewerPlayerRoot.innerHTML = '';
+          viewerFreezeFrame = null;
+        }
+
+        function captureViewerFreezeFrame() {
+          if (!viewerVideo || !viewerPlayerRoot || !viewerVideo.videoWidth || !viewerVideo.videoHeight) {
+            return;
+          }
+
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = viewerVideo.videoWidth;
+            canvas.height = viewerVideo.videoHeight;
+            const context = canvas.getContext('2d');
+            if (!context) {
+              return;
+            }
+
+            context.drawImage(viewerVideo, 0, 0, canvas.width, canvas.height);
+
+            if (!viewerFreezeFrame) {
+              viewerFreezeFrame = document.createElement('img');
+              viewerFreezeFrame.className = 'absolute inset-0 w-full h-full object-contain bg-black pointer-events-none';
+              viewerFreezeFrame.style.zIndex = '0';
+            }
+
+            viewerFreezeFrame.src = canvas.toDataURL('image/jpeg', 0.82);
+            if (!viewerFreezeFrame.parentElement) {
+              viewerPlayerRoot.appendChild(viewerFreezeFrame);
+            }
+            viewerFreezeFrame.classList.remove('hidden');
+          } catch (error) {
+            console.warn('No se pudo capturar el ultimo frame del directo:', error);
+          }
+        }
+
+        function clearViewerFreezeFrame() {
+          if (!viewerFreezeFrame) {
+            return;
+          }
+
+          viewerFreezeFrame.remove();
+          viewerFreezeFrame = null;
+        }
+
+        function disposeViewerHlsKeepFrame(nextSourceUrl = null) {
+          captureViewerFreezeFrame();
+
+          if (viewerHls) {
+            try {
+              if (typeof viewerHls.stopLoad === 'function') {
+                viewerHls.stopLoad();
+              }
+            } catch (error) {
+              console.warn('No se pudo pausar el HLS del viewer antes del cambio:', error);
+            }
+
+            try {
+              if (typeof viewerHls.destroy === 'function') {
+                viewerHls.destroy();
+              }
+            } catch (error) {
+              console.warn('No se pudo destruir el HLS del viewer antes del cambio:', error);
+            }
+          }
+
+          viewerHls = null;
+          viewerPendingSourceUrl = nextSourceUrl;
+          viewerSwitchPrepared = true;
+          viewerPlayerLastRetryAt = Date.now();
+
+          if (viewerVideo) {
+            try {
+              viewerVideo.pause();
+              viewerVideo.removeAttribute('src');
+              viewerVideo.load();
+            } catch (_error) {
+              // keep the last rendered frame visible under the next player
+            }
+          }
+          viewerVideo = null;
         }
 
         function showFallback(title, copy) {
@@ -4244,21 +4391,25 @@
           viewerVideo.playbackRate = 1;
         }
 
-        async function ensureViewerManifest(url) {
-          const attempts = 5;
-          const pauseMs = 650;
+        async function ensureViewerManifest(url, options = {}) {
+          const attempts = Number(options.attempts || 5);
+          const pauseMs = Number(options.pauseMs || 650);
+          const requestTimeoutMs = Number(options.requestTimeoutMs || 2200);
+          const probeUrl = options.probeUrl || url;
 
           for (let attempt = 0; attempt < attempts; attempt += 1) {
             try {
               const controller = new AbortController();
-              const timeoutId = window.setTimeout(() => controller.abort(), 2200);
-              const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, {
+              const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+              const response = await fetch(`${probeUrl}${probeUrl.includes('?') ? '&' : '?'}t=${Date.now()}`, {
                 method: 'GET',
                 cache: 'no-store',
                 signal: controller.signal,
               });
               window.clearTimeout(timeoutId);
-              if (response.ok) {
+              if (response.status === 204) {
+                // Todavia no esta listo; seguimos intentando sin ensuciar la consola.
+              } else if (response.ok) {
                 const manifest = await response.text();
                 if (manifest.includes('#EXTM3U')) {
                   return true;
@@ -4276,10 +4427,54 @@
           return false;
         }
 
+        async function waitForPublishedManifest(streamKey, options = {}) {
+          if (!streamKey) {
+            return false;
+          }
+
+          const attempts = Number(options.attempts || 18);
+          const pauseMs = Number(options.pauseMs || 180);
+          const requestTimeoutMs = Number(options.requestTimeoutMs || 1500);
+          const manifestUrl = buildLivestreamProbeUrl(streamKey);
+
+          for (let attempt = 0; attempt < attempts; attempt += 1) {
+            try {
+              const controller = new AbortController();
+              const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+              const response = await fetch(`${manifestUrl}?t=${Date.now()}`, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: controller.signal,
+              });
+              window.clearTimeout(timeoutId);
+
+              if (response.status === 204) {
+                // OME proxy reports "not ready yet" without polluting the console with 404s.
+              } else if (response.ok) {
+                const manifest = await response.text();
+                if (manifest.includes('#EXTM3U')) {
+                  return true;
+                }
+              }
+            } catch (_error) {
+              // seguimos intentando un corto tiempo
+            }
+
+            if (attempt < attempts - 1) {
+              await delay(pauseMs);
+            }
+          }
+
+          return false;
+        }
+
         function createViewerVideo() {
           const video = document.createElement('video');
           video.className = 'w-full h-full object-contain bg-black absolute inset-0';
           video.style.objectFit = 'contain';
+          video.style.zIndex = '1';
+          video.style.opacity = '0';
+          video.style.transition = 'opacity 160ms ease';
           video.autoplay = true;
           video.controls = false;
           video.playsInline = true;
@@ -4307,7 +4502,12 @@
             });
           }, { once: true });
           // Hide fallback once video is actually rendering frames
-          const hideFallback = () => { liveVideoFallback.classList.add('hidden'); };
+          const hideFallback = () => {
+            liveVideoFallback.classList.add('hidden');
+            video.style.opacity = '1';
+            clearViewerFreezeFrame();
+            endLiveSourceTransition(transitionToken, 1000).catch(() => {});
+          };
           video.addEventListener('playing', hideFallback, { once: true });
           video.addEventListener('canplay', hideFallback, { once: true });
           // Generous timeout: only hide fallback after 8s as last resort
@@ -4335,58 +4535,99 @@
             await ensureLivestreamLibraries();
             const sourceRevision = liveData.updated_at || liveData.playback_url || '';
             const sourceUrl = normalizeLivestreamPlaybackUrl(liveData.stream_key, liveData.playback_url, sourceRevision);
+            const probeUrl = buildLivestreamProbeUrl(liveData.stream_key, sourceRevision);
+            const switchingExistingStream = !!(viewerVideo && viewerPlayerSourceUrl && viewerPlayerSourceUrl !== sourceUrl);
+            if (forceRestart || switchingExistingStream) {
+              beginLiveSourceTransition();
+            }
             if (!forceRestart && viewerVideo && viewerPlayerSourceUrl === sourceUrl) {
               showViewerPlayer();
               // Don't call play() — HLS is already streaming, play() interrupts and causes black frames
               return;
             }
 
-            const manifestReady = await ensureViewerManifest(sourceUrl);
+            if (switchingExistingStream && (!viewerSwitchPrepared || viewerPendingSourceUrl !== sourceUrl)) {
+              disposeViewerHlsKeepFrame(sourceUrl);
+            }
+
+            const manifestReady = await ensureViewerManifest(
+              sourceUrl,
+              switchingExistingStream
+                ? { attempts: 10, pauseMs: 180, requestTimeoutMs: 1200, probeUrl }
+                : { attempts: 5, pauseMs: 650, requestTimeoutMs: 2200, probeUrl }
+            );
             if (!manifestReady) {
+              if (switchingExistingStream) {
+                showViewerPlayer();
+                await endLiveSourceTransition(transitionToken, 1000);
+                return;
+              }
               showFallback('Esperando directo', 'El stream todavia se esta preparando para los espectadores.');
               return;
             }
 
-            // Destroy old player first, then show viewer container, then create new video
-            destroyPlayer();
+            if (!switchingExistingStream) {
+              destroyPlayer();
+            }
+
             showViewerPlayer();
             const video = createViewerVideo();
             const readyAt = Date.now();
 
             if (window.Hls && window.Hls.isSupported()) {
-              viewerHls = new window.Hls({
-                lowLatencyMode: true,
+              const hls = new window.Hls({
+                lowLatencyMode: false,
                 liveDurationInfinity: true,
-                backBufferLength: 8,          // reduce to avoid old-segment loop playback
-                maxBufferLength: 12,
-                liveSyncDurationCount: 2,     // stay 2 segments behind live edge (more stable)
-                liveMaxLatencyDurationCount: 5,
-                maxLiveSyncPlaybackRate: 1.06,
+                backBufferLength: 6,
+                maxBufferLength: 8,
+                liveSyncDurationCount: 1,
+                liveMaxLatencyDurationCount: 3,
+                maxLiveSyncPlaybackRate: 1.08,
+                startFragPrefetch: true,
               });
-              viewerHls.loadSource(sourceUrl);
-              viewerHls.attachMedia(video);
-              viewerHls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+              viewerHls = hls;
+              hls.loadSource(sourceUrl);
+              hls.attachMedia(video);
+              hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                if (viewerHls !== hls || viewerVideo !== video) {
+                  return;
+                }
                 syncViewerToLiveEdge(true);
                 video.play().catch(() => {});
               });
-              viewerHls.on(window.Hls.Events.LEVEL_UPDATED, () => {
+              hls.on(window.Hls.Events.LEVEL_UPDATED, () => {
+                if (viewerHls !== hls || viewerVideo !== video) {
+                  return;
+                }
                 syncViewerToLiveEdge();
               });
-              viewerHls.on(window.Hls.Events.FRAG_BUFFERED, () => {
+              hls.on(window.Hls.Events.FRAG_BUFFERED, () => {
+                if (viewerHls !== hls || viewerVideo !== video) {
+                  return;
+                }
                 syncViewerToLiveEdge();
               });
-              viewerHls.on(window.Hls.Events.ERROR, (_event, data) => {
+              hls.on(window.Hls.Events.ERROR, (_event, data) => {
+                if (viewerHls !== hls) {
+                  return;
+                }
+
                 if (!data?.fatal) {
                   return;
                 }
 
                 if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-                  viewerHls.startLoad();
+                  if (liveData?.live_status === 'live') {
+                    captureViewerFreezeFrame();
+                    beginLiveSourceTransition();
+                    showViewerPlayer();
+                  }
+                  hls.startLoad();
                   return;
                 }
 
                 if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
-                  viewerHls.recoverMediaError();
+                  hls.recoverMediaError();
                   return;
                 }
 
@@ -4416,8 +4657,35 @@
             viewerPlayerLastRetryAt = readyAt;
             viewerLastMediaTime = 0;
             viewerLastMediaProgressAt = 0;
+            viewerPendingSourceUrl = null;
+            viewerSwitchPrepared = false;
           } finally {
             viewerBootstrapInFlight = false;
+          }
+        }
+
+        function stopMediaStreamVideoTracks(stream) {
+          if (!stream || typeof stream.getVideoTracks !== 'function') {
+            return;
+          }
+
+          stream.getVideoTracks().forEach((track) => {
+            try {
+              track.stop();
+            } catch (error) {
+              console.warn('No se pudo detener un track de video antes del cambio de camara:', error);
+            }
+          });
+        }
+
+        function releaseBundleVideoTracks(bundle) {
+          if (!bundle) {
+            return;
+          }
+
+          stopMediaStreamVideoTracks(bundle.previewStream);
+          if (bundle.publishedStream !== bundle.previewStream) {
+            stopMediaStreamVideoTracks(bundle.publishedStream);
           }
         }
 
@@ -4560,12 +4828,12 @@
           return bundle;
         }
 
-        async function syncLivestreamSourceState(source) {
+        async function syncLivestreamSourceState(source, streamKey = null) {
           if (!liveId || !PostsAPI.updateLivestreamSource) {
             throw new Error('No existe API para sincronizar la fuente del directo');
           }
 
-          const result = await PostsAPI.updateLivestreamSource(liveId, source);
+          const result = await PostsAPI.updateLivestreamSource(liveId, source, streamKey);
           if (!result?.ok || !result.data) {
             throw new Error(result?.data?.error || 'No se pudo sincronizar la fuente del directo');
           }
@@ -4575,16 +4843,13 @@
         }
 
         function createOvenLivekit() {
-          if (!ovenLivekit) {
-            ovenLivekit = window.OvenLiveKit.create({
-              callbacks: {
-                error: (error) => {
-                  console.error('OvenLiveKit error:', error);
-                },
+          return window.OvenLiveKit.create({
+            callbacks: {
+              error: (error) => {
+                console.error('OvenLiveKit error:', error);
               },
-            });
-          }
-          return ovenLivekit;
+            },
+          });
         }
 
         function normalizeWhipResourceUrl(url) {
@@ -4603,43 +4868,54 @@
           }
         }
 
-        async function disposeOvenLivekit() {
-          if (!ovenLivekit) {
-            hostPublishing = false;
-            hostPublishedSource = null;
+        async function disposeOvenLivekit(targetLivekit = ovenLivekit, options = {}) {
+          const clearCurrent = options.clearCurrent !== false;
+
+          if (!targetLivekit) {
+            if (clearCurrent) {
+              hostPublishing = false;
+              hostPublishedSource = null;
+              ovenLivekit = null;
+            }
             return;
           }
 
-          const directDeleteUrl = normalizeWhipResourceUrl(ovenLivekit.resourceUrl);
-          if (directDeleteUrl) {
-            try {
-              await fetch(directDeleteUrl, { method: 'DELETE' });
-            } catch (error) {
-              console.warn('No se pudo cerrar directamente la sesion WHIP anterior:', error);
-            }
-          }
-
+          const isCurrentLivekit = targetLivekit === ovenLivekit;
           let stoppedCleanly = false;
-          if (typeof ovenLivekit.stopStreaming === 'function') {
+          if (typeof targetLivekit.stopStreaming === 'function') {
             try {
-              await Promise.resolve(ovenLivekit.stopStreaming());
+              await Promise.resolve(targetLivekit.stopStreaming());
               stoppedCleanly = true;
             } catch (error) {
               console.warn('No se pudo detener la transmision antes de reiniciar la fuente:', error);
             }
           }
 
-          if (!stoppedCleanly && typeof ovenLivekit.remove === 'function') {
+          if (!stoppedCleanly) {
+            const directDeleteUrl = normalizeWhipResourceUrl(targetLivekit.resourceUrl);
+            if (directDeleteUrl) {
+              try {
+                const deleteResponse = await fetch(directDeleteUrl, { method: 'DELETE' });
+                stoppedCleanly = deleteResponse.ok || deleteResponse.status === 404;
+              } catch (error) {
+                console.warn('No se pudo cerrar directamente la sesion WHIP anterior:', error);
+              }
+            }
+          }
+
+          if (!stoppedCleanly && typeof targetLivekit.remove === 'function') {
             try {
-              ovenLivekit.remove();
+              targetLivekit.remove();
             } catch (error) {
               console.warn('No se pudo limpiar OvenLiveKit antes de reiniciar la fuente:', error);
             }
           }
 
-          ovenLivekit = null;
-          hostPublishing = false;
-          hostPublishedSource = null;
+          if (clearCurrent && isCurrentLivekit) {
+            ovenLivekit = null;
+            hostPublishing = false;
+            hostPublishedSource = null;
+          }
         }
 
         function isWhipConflictError(error) {
@@ -4647,7 +4923,7 @@
           return message.includes('409');
         }
 
-        async function attachAndPublishBundle(livekit, bundle, source) {
+        async function attachAndPublishBundle(livekit, bundle, source, streamKey) {
           livekit.attachMedia(hostPreviewVideo);
           await livekit.setMediaStream(bundle.publishedStream);
           hostPreviewVideo.srcObject = bundle.previewStream || bundle.publishedStream;
@@ -4655,51 +4931,54 @@
           showHostPreview();
           await hostPreviewVideo.play().catch(() => {});
 
-          if (!hostPublishing) {
-            await livekit.startStreaming(buildLivestreamPublishUrl(liveData.stream_key));
-            if (
-              window.location.protocol === 'https:'
-              && typeof livekit.resourceUrl === 'string'
-              && livekit.resourceUrl.startsWith('http://')
-            ) {
-              livekit.resourceUrl = livekit.resourceUrl.replace(/^http:\/\//i, 'https://');
-            }
+          await livekit.startStreaming(buildLivestreamPublishUrl(streamKey));
+          if (
+            window.location.protocol === 'https:'
+            && typeof livekit.resourceUrl === 'string'
+            && livekit.resourceUrl.startsWith('http://')
+          ) {
+            livekit.resourceUrl = livekit.resourceUrl.replace(/^http:\/\//i, 'https://');
           }
         }
 
-        async function publishHostBundle(bundle, source, restartExisting = false) {
-          if (restartExisting && hostPublishing) {
-            await disposeOvenLivekit();
-            await delay(900);
-          }
-
+        async function publishHostBundle(bundle, source, streamKey) {
           let livekit = createOvenLivekit();
           try {
-            await attachAndPublishBundle(livekit, bundle, source);
+            await attachAndPublishBundle(livekit, bundle, source, streamKey);
           } catch (error) {
             if (!isWhipConflictError(error)) {
+              await disposeOvenLivekit(livekit, { clearCurrent: false });
               throw error;
             }
 
             console.warn('OME todavia no libero la sesion anterior; reintentando cambio de fuente...', error);
-            await disposeOvenLivekit();
-            await delay(1500);
+            await disposeOvenLivekit(livekit, { clearCurrent: false });
+            await delay(900);
             livekit = createOvenLivekit();
-            await attachAndPublishBundle(livekit, bundle, source);
+            await attachAndPublishBundle(livekit, bundle, source, streamKey);
           }
 
-          hostPublishing = true;
-          hostPublishedSource = source;
+          return livekit;
         }
 
-        async function startHostSource(nextSource = null, forceRestart = false) {
+        function nextLivestreamStreamKey() {
+          return buildLivestreamStreamKey(Number(liveData?.user_id || user.id || 0));
+        }
+
+        async function startHostSource(nextSource = null, forceRestart = false, options = {}) {
           if (sourceBusy || !liveData?.stream_key) return false;
           sourceBusy = true;
+          const transitionId = beginLiveSourceTransition();
 
           let nextBundle = null;
+          let nextLivekit = null;
           const previousBundle = hostMediaBundle;
+          const previousLivekit = ovenLivekit;
+          const previousStreamKey = liveData?.stream_key || nextLivestreamStreamKey();
           const previousSource = hostPublishedSource || previousBundle?.source || liveData?.live_source || 'camera';
-          let interruptedExistingStream = false;
+          const previousFacingMode = options.previousFacingMode || currentFacingMode;
+          const isMobileCameraFlip = !!(options.isCameraFlip && !isDesktopClient() && previousSource === 'camera');
+          let releasedPreviousCamera = false;
 
           try {
             await ensureLivestreamLibraries();
@@ -4708,43 +4987,108 @@
               return true;
             }
 
+            const nextStreamKey = (hostPublishing || forceRestart)
+              ? nextLivestreamStreamKey()
+              : (liveData?.stream_key || nextLivestreamStreamKey());
+
+            if (isMobileCameraFlip && previousLivekit) {
+              await disposeOvenLivekit(previousLivekit);
+            }
+
+            if (isMobileCameraFlip && previousBundle) {
+              releaseBundleVideoTracks(previousBundle);
+              releasedPreviousCamera = true;
+              await delay(140);
+            }
+
             nextBundle = await buildHostInputStream(source);
-            interruptedExistingStream = !!(forceRestart || hostPublishing);
-            await publishHostBundle(nextBundle, source, interruptedExistingStream);
-            hostMediaBundle = nextBundle;
+            nextLivekit = await publishHostBundle(nextBundle, source, nextStreamKey);
             liveData.live_source = source;
-            await syncLivestreamSourceState(source);
+            liveData.stream_key = nextStreamKey;
+            liveData.updated_at = new Date().toISOString();
+            await syncLivestreamSourceState(source, nextStreamKey);
+            const manifestReady = await waitForPublishedManifest(nextStreamKey, {
+              attempts: isMobileCameraFlip ? 24 : 18,
+              pauseMs: isMobileCameraFlip ? 160 : 180,
+              requestTimeoutMs: 1500,
+            });
+            if (!manifestReady) {
+              throw new Error('OME no termino de preparar el manifiesto del directo');
+            }
+
+            ovenLivekit = nextLivekit;
+            hostMediaBundle = nextBundle;
+            hostPublishing = true;
+            hostPublishedSource = source;
             refreshHostAudioButtons();
-            cleanupMediaBundle(previousBundle);
+            showHostPreview();
+            if (previousLivekit && previousLivekit !== nextLivekit && !isMobileCameraFlip) {
+              await delay(2200);
+              await disposeOvenLivekit(previousLivekit, { clearCurrent: false });
+            }
+            if (previousBundle && previousBundle !== nextBundle) {
+              cleanupMediaBundle(previousBundle);
+            }
             return true;
           } catch (error) {
             console.error('No se pudo iniciar el directo con OME:', error);
+            if (nextLivekit) {
+              await disposeOvenLivekit(nextLivekit, { clearCurrent: false });
+            }
             if (nextBundle) {
               cleanupMediaBundle(nextBundle);
             }
 
             let restored = false;
-            if (previousBundle && interruptedExistingStream) {
+            if (previousLivekit && previousBundle && !isMobileCameraFlip && !releasedPreviousCamera) {
+              ovenLivekit = previousLivekit;
+              hostMediaBundle = previousBundle;
+              hostPublishing = true;
+              hostPublishedSource = previousSource;
+              liveData.live_source = previousSource;
+              liveData.stream_key = previousStreamKey;
+              liveData.updated_at = new Date().toISOString();
+              await syncLivestreamSourceState(previousSource, previousStreamKey);
+              refreshHostAudioButtons();
+              showHostPreview();
+              restored = true;
+            } else if (previousSource) {
               try {
-                await publishHostBundle(previousBundle, previousSource, true);
-                hostMediaBundle = previousBundle;
+                currentFacingMode = previousFacingMode;
+                const recoveredBundle = await buildHostInputStream(previousSource);
+                const recoveryStreamKey = nextLivestreamStreamKey();
+                const recoveredLivekit = await publishHostBundle(recoveredBundle, previousSource, recoveryStreamKey);
+                const recoveryReady = await waitForPublishedManifest(recoveryStreamKey, {
+                  attempts: 20,
+                  pauseMs: 180,
+                  requestTimeoutMs: 1500,
+                });
+                if (!recoveryReady) {
+                  throw new Error('OME no preparo el manifiesto de recuperacion');
+                }
+                ovenLivekit = recoveredLivekit;
+                hostMediaBundle = recoveredBundle;
+                hostPublishing = true;
+                hostPublishedSource = previousSource;
                 liveData.live_source = previousSource;
+                liveData.stream_key = recoveryStreamKey;
+                liveData.updated_at = new Date().toISOString();
+                await syncLivestreamSourceState(previousSource, recoveryStreamKey);
                 restored = true;
                 showHostPreview();
                 refreshHostAudioButtons();
+                if (previousBundle && previousBundle !== recoveredBundle) {
+                  cleanupMediaBundle(previousBundle);
+                }
               } catch (restoreError) {
                 console.error('No se pudo restaurar la fuente anterior del directo:', restoreError);
               }
-            } else if (previousBundle) {
-              hostMediaBundle = previousBundle;
-              liveData.live_source = previousSource;
-              restored = true;
-              showHostPreview();
-              refreshHostAudioButtons();
             }
 
             if (!restored) {
               await disposeOvenLivekit();
+              cleanupMediaBundle(previousBundle);
+              hostMediaBundle = null;
               hostPublishing = false;
               hostPublishedSource = null;
               showFallback('Fuente no disponible', 'No se pudo acceder a la camara o pantalla compartida para el directo.');
@@ -4753,6 +5097,7 @@
             return false;
           } finally {
             sourceBusy = false;
+            endLiveSourceTransition(transitionId, 1000).catch(() => {});
           }
         }
 
@@ -4794,16 +5139,33 @@
             toggleMicMobileButton.classList.toggle('flex', isOwner && !isDesktopClient());
           }
 
-          if (!isOwner && liveData.live_status === 'live') {
+          const isViewerReady = !!liveData?.updated_at
+            && !!liveData?.created_at
+            && liveData.updated_at !== liveData.created_at;
+
+          if (!isOwner && liveData.live_status === 'live' && isViewerReady) {
             // Detect source change → force viewer restart
             const currentSource = liveData.live_source || 'camera';
-            const sourceChanged = lastKnownSource && lastKnownSource !== currentSource;
+            const currentStreamKey = liveData.stream_key || '';
+            const sourceChanged = (lastKnownSource && lastKnownSource !== currentSource)
+              || (lastKnownStreamKey && lastKnownStreamKey !== currentStreamKey);
             lastKnownSource = currentSource;
+            lastKnownStreamKey = currentStreamKey;
+            if (sourceChanged) {
+              captureViewerFreezeFrame();
+              beginLiveSourceTransition();
+              showViewerPlayer();
+            }
             await ensureViewerPlayer(sourceChanged || viewerPlaybackLooksStalled());
             syncViewerToLiveEdge();
             updateFullscreenButtonVisibility();
             updateMobilePlayerControls();
             updateStreamLayout();
+          } else if (!isOwner && liveData.live_status === 'live') {
+            lastKnownSource = liveData.live_source || 'camera';
+            lastKnownStreamKey = liveData.stream_key || '';
+            destroyPlayer();
+            showFallback('Preparando directo', 'El stream todavia se esta preparando para los espectadores.');
           }
 
           if (liveData.live_status !== 'live') {
@@ -4827,6 +5189,30 @@
         function shouldStickCommentsToBottom() {
           if (!commentsInitialized) return true;
           return isCommentsNearBottom(getActiveCommentsContainer());
+        }
+
+        function refreshMobileCommentsOverflowState() {
+          if (!liveCommentsMobile) {
+            return;
+          }
+
+          const items = Array.from(liveCommentsMobile.children)
+            .filter((node) => node.nodeType === Node.ELEMENT_NODE);
+          const computedStyle = window.getComputedStyle(liveCommentsMobile);
+          const gap = parseFloat(computedStyle.rowGap || computedStyle.gap || '0') || 0;
+          const paddingTop = parseFloat(computedStyle.paddingTop || '0') || 0;
+          const paddingBottom = parseFloat(computedStyle.paddingBottom || '0') || 0;
+          const renderedItemsHeight = items.reduce((sum, item) => sum + item.getBoundingClientRect().height, 0);
+          const renderedContentHeight = renderedItemsHeight
+            + (gap * Math.max(0, items.length - 1))
+            + paddingTop
+            + paddingBottom;
+          const isOverflowing = renderedContentHeight > (liveCommentsMobile.clientHeight + 6);
+          liveCommentsMobile.classList.toggle('live-comments-overflowing', isOverflowing);
+
+          if (isOverflowing && !userRecentlyScrolledComments() && liveCommentsMobile.scrollTop === 0) {
+            liveCommentsMobile.scrollTop = liveCommentsMobile.scrollHeight;
+          }
         }
 
         async function loadComments() {
@@ -4890,6 +5276,7 @@
           }
 
           commentsInitialized = true;
+          window.requestAnimationFrame(refreshMobileCommentsOverflowState);
           if (stickToBottom && !userRecentlyScrolledComments()) {
             const activeCommentsContainer = getActiveCommentsContainer();
             if (activeCommentsContainer) {
@@ -5345,6 +5732,7 @@
           el.addEventListener('touchstart', markCommentsUserScroll, { passive: true });
           el.addEventListener('touchmove', markCommentsUserScroll, { passive: true });
         });
+        window.addEventListener('resize', refreshMobileCommentsOverflowState);
 
         // ─── Host buttons ───
         hostEndButton.addEventListener('click', endLivestream);
@@ -5370,7 +5758,10 @@
           flipCameraButton.addEventListener('click', async () => {
             const previousFacingMode = currentFacingMode;
             currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            const changed = await startHostSource('camera', true);
+            const changed = await startHostSource('camera', true, {
+              isCameraFlip: true,
+              previousFacingMode,
+            });
             if (!changed) {
               currentFacingMode = previousFacingMode;
             }
@@ -5384,7 +5775,10 @@
           flipCameraMobileButton.addEventListener('click', async () => {
             const previousFacingMode = currentFacingMode;
             currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-            const changed = await startHostSource('camera', true);
+            const changed = await startHostSource('camera', true, {
+              isCameraFlip: true,
+              previousFacingMode,
+            });
             if (!changed) {
               currentFacingMode = previousFacingMode;
             }
