@@ -234,8 +234,13 @@
 									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>
 								<Rendition>
-									<Name>720p</Name>
-									<Video>video_720</Video>
+									<Name>1080p60</Name>
+									<Video>video_1080_60</Video>
+									<Audio>aac_audio</Audio>
+								</Rendition>
+								<Rendition>
+									<Name>720p60</Name>
+									<Video>video_720_60</Video>
 									<Audio>aac_audio</Audio>
 								</Rendition>
 								<Rendition>
@@ -252,10 +257,19 @@
 
 							<Encodes>
 								<Video>
-									<Name>video_720</Name>
+									<Name>video_1080_60</Name>
 									<Codec>h264</Codec>
-									<Bitrate>2500000</Bitrate>
-									<Framerate>30</Framerate>
+									<Bitrate>8000000</Bitrate>
+									<Framerate>60</Framerate>
+									<Width>1920</Width>
+									<Height>1080</Height>
+									<Preset>faster</Preset>
+								</Video>
+								<Video>
+									<Name>video_720_60</Name>
+									<Codec>h264</Codec>
+									<Bitrate>4500000</Bitrate>
+									<Framerate>60</Framerate>
 									<Width>1280</Width>
 									<Height>720</Height>
 									<Preset>faster</Preset>
@@ -263,7 +277,7 @@
 								<Video>
 									<Name>video_480</Name>
 									<Codec>h264</Codec>
-									<Bitrate>1200000</Bitrate>
+									<Bitrate>1600000</Bitrate>
 									<Framerate>30</Framerate>
 									<Width>854</Width>
 									<Height>480</Height>
@@ -272,8 +286,8 @@
 								<Video>
 									<Name>video_360</Name>
 									<Codec>h264</Codec>
-									<Bitrate>700000</Bitrate>
-									<Framerate>24</Framerate>
+									<Bitrate>900000</Bitrate>
+									<Framerate>30</Framerate>
 									<Width>640</Width>
 									<Height>360</Height>
 									<Preset>faster</Preset>

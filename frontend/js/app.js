@@ -4579,6 +4579,8 @@
               const hls = new window.Hls({
                 lowLatencyMode: true,
                 liveDurationInfinity: true,
+                capLevelToPlayerSize: false,
+                abrEwmaDefaultEstimate: isDesktopClient() ? 8000000 : 2500000,
                 backBufferLength: 4,
                 maxBufferLength: 6,
                 liveSyncDuration: 4,
@@ -4592,6 +4594,11 @@
               hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
                 if (viewerHls !== hls || viewerVideo !== video) {
                   return;
+                }
+                if (isDesktopClient() && hls.levels?.length > 1) {
+                  const highestLevel = hls.levels.length - 1;
+                  hls.startLevel = highestLevel;
+                  hls.nextLevel = highestLevel;
                 }
                 syncViewerToLiveEdge(true);
                 video.play().catch(() => {});
