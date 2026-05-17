@@ -160,6 +160,8 @@ services:
       - "10003:10003/udp"
       - "10004:10004/udp"
       - "10005:10005/udp"
+    volumes:
+      - ./infrastructure/ome/origin_conf/Server.xml:/opt/ovenmediaengine/bin/origin_conf/Server.xml:ro
 
   # --- Frontend ---
   frontend:

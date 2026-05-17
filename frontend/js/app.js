@@ -4879,6 +4879,18 @@
           }
         }
 
+        function normalizeOvenLivekitResourceUrl(targetLivekit) {
+          if (!targetLivekit || typeof targetLivekit.resourceUrl !== 'string') {
+            return '';
+          }
+
+          const normalizedUrl = normalizeWhipResourceUrl(targetLivekit.resourceUrl);
+          if (normalizedUrl && normalizedUrl !== targetLivekit.resourceUrl) {
+            targetLivekit.resourceUrl = normalizedUrl;
+          }
+          return normalizedUrl;
+        }
+
         async function disposeOvenLivekit(targetLivekit = ovenLivekit, options = {}) {
           const clearCurrent = options.clearCurrent !== false;
 
@@ -4893,8 +4905,10 @@
 
           const isCurrentLivekit = targetLivekit === ovenLivekit;
           let stoppedCleanly = false;
+          normalizeOvenLivekitResourceUrl(targetLivekit);
           if (typeof targetLivekit.stopStreaming === 'function') {
             try {
+              normalizeOvenLivekitResourceUrl(targetLivekit);
               await Promise.resolve(targetLivekit.stopStreaming());
               stoppedCleanly = true;
             } catch (error) {
@@ -4903,7 +4917,7 @@
           }
 
           if (!stoppedCleanly) {
-            const directDeleteUrl = normalizeWhipResourceUrl(targetLivekit.resourceUrl);
+            const directDeleteUrl = normalizeOvenLivekitResourceUrl(targetLivekit);
             if (directDeleteUrl) {
               try {
                 const deleteResponse = await fetch(directDeleteUrl, { method: 'DELETE' });
@@ -4916,6 +4930,7 @@
 
           if (!stoppedCleanly && typeof targetLivekit.remove === 'function') {
             try {
+              normalizeOvenLivekitResourceUrl(targetLivekit);
               targetLivekit.remove();
             } catch (error) {
               console.warn('No se pudo limpiar OvenLiveKit antes de reiniciar la fuente:', error);
@@ -4943,13 +4958,7 @@
           await hostPreviewVideo.play().catch(() => {});
 
           await livekit.startStreaming(buildLivestreamPublishUrl(streamKey));
-          if (
-            window.location.protocol === 'https:'
-            && typeof livekit.resourceUrl === 'string'
-            && livekit.resourceUrl.startsWith('http://')
-          ) {
-            livekit.resourceUrl = livekit.resourceUrl.replace(/^http:\/\//i, 'https://');
-          }
+          normalizeOvenLivekitResourceUrl(livekit);
         }
 
         async function publishHostBundle(bundle, source, streamKey) {
@@ -5393,6 +5402,7 @@
           endedByHost = true;
           if (ovenLivekit && typeof ovenLivekit.stopStreaming === 'function') {
             try {
+              normalizeOvenLivekitResourceUrl(ovenLivekit);
               ovenLivekit.stopStreaming();
             } catch (error) {
               console.warn('No se pudo detener OvenLiveKit al finalizar:', error);
@@ -5891,6 +5901,7 @@
           }
           if (!endedByHost && ovenLivekit && typeof ovenLivekit.stopStreaming === 'function') {
             try {
+              normalizeOvenLivekitResourceUrl(ovenLivekit);
               ovenLivekit.stopStreaming();
             } catch (error) {
               console.warn('No se pudo detener la transmision al salir del live:', error);
@@ -5899,6 +5910,7 @@
           hostPublishing = false;
           hostPublishedSource = null;
           if (ovenLivekit && typeof ovenLivekit.remove === 'function') {
+            normalizeOvenLivekitResourceUrl(ovenLivekit);
             ovenLivekit.remove();
           }
           ovenLivekit = null;
