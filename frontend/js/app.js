@@ -92,6 +92,7 @@
     me_sorprende: '/assets/reactions/me-sorprende.webp',
     me_enoja: '/assets/reactions/me-enoja.webp',
   };
+  const preloadedReactionAssets = new Set();
 
   const FACULTY_CAREERS = {
     Todos: ['Todos'],
@@ -134,6 +135,17 @@
     return REACTION_ASSETS[type] || REACTION_ASSETS.me_gusta;
   }
 
+  function ensureReactionAssetsPreloaded() {
+    Object.values(REACTION_ASSETS).forEach((src) => {
+      if (!src || preloadedReactionAssets.has(src)) return;
+      const image = new Image();
+      image.decoding = 'async';
+      image.loading = 'eager';
+      image.src = src;
+      preloadedReactionAssets.add(src);
+    });
+  }
+
   function renderReactionAsset(type, extraClass = '') {
     const meta = REACTION_META[type] || REACTION_META.me_gusta;
     const className = `reaction-asset ${extraClass}`.trim().replace(/\s+/g, ' ');
@@ -143,6 +155,8 @@
   function getFacultyCareerOptions(faculty = 'Todos') {
     return FACULTY_CAREERS[faculty] || FACULTY_CAREERS.Todos;
   }
+
+  ensureReactionAssetsPreloaded();
 
   function renderSkeletonLines(widths = ['100%', '84%', '58%']) {
     return widths.map((width) => `<div class="skeleton skeleton-text" style="width:${width}"></div>`).join('');
@@ -556,14 +570,14 @@
     }
   }
 
-  function renderReactionSummary(reactionsCount = {}, fallbackTotal = 0) {
+  function renderReactionSummary(reactionsCount = {}, fallbackTotal = 0, emptyLabel = 'Se el primero en reaccionar') {
     const entries = reactionCountSummary(reactionsCount);
     const topEntries = entries
       .sort((left, right) => right.total - left.total)
       .slice(0, 3);
     const total = entries.reduce((sum, entry) => sum + entry.total, 0) || Number(fallbackTotal || 0);
     if (!total) {
-      return '<span class="social-reaction-count">Se el primero en reaccionar</span>';
+      return `<span class="social-reaction-count">${escapeHtml(emptyLabel)}</span>`;
     }
     return `
       <span class="social-reaction-summary">
@@ -627,6 +641,7 @@
   }
 
   let reactionPickerCloseTimer = null;
+  let reactionPickerDismissHandlers = null;
 
   function clearReactionPickerCloseTimer() {
     if (reactionPickerCloseTimer) {
@@ -653,6 +668,12 @@
   function closeReactionPicker() {
     clearReactionPickerCloseTimer();
     if (!reactionPickerState?.element) return;
+    if (reactionPickerDismissHandlers) {
+      window.removeEventListener('wheel', reactionPickerDismissHandlers.onDismiss, true);
+      window.removeEventListener('touchmove', reactionPickerDismissHandlers.onDismiss, true);
+      window.removeEventListener('scroll', reactionPickerDismissHandlers.onDismiss, true);
+      reactionPickerDismissHandlers = null;
+    }
     reactionPickerState.element.remove();
     document.removeEventListener('click', reactionPickerState.outsideHandler, true);
     reactionPickerState = null;
@@ -681,7 +702,12 @@
       const button = event.target.closest('[data-picker-reaction]');
       if (!button) return;
       event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === 'function') {
+        event.stopImmediatePropagation();
+      }
       const reaction = button.dataset.pickerReaction;
+      picker.style.pointerEvents = 'none';
       closeReactionPicker();
       await onSelect(reaction);
     };
@@ -689,7 +715,11 @@
       if (picker.contains(event.target) || trigger.contains(event.target)) return;
       closeReactionPicker();
     };
-    picker.addEventListener('pointerdown', handleSelect);
+    picker.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    picker.addEventListener('click', handleSelect);
     picker.addEventListener('mouseenter', clearReactionPickerCloseTimer);
     picker.addEventListener('mouseleave', (event) => {
       if (pointerWithinReactionZone(event.relatedTarget, trigger)) {
@@ -698,6 +728,11 @@
       }
       scheduleReactionPickerClose();
     });
+    const dismissOnMove = () => closeReactionPicker();
+    reactionPickerDismissHandlers = { onDismiss: dismissOnMove };
+    window.addEventListener('wheel', dismissOnMove, true);
+    window.addEventListener('touchmove', dismissOnMove, true);
+    window.addEventListener('scroll', dismissOnMove, true);
     setTimeout(() => document.addEventListener('click', outsideHandler, true), 0);
     reactionPickerState = { element: picker, outsideHandler, trigger };
   }
@@ -962,26 +997,28 @@
             <div class="absolute top-4 left-4 right-4 flex items-center justify-between gap-3 z-10">
               <div class="flex items-center gap-2">
                 <span class="px-3 py-1 rounded-full text-xs font-black tracking-[0.18em] ${badgeTone}">${isLive ? 'LIVE' : 'FINALIZADO'}</span>
-                <span class="px-3 py-1 rounded-full bg-black/45 text-white text-xs font-semibold flex items-center gap-1">
-                  <span class="material-symbols-outlined text-[14px]">visibility</span>
-                  ${Number(post.viewer_count || 0)} 
-                </span>
+                ${isLive ? `
+                  <span class="px-3 py-1 rounded-full bg-black/45 text-white text-xs font-semibold flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[14px]">visibility</span>
+                    ${Number(post.viewer_count || 0)}
+                  </span>
+                ` : ''}
               </div>
               <span class="px-3 py-1 rounded-full bg-white/10 text-white text-xs font-semibold">${escapeHtml(post.live_source === 'screen' ? 'Pantalla' : 'Camara')}</span>
             </div>
             <div class="relative z-10 h-full min-h-[280px] flex flex-col justify-end p-5 text-white">
               <h3 class="text-xl md:text-2xl font-black leading-tight max-w-[80%]">${escapeHtml(post.live_title || 'Directo UPT')}</h3>
               <p class="text-sm text-white/80 mt-2 max-w-[80%]">${escapeHtml((post.content || '').slice(0, 140) || 'Transmision en vivo de la comunidad UPT')}</p>
-              <div class="mt-5 flex items-center gap-3">
-                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white/12 text-xs font-semibold">
-                  ${renderReactionSummary(post.reactions_count, post.reactions_total)}
+              <div class="live-feed-card-meta mt-5 flex flex-wrap items-center gap-2 sm:gap-3">
+                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white/12 text-xs font-semibold max-w-full">
+                  ${renderReactionSummary(post.reactions_count, post.reactions_total, 'Sin reacciones')}
                 </span>
-                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white/12 text-xs font-semibold">
+                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white/12 text-xs font-semibold max-w-full">
                   <span class="material-symbols-outlined text-[14px]">chat</span>
                   ${Number(post.comments_count || 0)} comentarios
                 </span>
                 ${canReport ? `
-                  <button type="button" data-action="report-post" data-post-id="${post.id}" class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white/12 text-white text-xs font-semibold hover:bg-white/18 transition-colors">
+                  <button type="button" data-action="report-post" data-post-id="${post.id}" class="live-feed-card-report inline-flex items-center justify-center gap-1.5 rounded-full px-2.5 sm:px-3 py-1.5 bg-white/12 text-white text-[11px] sm:text-xs font-semibold hover:bg-white/18 transition-colors whitespace-nowrap shrink-0 min-h-[34px]">
                     <span class="material-symbols-outlined text-[14px]">flag</span>
                     Reportar
                   </button>
@@ -1065,7 +1102,7 @@
                 <span class="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
                 <span>Comentar</span>
               </button>
-              <button type="button" data-action="report-post" data-post-id="${post.id}" class="social-post-action">
+              <button type="button" data-action="report-post" data-post-id="${post.id}" class="social-post-action social-post-action--report">
                 <span class="material-symbols-outlined text-[18px]">flag</span>
                 <span>Reportar</span>
               </button>
@@ -6179,17 +6216,22 @@
           }, true);
         }
         // Also toggle on tap anywhere on the live shell (not just video wrap)
-        if (liveShell && !isDesktopClient()) {
-          let lastShellTouchTime = 0;
-          liveShell.addEventListener('touchend', (e) => {
-            if (e.target.closest('button, input, textarea, #live-comments-mobile, .live-mobile-input')) return;
-            // Skip if video wrap already handled this touch (same timestamp within 50ms)
-            if (liveVideoWrap && liveVideoWrap.contains(e.target)) return;
+        let lastGlobalShellTouchTime = 0;
+        const handleGlobalLiveTouchToggle = (e) => {
+          if (isDesktopClient() || !liveShell || !liveShell.isConnected) return;
+          const target = e.target;
+          if (!(target instanceof Element)) return;
+          if (target.closest('button, input, textarea, #live-comments-mobile, .live-mobile-input, #live-reaction-selector, [data-live-set-reaction]')) return;
+          if (liveVideoWrap && liveVideoWrap.contains(target)) return;
+          if (target.closest('#live-shell') || target.closest('#app-view')) {
             const now = Date.now();
-            if (now - lastShellTouchTime < 400) return;
-            lastShellTouchTime = now;
+            if (now - lastGlobalShellTouchTime < 400) return;
+            lastGlobalShellTouchTime = now;
             toggleOverlay();
-          }, { passive: true });
+          }
+        };
+        if (!isDesktopClient()) {
+          document.addEventListener('touchend', handleGlobalLiveTouchToggle, { passive: true });
         }
         // On desktop show overlay initially, on mobile start hidden (tap to reveal)
         if (isDesktopClient()) {
@@ -6580,6 +6622,7 @@
           window.removeEventListener('resize', handleLiveResize);
           if (overlayTimer) clearTimeout(overlayTimer);
           if (longPressTimer) clearTimeout(longPressTimer);
+          document.removeEventListener('touchend', handleGlobalLiveTouchToggle);
           // Clean up immersive mode
           document.body.classList.remove('live-immersive-active');
           if (liveShell) liveShell.classList.remove('live-immersive-shell');

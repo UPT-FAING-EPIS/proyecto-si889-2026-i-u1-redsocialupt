@@ -222,6 +222,18 @@ body {
   min-height: 2.5rem;
 }
 
+.social-post-action--report {
+  min-width: 0;
+}
+
+.live-feed-card-meta {
+  min-width: 0;
+}
+
+.live-feed-card-report {
+  max-width: 100%;
+}
+
 .reaction-picker {
   position: fixed;
   z-index: 140;
@@ -1218,14 +1230,16 @@ body {
   }
 
   .feed-composer-footer {
-    grid-template-columns: 1fr;
-    align-items: stretch;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: end;
+    column-gap: .65rem;
   }
 
   .feed-composer-tools {
-    width: 100%;
+    width: auto;
     justify-content: flex-start;
     gap: .55rem;
+    flex-shrink: 0;
   }
 
   .feed-composer-actions {
@@ -1233,12 +1247,14 @@ body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: .55rem;
-    align-items: stretch;
+    align-items: center;
+    min-width: 0;
   }
 
   .feed-composer-visibility {
     min-width: 0;
-    padding: .42rem 1.45rem .42rem .6rem;
+    max-width: min(210px, 100%);
+    padding: .42rem 1.35rem .42rem .58rem;
     grid-template-areas: "icon select";
     grid-template-columns: auto minmax(0, 1fr);
     row-gap: 0;
@@ -1250,6 +1266,7 @@ body {
 
   .feed-composer-select {
     width: 100%;
+    font-size: .74rem;
   }
 
   .feed-composer-select-menu {
@@ -1257,10 +1274,12 @@ body {
   }
 
   .feed-composer-submit {
-    width: 100%;
+    width: auto;
     min-width: 104px;
     margin-left: 0;
     flex-shrink: 0;
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
   }
 
   #emoji-picker {
@@ -1284,12 +1303,63 @@ body {
 }
 
 @media (max-width: 430px) {
-  .feed-composer-actions {
+  .feed-composer-footer {
     grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .feed-composer-tools {
+    width: 100%;
+  }
+
+  .feed-composer-actions {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .feed-composer-submit {
     min-height: 2.6rem;
+  }
+
+  .feed-composer-visibility {
+    max-width: none;
+  }
+
+  .live-feed-card-meta {
+    gap: .45rem;
+  }
+
+  .live-feed-card-report {
+    margin-left: auto;
+    font-size: .7rem;
+    padding-left: .7rem;
+    padding-right: .7rem;
+  }
+
+  .social-post-actions--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .35rem;
+  }
+
+  .social-post-action,
+  .social-post-actions .social-reaction-trigger {
+    min-height: 2.35rem;
+    gap: .25rem;
+    padding-left: .45rem;
+    padding-right: .45rem;
+    font-size: .72rem;
+  }
+
+  .social-post-action .material-symbols-outlined,
+  .social-post-actions .social-reaction-trigger .material-symbols-outlined {
+    font-size: 16px;
+  }
+
+  .social-post-action span:last-child,
+  .social-post-actions .social-reaction-trigger span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -2096,10 +2166,10 @@ body {
   pointer-events: auto;
   grid-template-rows: minmax(0, 1fr) auto;
   align-content: end;
-  height: min(58dvh, 58%);
-  max-height: min(58dvh, 58%);
+  height: auto;
+  max-height: min(52dvh, 420px);
   min-height: 220px;
-  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(4px, env(safe-area-inset-bottom, 4px));
 }
 
 .live-host-mobile .live-mobile-content>*,
@@ -2145,9 +2215,10 @@ body {
 .live-cam-stream .live-mobile-input-row {
   background: linear-gradient(to top, rgba(0, 0, 0, 0.65) 0%, transparent 100%);
   border-top: none;
-  padding-bottom: max(18px, env(safe-area-inset-bottom, 18px));
+  padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
   position: relative;
   z-index: 2;
+  min-height: 72px;
 }
 
 /* Viewer gets object-cover for vertical streams — mobile viewers only */
@@ -2473,6 +2544,8 @@ body.live-immersive-active #app-view {
   flex-shrink: 0;
   background: rgba(11, 17, 32, 0.95);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  width: 100%;
+  min-width: 0;
 }
 
 /* Only full-bleed mobile modes pin the composer to the viewport bottom */
@@ -2498,6 +2571,7 @@ body.live-immersive-active #app-view {
 /* ── Mobile textarea ── */
 .live-mobile-input {
   flex: 1;
+  min-width: 0;
   min-height: 42px;
   max-height: 80px;
   border-radius: 22px;
@@ -2512,6 +2586,25 @@ body.live-immersive-active #app-view {
   caret-color: #ec4899;
   outline: none;
   resize: none;
+}
+
+@media (max-width: 520px) {
+  .live-mobile-input-row {
+    gap: 8px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .live-mobile-input-row > button {
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+  }
+
+  .live-mobile-comments {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
 }
 
 .live-mobile-input::placeholder {
