@@ -4304,6 +4304,10 @@
                       <button id="live-flip-camera-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Cambiar cámara">
                         <span class="material-symbols-outlined text-[20px]">flip_camera_ios</span>
                       </button>
+                      <!-- Torch button (host mobile rear camera only) -->
+                      <button id="live-toggle-torch-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Encender linterna">
+                        <span class="material-symbols-outlined text-[20px]">flashlight_on</span>
+                      </button>
                       <textarea id="live-comment-input-mobile" rows="1" class="live-mobile-input" placeholder="Escribe algo..."></textarea>
                       <div class="relative">
                         <button id="live-reaction-trigger" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
@@ -4402,6 +4406,7 @@
         const switchSourceButton = container.querySelector('#live-switch-source-btn');
         const flipCameraButton = container.querySelector('#live-flip-camera-btn');
         const flipCameraMobileButton = container.querySelector('#live-flip-camera-mobile-btn');
+        const toggleTorchMobileButton = container.querySelector('#live-toggle-torch-mobile-btn');
 
         const fullscreenBtn = container.querySelector('#live-fullscreen-btn');
         const immersiveBtn = container.querySelector('#live-immersive-btn');
@@ -4451,6 +4456,8 @@
         let lastKnownSourceRevision = null;
         let currentFacingMode = 'environment'; // default: rear camera on mobile
         let currentVideoDeviceId = '';
+        let hostTorchEnabled = false;
+        let hostTorchSupported = false;
         let wakeLock = null; // Screen Wake Lock to prevent black screen
         let transitionToken = 0;
         let transitionStartedAt = 0;
@@ -4562,6 +4569,8 @@
         }
 
         function stopHostStreams() {
+          hostTorchEnabled = false;
+          hostTorchSupported = false;
           cleanupMediaBundle(hostMediaBundle);
           hostMediaBundle = null;
           hostPreviewVideo.srcObject = null;
@@ -4904,6 +4913,15 @@
             flipCameraMobileButton.classList.toggle('hidden', !isMobileCamera);
             flipCameraMobileButton.classList.toggle('flex', isMobileCamera);
           }
+          const showTorch = isMobileCamera && currentFacingMode === 'environment' && hostTorchSupported;
+          if (toggleTorchMobileButton) {
+            toggleTorchMobileButton.classList.toggle('hidden', !showTorch);
+            toggleTorchMobileButton.classList.toggle('flex', showTorch);
+            toggleTorchMobileButton.classList.toggle('gradient-live', hostTorchEnabled);
+            toggleTorchMobileButton.title = hostTorchEnabled ? 'Apagar linterna' : 'Encender linterna';
+            const icon = toggleTorchMobileButton.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = hostTorchEnabled ? 'flashlight_off' : 'flashlight_on';
+          }
           // Only desktop hosts can switch between screen and camera.
           if (switchSourceButton) {
             const showSwitchSource = isHostOwner() && isDesktopClient();
@@ -4970,17 +4988,75 @@
 
         // Detect portrait/phone camera streams for viewer → apply full-bleed TikTok layout
         function updateStreamLayout() {
-          if (isDesktopClient() || isHostRoute) return; // only for mobile viewers
+          if (isHostRoute) return;
           const video = viewerVideo;
           if (!video || !video.videoWidth || !video.videoHeight) return;
           // Only treat as portrait if significantly taller than wide (ratio < 0.75)
           const ratio = video.videoWidth / video.videoHeight;
           const isPortrait = ratio < 0.75;
           if (liveShell) {
-            liveShell.classList.toggle('live-cam-stream', isPortrait);
+            liveShell.classList.toggle('live-portrait-stream', isPortrait);
+            if (!isDesktopClient()) {
+              liveShell.classList.toggle('live-cam-stream', isPortrait);
+            }
           }
           // Set object-fit based on stream orientation
           video.style.objectFit = isPortrait ? 'cover' : 'contain';
+        }
+
+        function getHostCameraVideoTrack(bundle = hostMediaBundle) {
+          const stream = bundle?.previewStream || bundle?.publishedStream;
+          if (!stream?.getVideoTracks) {
+            return null;
+          }
+          return stream.getVideoTracks()[0] || null;
+        }
+
+        async function setHostTorchEnabled(enabled) {
+          const videoTrack = getHostCameraVideoTrack();
+          if (!videoTrack || !hostTorchSupported || currentFacingMode !== 'environment') {
+            hostTorchEnabled = false;
+            return false;
+          }
+
+          try {
+            await videoTrack.applyConstraints({
+              advanced: [{ torch: !!enabled }],
+            });
+            hostTorchEnabled = !!enabled;
+            return true;
+          } catch (error) {
+            console.warn('No se pudo cambiar el estado de la linterna del directo:', error);
+            hostTorchEnabled = false;
+            return false;
+          }
+        }
+
+        async function syncHostTorchSupport(bundle = hostMediaBundle) {
+          const videoTrack = getHostCameraVideoTrack(bundle);
+          hostTorchSupported = false;
+
+          if (!videoTrack || isDesktopClient() || (liveData?.live_source || 'camera') !== 'camera') {
+            hostTorchEnabled = false;
+            return;
+          }
+
+          try {
+            const capabilities = typeof videoTrack.getCapabilities === 'function'
+              ? videoTrack.getCapabilities()
+              : null;
+            hostTorchSupported = !!capabilities?.torch;
+          } catch (_error) {
+            hostTorchSupported = false;
+          }
+
+          if (!hostTorchSupported || currentFacingMode !== 'environment') {
+            if (hostTorchEnabled) {
+              await setHostTorchEnabled(false);
+            } else {
+              hostTorchEnabled = false;
+            }
+          }
         }
 
         function viewerPlaybackLooksStalled() {
@@ -5354,6 +5430,9 @@
             return;
           }
 
+          hostTorchEnabled = false;
+          hostTorchSupported = false;
+
           stopMediaStreamVideoTracks(bundle.previewStream);
           if (bundle.publishedStream !== bundle.previewStream) {
             stopMediaStreamVideoTracks(bundle.publishedStream);
@@ -5406,9 +5485,10 @@
                   aspectRatio: { ideal: 16 / 9 },
                 }
               : {
-                  width: { ideal: 1280, max: 1280 },
-                  height: { ideal: 720, max: 720 },
+                  width: { ideal: 720, max: 1080 },
+                  height: { ideal: 1280, max: 1920 },
                   frameRate: { ideal: 24, max: 30 },
+                  aspectRatio: { ideal: 9 / 16 },
                 };
 
           return { ...base, ...overrides };
@@ -5615,6 +5695,7 @@
           bundle.micAudioTracks = cameraStream.getAudioTracks();
           applyLiveTrackHints(bundle.previewStream, 'camera');
           applyHostAudioState(bundle);
+          await syncHostTorchSupport(bundle);
           return bundle;
         }
 
@@ -6667,6 +6748,16 @@
             if (hostPreviewVideo) {
               hostPreviewVideo.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : '';
             }
+          });
+        }
+        if (toggleTorchMobileButton) {
+          toggleTorchMobileButton.addEventListener('click', async () => {
+            const nextValue = !hostTorchEnabled;
+            const changed = await setHostTorchEnabled(nextValue);
+            if (!changed && nextValue) {
+              showToast('La linterna no esta disponible en esta camara o dispositivo.', 'error');
+            }
+            refreshHostAudioButtons();
           });
         }
 
