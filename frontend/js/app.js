@@ -2664,6 +2664,9 @@
     }
 
     function updateUrlForChat(userId) {
+      if (callManagerOnly) {
+        return;
+      }
       window.history.replaceState(
         null,
         '',
@@ -5514,8 +5517,8 @@
           const desktop = isDesktopClient();
           const base = source === 'screen'
             ? {
-                width: { ideal: 1920, max: 3840 },
-                height: { ideal: 1080, max: 3840 },
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 },
                 frameRate: { ideal: 60, max: 60 },
               }
             : desktop
@@ -5526,11 +5529,9 @@
                   aspectRatio: { ideal: 16 / 9 },
                 }
               : {
-                  width: { ideal: 720, max: 1080 },
-                  height: { ideal: 1280, max: 1920 },
+                  width: { ideal: 1280, max: 1280 },
+                  height: { ideal: 720, max: 720 },
                   frameRate: { ideal: 24, max: 30 },
-                  aspectRatio: { ideal: 9 / 16 },
-                  resizeMode: 'crop-and-scale',
                 };
 
           return { ...base, ...overrides };
@@ -5663,12 +5664,16 @@
             context.fillStyle = '#000';
             context.fillRect(0, 0, canvas.width, canvas.height);
             context.save();
-            context.translate(canvas.width / 2, canvas.height / 2);
-            context.rotate(Math.PI / 2);
-            const scale = Math.min(canvas.width / videoHeight, canvas.height / videoWidth);
+            const scale = Math.max(canvas.width / videoWidth, canvas.height / videoHeight);
             const drawWidth = videoWidth * scale;
             const drawHeight = videoHeight * scale;
-            context.drawImage(probeVideo, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            context.drawImage(
+              probeVideo,
+              (canvas.width - drawWidth) / 2,
+              (canvas.height - drawHeight) / 2,
+              drawWidth,
+              drawHeight
+            );
             context.restore();
             animationFrame = window.requestAnimationFrame(drawFrame);
           };
@@ -5794,12 +5799,9 @@
             }
 
             candidateConstraints.push(
-              { facingMode: { exact: currentFacingMode } },
-              { facingMode: { ideal: currentFacingMode } },
               getLiveVideoConstraints('camera', { facingMode: { exact: currentFacingMode } }),
               getLiveVideoConstraints('camera', { facingMode: { ideal: currentFacingMode } }),
-              getLiveVideoConstraints('camera'),
-              true
+              getLiveVideoConstraints('camera')
             );
 
             let lastCameraError = null;
@@ -5820,39 +5822,8 @@
             }
           }
 
-          let selectedVideoTrack = cameraStream.getVideoTracks()[0] || null;
-          let selectedSettings = selectedVideoTrack?.getSettings?.() || {};
-
-          if (!isDesktopClient() && selectedVideoTrack) {
-            const looksLandscape = Number(selectedSettings.width || 0) > Number(selectedSettings.height || 0);
-            if (looksLandscape) {
-              const strictPortraitCandidates = buildStrictPortraitCameraConstraints(
-                preferredMobileDevice?.deviceId || selectedSettings.deviceId || '',
-                currentFacingMode
-              );
-              let portraitStream = null;
-              for (const videoConstraints of strictPortraitCandidates) {
-                try {
-                  portraitStream = await navigator.mediaDevices.getUserMedia({
-                    video: videoConstraints,
-                    audio: getLiveAudioConstraints(),
-                  });
-                  const portraitTrack = portraitStream.getVideoTracks()[0] || null;
-                  const portraitSettings = portraitTrack?.getSettings?.() || {};
-                  if (Number(portraitSettings.height || 0) >= Number(portraitSettings.width || 0)) {
-                    releaseBundleVideoTracks({ previewStream: cameraStream, publishedStream: cameraStream });
-                    cameraStream = portraitStream;
-                    selectedVideoTrack = portraitTrack;
-                    selectedSettings = portraitSettings;
-                    break;
-                  }
-                  releaseBundleVideoTracks({ previewStream: portraitStream, publishedStream: portraitStream });
-                } catch (_error) {
-                  // seguimos probando variantes de retrato
-                }
-              }
-            }
-          }
+          const selectedVideoTrack = cameraStream.getVideoTracks()[0] || null;
+          const selectedSettings = selectedVideoTrack?.getSettings?.() || {};
 
           if (selectedSettings.deviceId) {
             currentVideoDeviceId = selectedSettings.deviceId;
@@ -5860,22 +5831,11 @@
           if (selectedSettings.facingMode === 'user' || selectedSettings.facingMode === 'environment') {
             currentFacingMode = selectedSettings.facingMode;
           }
-          let outputStream = cameraStream;
-          let outputSettings = selectedSettings;
-          if (!isDesktopClient()) {
-            const portraitOutput = await createMobilePortraitCameraOutput(cameraStream);
-            if (portraitOutput?.stream) {
-              outputStream = portraitOutput.stream;
-              outputSettings = { ...selectedSettings, ...portraitOutput.settings };
-              bundle.stopVideoTransform = portraitOutput.stop;
-            }
-          }
-
           bundle.cameraStream = cameraStream;
-          bundle.previewStream = outputStream;
-          bundle.publishedStream = outputStream;
+          bundle.previewStream = cameraStream;
+          bundle.publishedStream = cameraStream;
           bundle.micAudioTracks = cameraStream.getAudioTracks();
-          bundle.videoSettings = outputSettings;
+          bundle.videoSettings = selectedSettings;
           applyLiveTrackHints(bundle.previewStream, 'camera');
           applyHostAudioState(bundle);
           await syncHostTorchSupport(bundle);
@@ -5981,7 +5941,7 @@
           livekit.attachMedia(hostPreviewVideo);
           await livekit.setMediaStream(bundle.publishedStream);
           hostPreviewVideo.srcObject = bundle.previewStream || bundle.publishedStream;
-          hostPreviewVideo.style.objectFit = 'contain';
+          hostPreviewVideo.style.objectFit = (!isDesktopClient() && source === 'camera') ? 'cover' : 'contain';
           showHostPreview();
           await hostPreviewVideo.play().catch(() => {});
 
@@ -6667,7 +6627,7 @@
         }
 
         // Unified fullscreenchange handler
-        document.addEventListener('fullscreenchange', () => {
+        const handleFullscreenChange = () => {
           scheduleLiveMobileViewportSync();
           scheduleLiveMobileViewportSync(140);
           scheduleLiveMobileViewportSync(320);
@@ -6711,11 +6671,12 @@
                 showOverlay();
               }
             } else if (immersiveActive && !isDesktopClient()) {
-              // User exited shell fullscreen via browser back → exit livestream
+              // User exited shell fullscreen via browser back -> exit livestream
               exitLivestream();
             }
           }
-        });
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
 
         // On mobile, auto-enter immersive mode immediately (uses Fullscreen API)
         if (!isDesktopClient() && liveShell) {
@@ -6976,6 +6937,7 @@
           window.cancelAnimationFrame(liveMobileViewportSyncRaf);
           window.clearTimeout(liveMobileViewportSyncTimeout);
           document.removeEventListener('touchend', handleGlobalLiveTouchToggle);
+          document.removeEventListener('fullscreenchange', handleFullscreenChange);
           // Clean up immersive mode
           document.body.classList.remove('live-immersive-active');
           if (liveShell) liveShell.classList.remove('live-immersive-shell');
