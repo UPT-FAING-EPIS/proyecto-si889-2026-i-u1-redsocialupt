@@ -4549,8 +4549,16 @@
             return;
           }
 
+          if (typeof bundle.stopVideoTransform === 'function') {
+            try {
+              bundle.stopVideoTransform();
+            } catch (error) {
+              console.warn('No se pudo detener el transformador de video del directo:', error);
+            }
+          }
+
           const tracks = [];
-          [bundle.previewStream, bundle.publishedStream, bundle.micStream].forEach((stream) => {
+          [bundle.previewStream, bundle.publishedStream, bundle.micStream, bundle.cameraStream].forEach((stream) => {
             if (stream?.getTracks) {
               tracks.push(...stream.getTracks());
             }
@@ -5013,7 +5021,7 @@
         }
 
         function getHostCameraVideoTrack(bundle = hostMediaBundle) {
-          const stream = bundle?.previewStream || bundle?.publishedStream;
+          const stream = bundle?.cameraStream || bundle?.previewStream || bundle?.publishedStream;
           if (!stream?.getVideoTracks) {
             return null;
           }
@@ -5445,6 +5453,9 @@
           if (bundle.publishedStream !== bundle.previewStream) {
             stopMediaStreamVideoTracks(bundle.publishedStream);
           }
+          if (bundle.cameraStream && bundle.cameraStream !== bundle.previewStream && bundle.cameraStream !== bundle.publishedStream) {
+            stopMediaStreamVideoTracks(bundle.cameraStream);
+          }
         }
 
         function pickPreferredMobileCameraDevice(videoInputs, desiredFacing, currentDeviceId) {
@@ -5598,11 +5609,103 @@
           }
         }
 
+        async function createMobilePortraitCameraOutput(cameraStream) {
+          const sourceTrack = cameraStream?.getVideoTracks?.()[0] || null;
+          if (!sourceTrack) {
+            return null;
+          }
+
+          const probeVideo = document.createElement('video');
+          probeVideo.muted = true;
+          probeVideo.playsInline = true;
+          probeVideo.setAttribute('playsinline', '');
+          probeVideo.srcObject = cameraStream;
+
+          await new Promise((resolve) => {
+            if (probeVideo.readyState >= 1) {
+              resolve();
+              return;
+            }
+            const done = () => resolve();
+            probeVideo.addEventListener('loadedmetadata', done, { once: true });
+            window.setTimeout(done, 700);
+          });
+          await probeVideo.play().catch(() => {});
+
+          const sourceWidth = Number(probeVideo.videoWidth || sourceTrack.getSettings?.().width || 0);
+          const sourceHeight = Number(probeVideo.videoHeight || sourceTrack.getSettings?.().height || 0);
+          if (!sourceWidth || !sourceHeight || sourceHeight >= sourceWidth) {
+            probeVideo.pause();
+            probeVideo.srcObject = null;
+            return null;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = 720;
+          canvas.height = 1280;
+          const context = canvas.getContext('2d', { alpha: false });
+          if (!context || typeof canvas.captureStream !== 'function') {
+            probeVideo.pause();
+            probeVideo.srcObject = null;
+            return null;
+          }
+
+          let stopped = false;
+          let animationFrame = 0;
+          const drawFrame = () => {
+            if (stopped) {
+              return;
+            }
+
+            const videoWidth = Number(probeVideo.videoWidth || sourceWidth);
+            const videoHeight = Number(probeVideo.videoHeight || sourceHeight);
+            context.fillStyle = '#000';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.save();
+            context.translate(canvas.width / 2, canvas.height / 2);
+            context.rotate(Math.PI / 2);
+            const scale = Math.min(canvas.width / videoHeight, canvas.height / videoWidth);
+            const drawWidth = videoWidth * scale;
+            const drawHeight = videoHeight * scale;
+            context.drawImage(probeVideo, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            context.restore();
+            animationFrame = window.requestAnimationFrame(drawFrame);
+          };
+          drawFrame();
+
+          const canvasStream = canvas.captureStream(24);
+          const portraitStream = new MediaStream([
+            ...canvasStream.getVideoTracks(),
+            ...cameraStream.getAudioTracks(),
+          ]);
+
+          return {
+            stream: portraitStream,
+            settings: {
+              width: canvas.width,
+              height: canvas.height,
+              frameRate: 24,
+              facingMode: sourceTrack.getSettings?.().facingMode || currentFacingMode,
+              deviceId: sourceTrack.getSettings?.().deviceId || '',
+              transformedFrom: `${sourceWidth}x${sourceHeight}`,
+            },
+            stop() {
+              stopped = true;
+              if (animationFrame) {
+                window.cancelAnimationFrame(animationFrame);
+              }
+              probeVideo.pause();
+              probeVideo.srcObject = null;
+            },
+          };
+        }
+
         async function buildHostInputStream(source) {
           const bundle = {
             source,
             previewStream: null,
             publishedStream: null,
+            cameraStream: null,
             micStream: null,
             audioContext: null,
             systemAudioTracks: [],
@@ -5756,10 +5859,22 @@
           if (selectedSettings.facingMode === 'user' || selectedSettings.facingMode === 'environment') {
             currentFacingMode = selectedSettings.facingMode;
           }
-          bundle.previewStream = cameraStream;
-          bundle.publishedStream = cameraStream;
+          let outputStream = cameraStream;
+          let outputSettings = selectedSettings;
+          if (!isDesktopClient()) {
+            const portraitOutput = await createMobilePortraitCameraOutput(cameraStream);
+            if (portraitOutput?.stream) {
+              outputStream = portraitOutput.stream;
+              outputSettings = { ...selectedSettings, ...portraitOutput.settings };
+              bundle.stopVideoTransform = portraitOutput.stop;
+            }
+          }
+
+          bundle.cameraStream = cameraStream;
+          bundle.previewStream = outputStream;
+          bundle.publishedStream = outputStream;
           bundle.micAudioTracks = cameraStream.getAudioTracks();
-          bundle.videoSettings = selectedSettings;
+          bundle.videoSettings = outputSettings;
           applyLiveTrackHints(bundle.previewStream, 'camera');
           applyHostAudioState(bundle);
           await syncHostTorchSupport(bundle);
