@@ -4994,14 +4994,16 @@
           // Only treat as portrait if significantly taller than wide (ratio < 0.75)
           const ratio = video.videoWidth / video.videoHeight;
           const isPortrait = ratio < 0.75;
+          const liveSource = liveData?.live_source || 'camera';
+          const isPortraitCameraStream = isPortrait && liveSource === 'camera';
           if (liveShell) {
             liveShell.classList.toggle('live-portrait-stream', isPortrait);
             if (!isDesktopClient()) {
-              liveShell.classList.toggle('live-cam-stream', isPortrait);
+              liveShell.classList.toggle('live-cam-stream', isPortraitCameraStream);
             }
           }
-          // Set object-fit based on stream orientation
-          video.style.objectFit = isPortrait ? 'cover' : 'contain';
+          // Always contain on viewer to preserve the emitted aspect ratio.
+          video.style.objectFit = 'contain';
         }
 
         function getHostCameraVideoTrack(bundle = hostMediaBundle) {
@@ -5458,6 +5460,27 @@
           );
         }
 
+        function buildStrictPortraitCameraConstraints(preferredDeviceId, facingMode) {
+          const variants = [
+            { width: { exact: 720 }, height: { exact: 1280 }, aspectRatio: { exact: 9 / 16 }, resizeMode: 'crop-and-scale' },
+            { width: { exact: 1080 }, height: { exact: 1920 }, aspectRatio: { exact: 9 / 16 }, resizeMode: 'crop-and-scale' },
+            { width: { ideal: 720, max: 1080 }, height: { ideal: 1280, max: 1920 }, aspectRatio: { ideal: 9 / 16 }, resizeMode: 'crop-and-scale' },
+          ];
+
+          const result = [];
+          variants.forEach((base) => {
+            if (preferredDeviceId) {
+              result.push({ ...base, deviceId: { exact: preferredDeviceId } });
+            }
+            if (facingMode) {
+              result.push({ ...base, facingMode: { exact: facingMode } });
+              result.push({ ...base, facingMode: { ideal: facingMode } });
+            }
+          });
+          result.push(getLiveVideoConstraints('camera'));
+          return result;
+        }
+
         function getLiveAudioConstraints() {
           return {
             echoCancellation: { ideal: true },
@@ -5473,8 +5496,8 @@
           const desktop = isDesktopClient();
           const base = source === 'screen'
             ? {
-                width: { ideal: 1920, max: 1920 },
-                height: { ideal: 1080, max: 1080 },
+                width: { ideal: 1920, max: 3840 },
+                height: { ideal: 1080, max: 3840 },
                 frameRate: { ideal: 60, max: 60 },
               }
             : desktop
@@ -5489,6 +5512,7 @@
                   height: { ideal: 1280, max: 1920 },
                   frameRate: { ideal: 24, max: 30 },
                   aspectRatio: { ideal: 9 / 16 },
+                  resizeMode: 'crop-and-scale',
                 };
 
           return { ...base, ...overrides };
@@ -5682,8 +5706,40 @@
             }
           }
 
-          const selectedVideoTrack = cameraStream.getVideoTracks()[0] || null;
-          const selectedSettings = selectedVideoTrack?.getSettings?.() || {};
+          let selectedVideoTrack = cameraStream.getVideoTracks()[0] || null;
+          let selectedSettings = selectedVideoTrack?.getSettings?.() || {};
+
+          if (!isDesktopClient() && selectedVideoTrack) {
+            const looksLandscape = Number(selectedSettings.width || 0) > Number(selectedSettings.height || 0);
+            if (looksLandscape) {
+              const strictPortraitCandidates = buildStrictPortraitCameraConstraints(
+                preferredDevice?.deviceId || selectedSettings.deviceId || '',
+                currentFacingMode
+              );
+              let portraitStream = null;
+              for (const videoConstraints of strictPortraitCandidates) {
+                try {
+                  portraitStream = await navigator.mediaDevices.getUserMedia({
+                    video: videoConstraints,
+                    audio: getLiveAudioConstraints(),
+                  });
+                  const portraitTrack = portraitStream.getVideoTracks()[0] || null;
+                  const portraitSettings = portraitTrack?.getSettings?.() || {};
+                  if (Number(portraitSettings.height || 0) >= Number(portraitSettings.width || 0)) {
+                    releaseBundleVideoTracks({ previewStream: cameraStream, publishedStream: cameraStream });
+                    cameraStream = portraitStream;
+                    selectedVideoTrack = portraitTrack;
+                    selectedSettings = portraitSettings;
+                    break;
+                  }
+                  releaseBundleVideoTracks({ previewStream: portraitStream, publishedStream: portraitStream });
+                } catch (_error) {
+                  // seguimos probando variantes de retrato
+                }
+              }
+            }
+          }
+
           if (selectedSettings.deviceId) {
             currentVideoDeviceId = selectedSettings.deviceId;
           }
@@ -5693,6 +5749,7 @@
           bundle.previewStream = cameraStream;
           bundle.publishedStream = cameraStream;
           bundle.micAudioTracks = cameraStream.getAudioTracks();
+          bundle.videoSettings = selectedSettings;
           applyLiveTrackHints(bundle.previewStream, 'camera');
           applyHostAudioState(bundle);
           await syncHostTorchSupport(bundle);
@@ -5798,7 +5855,8 @@
           livekit.attachMedia(hostPreviewVideo);
           await livekit.setMediaStream(bundle.publishedStream);
           hostPreviewVideo.srcObject = bundle.previewStream || bundle.publishedStream;
-          hostPreviewVideo.style.objectFit = (!isDesktopClient() && source === 'camera') ? 'cover' : 'contain';
+          const looksPortrait = Number(bundle?.videoSettings?.height || 0) >= Number(bundle?.videoSettings?.width || 0);
+          hostPreviewVideo.style.objectFit = (!isDesktopClient() && source === 'camera' && looksPortrait) ? 'cover' : 'contain';
           showHostPreview();
           await hostPreviewVideo.play().catch(() => {});
 
