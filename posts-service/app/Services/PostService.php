@@ -38,33 +38,42 @@ class PostService
     public function getFeed(int $userId, array $friendIds, ?string $userFaculty, string $jwt = ''): \Illuminate\Support\Collection
     {
         $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
+        $normalizedFriendIds = array_values(array_unique(array_map(
+            static fn ($value) => (int) $value,
+            array_filter($friendIds, static fn ($value) => is_numeric($value))
+        )));
+        $normalizedFaculty = trim((string) ($userFaculty ?? ''));
 
-        return Post::orderBy('created_at', 'desc')
-            ->get()
-            ->filter(function (Post $post) use ($userId, $friendIds, $userFaculty, $hiddenIds) {
-                if ($post->group_id !== null) {
-                    return false;
+        return Post::query()
+            ->whereNull('group_id')
+            ->when(!empty($hiddenIds), fn ($query) => $query->whereNotIn('user_id', $hiddenIds))
+            ->where(function ($query) use ($userId, $normalizedFriendIds, $normalizedFaculty) {
+                $query
+                    ->where('user_id', $userId)
+                    ->orWhere('visibility', 'all');
+
+                if (!empty($normalizedFriendIds)) {
+                    $query->orWhere(function ($friendQuery) use ($normalizedFriendIds) {
+                        $friendQuery
+                            ->where('visibility', 'friends')
+                            ->whereIn('user_id', $normalizedFriendIds);
+                    });
                 }
 
-                if (in_array((int) $post->user_id, $hiddenIds, true)) {
-                    return false;
+                if ($normalizedFaculty !== '') {
+                    $query->orWhere(function ($facultyQuery) use ($normalizedFaculty) {
+                        $facultyQuery
+                            ->where('visibility', 'faculty')
+                            ->where('user_faculty', $normalizedFaculty);
+                    });
                 }
-
-                if ($post->user_id === $userId) {
-                    return true;
-                }
-
-                return match ($post->visibility) {
-                    'all' => true,
-                    'friends' => in_array($post->user_id, $friendIds),
-                    'faculty' => $userFaculty !== null
-                        && trim((string) $userFaculty) !== ''
-                        && trim((string) $post->user_faculty) !== ''
-                        && trim((string) $post->user_faculty) === trim((string) $userFaculty),
-                    default => false,
-                };
             })
-            ->values();
+            ->withCount([
+                'comments',
+                'reactions as reactions_total',
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     public function getGroupPosts(int $groupId, int $userId, string $jwt): \Illuminate\Support\Collection
@@ -76,6 +85,10 @@ class PostService
         $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
 
         return Post::where('group_id', $groupId)
+            ->withCount([
+                'comments',
+                'reactions as reactions_total',
+            ])
             ->orderBy('created_at', 'desc')
             ->get()
             ->filter(fn (Post $post) => !in_array((int) $post->user_id, $hiddenIds, true))

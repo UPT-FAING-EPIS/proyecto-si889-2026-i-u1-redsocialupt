@@ -93,6 +93,7 @@
     me_enoja: '/assets/reactions/me-enoja.webp',
   };
   const preloadedReactionAssets = new Set();
+  const viewTemplateCache = new Map();
 
   const FACULTY_CAREERS = {
     Todos: ['Todos'],
@@ -150,6 +151,99 @@
     const meta = REACTION_META[type] || REACTION_META.me_gusta;
     const className = `reaction-asset ${extraClass}`.trim().replace(/\s+/g, ' ');
     return `<img src="${reactionAsset(type)}" alt="${escapeHtml(meta.label)}" class="${className}" />`;
+  }
+
+  function extractViewTemplateMarkup(templateText = '') {
+    const rawTemplateText = String(templateText || '');
+    const rawTemplateMatch = rawTemplateText.match(/<template\b[^>]*id=["']app-view-template["'][^>]*>([\s\S]*?)<\/template>/i);
+    if (rawTemplateMatch) {
+      return rawTemplateMatch[1].trim();
+    }
+
+    const parser = new DOMParser();
+    const parsedDocument = parser.parseFromString(rawTemplateText, 'text/html');
+    const template = parsedDocument.getElementById('app-view-template');
+    if (template) {
+      return template.innerHTML.trim();
+    }
+    return parsedDocument.body?.innerHTML?.trim() || rawTemplateText.trim();
+  }
+
+  async function loadViewTemplate(templatePath) {
+    if (!templatePath) return '';
+    if (viewTemplateCache.has(templatePath)) {
+      return viewTemplateCache.get(templatePath);
+    }
+
+    const pendingTemplate = fetch(templatePath, { credentials: 'same-origin' }).then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`No se pudo cargar la plantilla ${templatePath} (${response.status})`);
+      }
+      const templateText = await response.text();
+      return extractViewTemplateMarkup(templateText);
+    });
+
+    viewTemplateCache.set(templatePath, pendingTemplate);
+
+    try {
+      return await pendingTemplate;
+    } catch (error) {
+      viewTemplateCache.delete(templatePath);
+      throw error;
+    }
+  }
+
+  function primeViewTemplate(templatePath) {
+    if (!templatePath) return null;
+    return loadViewTemplate(templatePath).catch((error) => {
+      console.warn(`No se pudo precalentar la plantilla ${templatePath}:`, error);
+      return '';
+    });
+  }
+
+  function prewarmViewTemplates(templatePaths = []) {
+    const uniquePaths = Array.from(new Set((templatePaths || []).filter(Boolean)));
+    uniquePaths.forEach((templatePath) => {
+      primeViewTemplate(templatePath);
+    });
+  }
+
+  function scheduleNonCriticalViewTemplateWarmup(templatePaths = []) {
+    const runWarmup = () => prewarmViewTemplates(templatePaths);
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(runWarmup, { timeout: 1800 });
+      return;
+    }
+    window.setTimeout(runWarmup, 200);
+  }
+
+  function applyViewTemplateSlots(markup, slots = {}) {
+    return String(markup || '').replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (_, key) => {
+      if (Object.prototype.hasOwnProperty.call(slots, key)) {
+        return String(slots[key] ?? '');
+      }
+      return '';
+    });
+  }
+
+  async function resolveViewMarkup(view, context) {
+    if (view?.templatePath) {
+      try {
+        const templateMarkup = await loadViewTemplate(view.templatePath);
+        const templateSlots = typeof view?.templateSlots === 'function'
+          ? (view.templateSlots(context) || {})
+          : {};
+        return applyViewTemplateSlots(templateMarkup, templateSlots);
+      } catch (error) {
+        console.error(`No se pudo cargar la vista desde ${view.templatePath}:`, error);
+      }
+    }
+
+    if (typeof view?.render === 'function') {
+      return view.render(context);
+    }
+
+    return '';
   }
 
   function getFacultyCareerOptions(faculty = 'Todos') {
@@ -679,6 +773,12 @@
     reactionPickerState = null;
   }
 
+  function warmPublicUsersInBackground(force = false) {
+    ensurePublicUsersLoaded(force).catch((error) => {
+      console.warn('No se pudo precalentar el directorio publico de usuarios:', error);
+    });
+  }
+
   function openReactionPicker(trigger, { targetType, targetId, currentReaction, onSelect }) {
     if (reactionPickerState?.element && reactionPickerState.trigger === trigger) {
       clearReactionPickerCloseTimer();
@@ -864,6 +964,24 @@
     document.title = title ? `${title} - UPT Connect` : 'UPT Connect';
   }
 
+  const LIVESTREAM_IS_LOCAL_ENGINE = ['localhost', '127.0.0.1'].includes(window.location.hostname || '');
+  const LIVESTREAM_PRIMARY_TRANSPORT = LIVESTREAM_IS_LOCAL_ENGINE ? 'tcp' : '';
+  const LIVESTREAM_FALLBACK_TRANSPORT = LIVESTREAM_IS_LOCAL_ENGINE ? '' : 'tcp';
+  const LIVESTREAM_PUBLISH_TRANSPORT = LIVESTREAM_PRIMARY_TRANSPORT;
+
+  function appendLivestreamTransport(url, transport = '') {
+    if (!transport) {
+      return url;
+    }
+
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}transport=${encodeURIComponent(transport)}`;
+  }
+
+  function resolveDefaultLivestreamViewerTransport() {
+    return LIVESTREAM_PRIMARY_TRANSPORT;
+  }
+
   function getLivestreamEngineHost() {
     return window.location.hostname || 'localhost';
   }
@@ -876,6 +994,20 @@
     return `${baseUrl}?v=${encodeURIComponent(revision)}`;
   }
 
+  function buildLivestreamWebRtcUrl(streamKey, _revision = '', transport = LIVESTREAM_PRIMARY_TRANSPORT) {
+    const hostname = window.location.hostname;
+    const encodedKey = encodeURIComponent(streamKey);
+    const playbackPath = `app/${encodedKey}/master`;
+    const resolvedTransport = (typeof transport === 'string' && transport.length)
+      ? transport
+      : resolveDefaultLivestreamViewerTransport();
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return appendLivestreamTransport(`ws://${hostname}:3333/${playbackPath}`, resolvedTransport);
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return appendLivestreamTransport(`${protocol}//${window.location.host}/ome-ws/${playbackPath}`, resolvedTransport);
+  }
+
   function buildLivestreamProbeUrl(streamKey, revision = '') {
     const baseUrl = `${window.location.origin}/ome-ready/app/${encodeURIComponent(streamKey)}/master.m3u8`;
     if (!revision) {
@@ -885,16 +1017,25 @@
   }
 
   function normalizeLivestreamPlaybackUrl(streamKey, _playbackUrl, revision = '') {
-    // Always rebuild from stream_key to ensure the viewer uses the frontend proxy
-    return buildLivestreamHlsUrl(streamKey, revision);
+    // Always rebuild from stream_key to ensure the viewer uses the frontend proxy.
+    return buildLivestreamWebRtcUrl(streamKey, revision);
   }
 
-  function buildLivestreamPublishUrl(streamKey) {
-    return `${window.location.origin}/ome/app/${encodeURIComponent(streamKey)}?direction=whip&transport=tcp`;
+  function buildLivestreamPublishUrl(streamKey, transport = LIVESTREAM_PUBLISH_TRANSPORT) {
+    return appendLivestreamTransport(`${window.location.origin}/ome/app/${encodeURIComponent(streamKey)}?direction=whip`, transport);
   }
 
   function buildLivestreamStreamKey(userId) {
     return `upt-live-${userId}-${Date.now().toString(36)}`;
+  }
+
+  function navigateToLivestream(router, rawId, extraParams = {}) {
+    const liveId = Number(rawId);
+    if (!Number.isFinite(liveId) || liveId <= 0) {
+      return false;
+    }
+    router.navigate('live', { id: String(liveId), ...extraParams });
+    return true;
   }
 
   function isDesktopClient() {
@@ -955,7 +1096,7 @@
   }
 
   async function ensureLivestreamLibraries() {
-    await loadExternalScript('https://cdn.jsdelivr.net/npm/hls.js@latest', 'Hls');
+    await loadExternalScript('https://cdn.jsdelivr.net/npm/ovenplayer@0.10.14/dist/ovenplayer.js', 'OvenPlayer');
     await loadExternalScript('https://cdn.jsdelivr.net/npm/ovenlivekit@latest/dist/OvenLiveKit.min.js', 'OvenLiveKit');
   }
 
@@ -1039,6 +1180,7 @@
     const interactive = options.interactive !== false;
     const clickable = options.clickable !== false;
     const mediaHeightClass = options.mediaHeightClass || 'h-64';
+    const hideAudienceBadge = options.hideAudienceBadge === true || (options.hideGroupBadge === true && Number(post.group_id) > 0);
     const author = resolveProfileData({
       id: post.user_id,
       user_name: post.user_name,
@@ -1048,7 +1190,7 @@
     });
       const authorCareer = careerLabel(author);
       const visibilityMeta = getVisibilityMeta(post.visibility);
-      const audienceMarkup = post.group_id ? `
+      const audienceMarkup = hideAudienceBadge ? '' : post.group_id ? `
         <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
           <span class="material-symbols-outlined text-[14px]">diversity_3</span>
           ${escapeHtml(post.group_name || 'Grupo')}
@@ -1070,21 +1212,19 @@
           <button type="button" class="flex items-center gap-3 text-left" data-action="open-profile" data-user-id="${post.user_id}">
             ${renderAvatar(author, { sizeClass: 'w-10 h-10', textClass: 'text-white font-bold', showOnline: true })}
             <div>
-              <div class="flex items-center gap-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
                 <span class="font-bold text-sm text-slate-900">${escapeHtml(displayName(author))}</span>
                 <span class="text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1" style="background:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
+                ${audienceMarkup}
               </div>
                 <div class="text-slate-500 text-xs mt-0.5">${authorMeta}</div>
               </div>
             </button>
             ${canDelete ? `
-            <button type="button" data-action="delete-post" data-post-id="${post.id}" class="text-slate-400 hover:bg-slate-50 p-1 rounded-full">
+            <button type="button" data-action="delete-post" data-post-id="${post.id}" class="text-slate-400 hover:bg-slate-50 p-1 rounded-full shrink-0" aria-label="Eliminar publicacion">
               <span class="material-symbols-outlined">delete</span>
-              </button>
+            </button>
             ` : ''}
-          </div>
-          <div class="mb-3 flex items-center gap-2">
-            ${audienceMarkup}
           </div>
           <div class="text-sm text-slate-800 mb-4"><p class="content-break">${nl2br(post.content || '')}</p></div>
           ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" onerror="this.parentElement.style.display='none'"/></div>` : ''}
@@ -1113,7 +1253,7 @@
     `;
   }
 
-  function renderPostModalPreview(post, currentUserId) {
+  function renderPostModalPreview(post, currentUserId, options = {}) {
     if (!post) {
       return `
         <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
@@ -1130,7 +1270,8 @@
         user_avatar: post.user_avatar,
       });
       const visibilityMeta = getVisibilityMeta(post.visibility);
-      const audienceMarkup = post.group_id ? `
+      const hideAudienceBadge = options.hideAudienceBadge === true || (options.hideGroupBadge === true && Number(post.group_id) > 0);
+      const audienceMarkup = hideAudienceBadge ? '' : post.group_id ? `
         <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
           <span class="material-symbols-outlined text-[14px]">diversity_3</span>
           ${escapeHtml(post.group_name || 'Grupo')}
@@ -1161,9 +1302,11 @@
                 <div class="text-[11px] text-slate-500 mt-0.5">${authorMeta}</div>
               </div>
             </div>
-            <div class="mt-3">
-              ${audienceMarkup}
-            </div>
+            ${audienceMarkup ? `
+              <div class="mt-3">
+                ${audienceMarkup}
+              </div>
+            ` : ''}
             ${post.content ? `
               <div class="post-modal-preview-copy content-break">${nl2br(post.content)}</div>
             ` : ''}
@@ -3383,194 +3526,11 @@
     feed: {
       title: 'Feed',
       activeNav: 'feed',
-      render() {
-        return `
-          <div class="grid grid-cols-1 md:grid-cols-9 gap-6">
-            <main class="md:col-span-6 flex flex-col gap-6 min-w-0">
-              <div class="feed-composer-card bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                <div class="feed-composer-header">
-                  <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 bg-cover bg-center" id="composer-avatar" style="background:#1B2A6B">U</div>
-                  <div class="feed-composer-input-wrap">
-                    <textarea id="post-content" class="feed-composer-input" placeholder="¿Que esta pasando?" rows="2"></textarea>
-                    <div id="img-preview-wrap" class="feed-composer-preview">
-                      <img id="img-preview" alt="Vista previa"/>
-                      <button id="clear-image-btn" type="button" title="Quitar imagen">x</button>
-                    </div>
-                  </div>
-                </div>
-                <input type="file" id="file-input" accept="image/*" class="hidden"/>
-                <div class="feed-composer-footer">
-                  <div class="feed-composer-tools">
-                    <button id="pick-image-btn" type="button" class="feed-composer-tool">
-                      <span class="material-symbols-outlined text-[19px]">image</span>
-                    </button>
-                    <button id="open-live-modal-btn" type="button" class="feed-composer-tool" title="Iniciar directo">
-                      <span class="material-symbols-outlined text-[19px]">broadcast_on_personal</span>
-                    </button>
-                  </div>
-                  <div class="feed-composer-actions">
-                    <div class="feed-composer-visibility">
-                      <span class="material-symbols-outlined feed-composer-visibility-icon">groups</span>
-                      <span class="feed-composer-visibility-copy">
-                        <span class="feed-composer-visibility-label">Visible para</span>
-                        <input id="post-visibility" type="hidden" value="all"/>
-                        <button id="post-visibility-trigger" type="button" class="feed-composer-select" aria-haspopup="listbox" aria-expanded="false">
-                          <span id="post-visibility-text">Toda la comunidad UPT</span>
-                        </button>
-                        <div id="post-visibility-menu" class="feed-composer-select-menu hidden" role="listbox" aria-label="Opciones de visibilidad">
-                          <button type="button" class="feed-composer-select-option is-active" data-visibility-option="all">
-                            <span class="material-symbols-outlined text-[16px]">public</span>
-                            <span class="feed-composer-select-option-copy">
-                              <span class="feed-composer-select-option-title">Toda la comunidad UPT</span>
-                              <span class="feed-composer-select-option-desc">Visible para todos en la red.</span>
-                            </span>
-                          </button>
-                          <button type="button" class="feed-composer-select-option" data-visibility-option="friends">
-                            <span class="material-symbols-outlined text-[16px]">group</span>
-                            <span class="feed-composer-select-option-copy">
-                              <span class="feed-composer-select-option-title">Solo amigos</span>
-                              <span class="feed-composer-select-option-desc">Solo tus amistades podran verla.</span>
-                            </span>
-                          </button>
-                          <button type="button" class="feed-composer-select-option" data-visibility-option="faculty">
-                            <span class="material-symbols-outlined text-[16px]">school</span>
-                            <span class="feed-composer-select-option-copy">
-                              <span class="feed-composer-select-option-title">Solo mi facultad</span>
-                              <span class="feed-composer-select-option-desc">Visible para usuarios de tu facultad.</span>
-                            </span>
-                          </button>
-                        </div>
-                      </span>
-                    </div>
-                    <button id="btn-publish" type="button" class="feed-composer-submit bg-[#E5D59A] text-[#5A4A1A] px-6 py-1.5 rounded-full text-sm font-bold hover:bg-[#d8c686] transition-colors">Publicar</button>
-                  </div>
-                </div>
-              </div>
-              <div id="feed-new-posts-banner" class="hidden feed-fresh-toast" role="button" tabindex="0" aria-label="Ver nuevas publicaciones">
-                <div>
-                  <div class="text-sm font-bold">Hay nuevas publicaciones</div>
-                  <div class="text-xs text-slate-500 mt-0.5">Actualiza sin perder el contexto del feed.</div>
-                </div>
-                <button id="feed-apply-new-posts-btn" type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#152259] transition-colors">
-                  <span class="material-symbols-outlined text-[18px]">autorenew</span>
-                  <span>Recargar</span>
-                </button>
-              </div>
-              <div id="feed-posts" class="flex flex-col gap-6">
-                ${renderListSkeleton(3, { lines: ['100%', '92%', '54%'], avatar: true, media: true })}
-              </div>
-            </main>
-            <aside class="md:col-span-3 hidden md:flex flex-col gap-6">
-              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-                <h3 class="font-bold text-sm text-slate-900 mb-4">Compañeros en linea</h3>
-                <div id="online-friends" class="flex flex-col gap-4">
-                  <p class="text-sm text-slate-400">Cargando...</p>
-                </div>
-              </div>
-            </aside>
-          </div>
-          <div id="delete-modal" class="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
-              <h3 class="text-xl font-bold text-slate-900 mb-2">Eliminar publicacion</h3>
-              <p class="text-slate-600 text-sm mb-6">Esta accion no se puede deshacer.</p>
-              <div class="flex justify-end gap-3">
-                <button id="cancel-delete-btn" type="button" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
-                <button id="confirm-delete-btn" type="button" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors shadow-sm">Eliminar</button>
-              </div>
-            </div>
-          </div>
-          <div id="comment-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
-            <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
-              <div class="post-comments-topbar">
-                <h3 class="post-comments-topbar-title">Publicacion</h3>
-                <button id="close-comment-top-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar modal de comentarios">
-                  <span class="material-symbols-outlined text-[20px]">close</span>
-                </button>
-              </div>
-              <div class="post-comments-body">
-                <div class="post-comments-scroll custom-scrollbar">
-                  <div id="comment-post-preview" class="post-comments-preview"></div>
-                  <div class="post-comments-side">
-                    <div class="post-comments-section-head">
-                      <span class="post-comments-section-title">Comentarios</span>
-                      <select id="comment-sort" class="post-comments-sort">
-                        <option value="newest">Mas recientes</option>
-                        <option value="oldest">Mas antiguos</option>
-                      </select>
-                    </div>
-                    <div id="comment-list" class="post-comments-list">
-                      <p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>
-                    </div>
-                  </div>
-                </div>
-                <div class="post-comments-compose">
-                  <div class="post-comments-compose-row">
-                    <textarea id="comment-input" enterkeyhint="send" class="post-comments-compose-input" rows="1" placeholder="Escribe un comentario..."></textarea>
-                    <button id="confirm-comment-btn" type="button" class="post-comments-compose-send" aria-label="Enviar comentario">
-                      <span class="material-symbols-outlined text-[18px]">send</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div id="livestream-modal" class="fixed inset-0 bg-slate-950/70 hidden items-center justify-center z-50 px-4 py-6">
-            <div class="w-full max-w-2xl bg-[#0f172a] text-white rounded-[32px] border border-white/10 shadow-2xl overflow-hidden">
-              <div class="px-6 py-5 border-b border-white/10 flex items-center justify-between gap-3">
-                <div>
-                  <h3 class="text-xl font-black">Iniciar directo</h3>
-                  <p class="text-sm text-white/65 mt-1">Crearas una publicacion en vivo con comentarios y reacciones en tiempo real.</p>
-                </div>
-                <button id="close-live-modal-btn" type="button" class="w-10 h-10 rounded-full bg-white/8 hover:bg-white/14 flex items-center justify-center">
-                  <span class="material-symbols-outlined">close</span>
-                </button>
-              </div>
-              <div class="p-6 space-y-5">
-                <label class="block">
-                  <span class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Titulo</span>
-                  <input id="live-title-input" type="text" maxlength="180" class="mt-2 w-full rounded-2xl bg-slate-950/70 border border-white/10 px-4 py-3 text-sm text-white caret-[#ff0b53] outline-none focus:border-[#ff0b53] placeholder:text-white/35" style="-webkit-text-fill-color:#fff;" placeholder="Ponle un titulo a tu directo"/>
-                </label>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
-                    <p class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Fuente</p>
-                    <div class="mt-3 grid gap-2" id="live-source-options">
-                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <input type="radio" name="live-source" value="camera" checked/>
-                        <span class="text-sm font-semibold">Camara + microfono</span>
-                      </label>
-                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3" id="live-screen-option">
-                        <input type="radio" name="live-source" value="screen"/>
-                        <span class="text-sm font-semibold">Compartir pantalla + audio del sistema/microfono</span>
-                      </label>
-                    </div>
-                  </div>
-                  <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
-                    <p class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Visibilidad</p>
-                    <div class="mt-3 grid gap-2">
-                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <input type="radio" name="live-visibility" value="all" checked/>
-                        <span class="text-sm font-semibold">Toda la comunidad UPT</span>
-                      </label>
-                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <input type="radio" name="live-visibility" value="friends"/>
-                        <span class="text-sm font-semibold">Solo amigos</span>
-                      </label>
-                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <input type="radio" name="live-visibility" value="faculty"/>
-                        <span class="text-sm font-semibold">Solo mi facultad</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="px-6 py-5 border-t border-white/10 flex items-center justify-end gap-3">
-                <button id="cancel-live-modal-btn" type="button" class="px-5 py-3 rounded-full bg-white/10 hover:bg-white/14 text-sm font-semibold">Cancelar</button>
-                <button id="confirm-live-create-btn" type="button" class="px-5 py-3 rounded-full bg-[#ff0b53] hover:bg-[#e00549] text-sm font-black tracking-[0.12em]">EMPEZAR</button>
-              </div>
-            </div>
-          </div>
-        `;
+      templatePath: '/pages/feed.html',
+      templateSlots() {
+        return {
+          feedInitialSkeleton: renderListSkeleton(3, { lines: ['100%', '92%', '54%'], avatar: true, media: true }),
+        };
       },
       mount({ container, user, router }) {
         let selectedImageFile = null;
@@ -3581,6 +3541,8 @@
         let pendingFeedPosts = [];
         let feedRefreshTimer = null;
         let commentPollTimer = null;
+        let feedLoadPromise = null;
+        let lastFeedLoadFinishedAt = 0;
 
         const composerAvatar = container.querySelector('#composer-avatar');
         const postsContainer = container.querySelector('#feed-posts');
@@ -3757,30 +3719,72 @@
           }
         }
 
-        async function loadFeed({ passive = false } = {}) {
-          await ensurePublicUsersLoaded();
-          const result = await PostsAPI.getFeed();
-          const posts = getList(result);
+        function buildFeedPostSnapshot(post) {
+          return JSON.stringify({
+            id: Number(post?.id || 0),
+            comments_count: Number(post?.comments_count || 0),
+            reactions_total: Number(post?.reactions_total || 0),
+            reactions_count: post?.reactions_count || {},
+            current_reaction: post?.current_reaction || '',
+            live_status: post?.live_status || '',
+            viewer_count: Number(post?.viewer_count || 0),
+            content: post?.content || '',
+            image_url: post?.image_url || '',
+            live_title: post?.live_title || '',
+            live_source: post?.live_source || '',
+            updated_at: post?.updated_at || '',
+          });
+        }
 
-          if (!result?.ok) {
-            if (!passive) {
-              postsContainer.innerHTML = '<p class="text-center text-slate-400 py-8">No se pudo cargar el feed.</p>';
+        async function loadFeed({ passive = false, force = false } = {}) {
+          if (!force && feedPosts.length && lastFeedLoadFinishedAt && (Date.now() - lastFeedLoadFinishedAt) < 1200) {
+            return;
+          }
+
+          if (feedLoadPromise) {
+            return feedLoadPromise;
+          }
+
+          feedLoadPromise = (async () => {
+            const result = await PostsAPI.getFeed();
+            const posts = getList(result);
+
+            if (!result?.ok) {
+              if (!passive) {
+                postsContainer.innerHTML = '<p class="text-center text-slate-400 py-8">No se pudo cargar el feed.</p>';
+              }
+              return;
             }
-            return;
-          }
 
-          if (!passive || !feedPosts.length) {
-            pendingFeedPosts = [];
-            newPostsBanner?.classList.add('hidden');
-            applyFeedPosts(posts);
-            return;
-          }
+            if (!passive || !feedPosts.length) {
+              pendingFeedPosts = [];
+              newPostsBanner?.classList.add('hidden');
+              applyFeedPosts(posts);
+              return;
+            }
 
-          const currentIds = new Set(feedPosts.map((post) => Number(post.id)));
-          const hasNewPosts = posts.some((post) => !currentIds.has(Number(post.id)));
-          if (!hasNewPosts) return;
-          pendingFeedPosts = posts;
-          newPostsBanner?.classList.remove('hidden');
+            const currentIds = new Set(feedPosts.map((post) => Number(post.id)));
+            const hasNewPosts = posts.some((post) => !currentIds.has(Number(post.id)));
+            const hasStructuralChanges = posts.length !== feedPosts.length
+              || posts.some((post, index) => Number(post.id) !== Number(feedPosts[index]?.id))
+              || posts.some((post, index) => buildFeedPostSnapshot(post) !== buildFeedPostSnapshot(feedPosts[index]));
+
+            if (!hasNewPosts && hasStructuralChanges) {
+              applyFeedPosts(posts);
+              return;
+            }
+
+            if (!hasNewPosts) return;
+            pendingFeedPosts = posts;
+            newPostsBanner?.classList.remove('hidden');
+          })();
+
+          try {
+            return await feedLoadPromise;
+          } finally {
+            lastFeedLoadFinishedAt = Date.now();
+            feedLoadPromise = null;
+          }
         }
 
         async function loadFriends() {
@@ -3838,7 +3842,7 @@
             setPostVisibility('all');
             clearImage();
             showToast('Publicacion creada', 'success');
-            loadFeed();
+            loadFeed({ force: true });
             return;
           }
 
@@ -3865,8 +3869,7 @@
             try {
               preCapturedStream = await navigator.mediaDevices.getDisplayMedia({
                 video: {
-                  width: { ideal: 1920, max: 1920 },
-                  height: { ideal: 1080, max: 1080 },
+                  // Keep the native tab/window aspect ratio instead of coercing every share into 16:9.
                   frameRate: { ideal: 60, max: 60 },
                 },
                 audio: true,
@@ -3914,7 +3917,7 @@
           postContent.value = '';
           closeLivestreamModal();
           showToast('Directo creado', 'success');
-          router.navigate('live', { id: result.data.id, host: '1' });
+          navigateToLivestream(router, result.data.id, { host: '1' });
         }
 
         async function confirmComment() {
@@ -3925,7 +3928,7 @@
           if (result?.ok) {
             showToast('Comentario anadido', 'success');
             commentInput.value = '';
-            await loadFeed();
+            await loadFeed({ force: true });
             await loadComments(pendingCommentId, currentCommentSort);
             return;
           }
@@ -3939,7 +3942,7 @@
           if (result?.ok) {
             showToast('Publicacion eliminada', 'success');
             closeDeleteModal();
-            loadFeed();
+            loadFeed({ force: true });
             return;
           }
           showToast(result?.data?.error || 'Error al eliminar', 'error');
@@ -3968,6 +3971,8 @@
           loadComments(pendingCommentId, commentSort.value);
         });
         publishButton.addEventListener('click', publishPost);
+
+        warmPublicUsersInBackground();
 
         fileInput.addEventListener('change', (event) => {
           const [file] = event.target.files || [];
@@ -4039,7 +4044,7 @@
               return;
             }
             if (actionTarget.dataset.action === 'open-livestream') {
-              router.navigate('live', { id: actionTarget.dataset.liveId });
+              navigateToLivestream(router, actionTarget.dataset.liveId);
               return;
             }
             if (actionTarget.dataset.action === 'report-post') {
@@ -4249,171 +4254,14 @@
     live: {
       title: 'Directo',
       activeNav: 'feed',
-      render() {
-        return `
-          <section class="w-full">
-            <div id="live-shell" class="live-root text-white">
-              <div class="live-layout">
-
-                <!-- ═══ VIDEO PANEL ═══ -->
-                <div class="live-video-col">
-                  <div id="live-video-wrap" class="live-video-wrap">
-                    <div id="live-viewer-player" class="absolute inset-0 hidden"></div>
-                    <video id="live-host-preview" class="absolute inset-0 w-full h-full object-cover bg-black hidden pointer-events-none" style="object-fit:cover" playsinline autoplay muted></video>
-
-                    <!-- Fallback -->
-                    <div id="live-video-fallback" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-[5]">
-                      <div class="w-20 h-20 rounded-full bg-white/10 border border-white/15 flex items-center justify-center mb-5">
-                        <span class="material-symbols-outlined text-[36px]">sensors</span>
-                      </div>
-                      <h3 id="live-fallback-title" class="text-2xl font-black">Preparando directo</h3>
-                      <p id="live-fallback-copy" class="text-white/70 text-sm mt-3 max-w-md">Conecta la fuente del directo para comenzar a transmitir.</p>
-                    </div>
-
-                    <!-- ── OVERLAY (top) ── -->
-                    <div id="live-source-transition-mask" class="live-source-transition hidden" aria-hidden="true">
-                      <div class="live-source-transition__glow"></div>
-                    </div>
-                    <div data-live-overlay class="live-overlay absolute top-0 left-0 right-0 z-30 flex items-start justify-between p-4 bg-gradient-to-b from-black/60 to-transparent transition-opacity duration-300">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <div id="live-status-chip" class="flex items-center gap-2 rounded-full gradient-live live-pulse shadow-glow px-3 py-1.5">
-                          <div id="live-status-dot" class="w-2 h-2 rounded-full bg-white"></div>
-                          <span id="live-status-badge" class="text-[10px] font-black tracking-[0.18em]">LIVE</span>
-                        </div>
-                        <div class="rounded-full glass px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5">
-                          <span class="material-symbols-outlined text-[14px]">visibility</span>
-                          <span id="live-viewer-count">0</span>
-                        </div>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <button id="live-immersive-btn" type="button" class="w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Modo inmersivo">
-                          <span class="material-symbols-outlined text-[20px]">open_in_full</span>
-                        </button>
-                        <button id="live-fullscreen-btn" type="button" class="w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition live-desktop-only" title="Pantalla completa (video)">
-                          <span class="material-symbols-outlined text-[20px]">fullscreen</span>
-                        </button>
-                        <button id="live-host-end-btn" type="button" class="hidden rounded-full bg-[#ff0b53] hover:bg-[#e00549] px-4 py-2 text-xs font-black tracking-[0.16em] transition">FINALIZAR</button>
-                      </div>
-                    </div>
-
-                    <!-- ── OVERLAY (bottom – title + host tools, desktop only) ── -->
-                    <div data-live-overlay class="live-overlay live-desktop-only absolute bottom-0 left-0 right-0 z-30 p-4 bg-gradient-to-t from-black/70 via-black/30 to-transparent transition-opacity duration-300">
-                      <div class="flex items-end justify-between gap-4">
-                        <div class="min-w-0 flex items-center gap-3">
-                          <h2 id="live-title" class="text-xl md:text-2xl font-black leading-tight break-words drop-shadow-lg">Cargando directo...</h2>
-                          <button id="live-viewer-mute-btn" type="button" class="hidden w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Silenciar / Activar sonido">
-                            <span class="material-symbols-outlined text-[20px]">volume_up</span>
-                          </button>
-                        </div>
-                        <div id="live-host-tools" class="hidden items-center gap-2 shrink-0">
-                          <button id="live-toggle-mic-btn" type="button" class="w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar microfono">
-                            <span class="material-symbols-outlined text-[20px]">mic</span>
-                          </button>
-                          <button id="live-toggle-system-audio-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar audio del sistema">
-                            <span class="material-symbols-outlined text-[20px]">volume_up</span>
-                          </button>
-                          <button id="live-flip-camera-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Cambiar camara">
-                            <span class="material-symbols-outlined text-[20px]">flip_camera_ios</span>
-                          </button>
-                          <button id="live-switch-source-btn" type="button" class="rounded-full glass hover:bg-white/20 px-3 py-1.5 text-xs font-semibold transition">Cambiar fuente</button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- ── PLAYER CONTROLS (mobile only, bottom-right of video) ── -->
-                    <div id="live-player-controls" class="live-mobile-only absolute bottom-3 right-3 z-30 flex items-center gap-2">
-                      <button id="live-player-mute-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar / Activar sonido">
-                        <span class="material-symbols-outlined text-[20px]">volume_up</span>
-                      </button>
-                      <button id="live-player-fs-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Pantalla completa">
-                        <span class="material-symbols-outlined text-[20px]">fullscreen</span>
-                      </button>
-                    </div>
-
-                    <!-- Floating reactions -->
-                    <div id="live-floating-reactions" class="pointer-events-none absolute inset-y-0 right-2 w-20 overflow-visible z-20"></div>
-                  </div>
-
-                  <!-- ═══ MOBILE CONTENT: title + comments + input (BELOW video, not overlaid) ═══ -->
-                  <div id="live-mobile-overlay" class="live-mobile-content live-mobile-only">
-                    <div class="px-4 pb-1 pt-3 flex items-center justify-between gap-3">
-                      <h2 id="live-title-mobile" class="text-lg font-black leading-tight break-words drop-shadow-lg">Cargando directo...</h2>
-                      <button id="live-report-btn-mobile" type="button" class="hidden rounded-full bg-[#ff0b53] px-3 py-1.5 text-[11px] font-bold tracking-[0.14em] text-white transition hover:bg-[#e00549] shrink-0 inline-flex items-center gap-1.5">
-                        <span class="material-symbols-outlined text-[14px] leading-none">flag</span>
-                        <span>REPORTAR</span>
-                      </button>
-                    </div>
-                    <div id="live-comments-mobile" class="live-mobile-comments custom-scrollbar" style="overflow-y:auto;touch-action:pan-y;"></div>
-                    <div class="live-mobile-input-row">
-                      <!-- Mobile mic button (host only, hidden for viewers) -->
-                      <button id="live-toggle-mic-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Silenciar micrófono">
-                        <span class="material-symbols-outlined text-[20px]">mic</span>
-                      </button>
-                      <!-- Flip camera button (host mobile only) -->
-                      <button id="live-flip-camera-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Cambiar cámara">
-                        <span class="material-symbols-outlined text-[20px]">flip_camera_ios</span>
-                      </button>
-                      <!-- Torch button (host mobile rear camera only) -->
-                      <button id="live-toggle-torch-mobile-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition shrink-0" title="Encender linterna">
-                        <span class="material-symbols-outlined text-[20px]">flashlight_on</span>
-                      </button>
-                      <textarea id="live-comment-input-mobile" enterkeyhint="send" rows="1" class="live-mobile-input" placeholder="Escribe algo..."></textarea>
-                      <div class="relative">
-                        <button id="live-reaction-trigger" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
-                        <div id="live-reaction-selector" class="hidden absolute bottom-[120%] right-0 glass rounded-2xl px-1.5 py-2 flex flex-col items-center gap-1 shadow-xl z-50" style="animation:live-selector-pop 0.2s ease-out both;">
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_gusta">❤️</button>
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_encanta">😍</button>
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_divierte">😂</button>
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_sorprende">😮</button>
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_enoja">😡</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ═══ CHAT PANEL (desktop only) ═══ -->
-                <aside class="live-chat-col live-desktop-only live-desktop-flex">
-                  <div class="px-5 py-4 border-b border-white/10">
-                    <div class="flex items-center justify-between gap-3">
-                      <div>
-                        <p class="text-xs uppercase tracking-[0.24em] text-white/45 font-black">Chat en vivo</p>
-                        <h3 class="font-black text-xl mt-1">Comentarios</h3>
-                      </div>
-                      <button id="live-report-btn" type="button" class="hidden rounded-full bg-[#ff0b53] px-3 py-1.5 text-[11px] font-bold tracking-[0.14em] text-white transition hover:bg-[#e00549] shrink-0 inline-flex items-center gap-1.5">
-                        <span class="material-symbols-outlined text-[14px] leading-none">flag</span>
-                        <span>REPORTAR</span>
-                      </button>
-                    </div>
-                  </div>
-                  <div id="live-comments" class="custom-scrollbar flex-1 h-0 min-h-[220px] overflow-y-auto px-5 py-4 space-y-4">
-                    <p class="text-sm text-white/55">Cargando comentarios...</p>
-                  </div>
-                  <div class="px-5 py-4 border-t border-white/10">
-                    <div class="flex items-end gap-3">
-                      <textarea id="live-comment-input" enterkeyhint="send" rows="1" class="flex-1 min-h-[48px] max-h-28 rounded-[22px] bg-slate-950/70 border border-white/10 focus:border-[#ec4899]/40 px-4 py-3 text-sm text-white caret-[#ec4899] outline-none resize-none placeholder:text-white/35 transition" style="-webkit-text-fill-color:#fff;" placeholder="Escribe algo..."></textarea>
-                      <div class="relative">
-                        <button id="live-reaction-trigger-desktop" type="button" class="w-12 h-12 rounded-full gradient-live shadow-glow hover:brightness-110 flex items-center justify-center text-xl shrink-0 transition-transform active:scale-90 select-none" title="Mantén presionado para elegir reacción">❤️</button>
-                        <div id="live-reaction-selector-desktop" class="hidden absolute bottom-[120%] right-0 glass rounded-2xl px-1.5 py-2 flex flex-col items-center gap-1 shadow-xl z-50" style="animation:live-selector-pop 0.2s ease-out both;">
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_gusta">❤️</button>
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_encanta">😍</button>
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_divierte">😂</button>
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_sorprende">😮</button>
-                          <button type="button" class="w-10 h-10 rounded-full hover:bg-white/15 flex items-center justify-center text-lg transition-transform hover:scale-125" data-live-set-reaction="me_enoja">😡</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </aside>
-
-              </div>
-            </div>
-          </section>
-        `;
-      },
+      templatePath: '/pages/live.html',
       mount({ container, user, params, router }) {
         const liveId = Number(params.id || 0);
         const isHostRoute = String(params.host || '') === '1';
+        if (!Number.isFinite(liveId) || liveId <= 0) {
+          container.innerHTML = '<section class="rounded-3xl border border-slate-200 bg-white p-8 text-center text-slate-700">Directo no disponible.</section>';
+          return () => {};
+        }
 
         const liveShell = container.querySelector('#live-shell');
         function syncLiveDeviceClasses() {
@@ -4482,6 +4330,7 @@
         let startedAt = Date.now();
         let ovenLivekit = null;
         let viewerVideo = null;
+        let viewerPlayer = null;
         let viewerHls = null;
         let hostMediaBundle = null;
         let hostMicMuted = false;
@@ -4499,6 +4348,11 @@
         let viewerSwitchPrepared = false;
         let viewerFreezeFrame = null;
         let viewerRetrySpinner = null;
+        let viewerTapUnmuteHandler = null;
+        let viewerIsMuted = false;
+        let viewerBoundSourceUrl = '';
+        let viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
+        let viewerTransportEscalated = false;
         let commentsInitialized = false;
         let overlayTimer = null;
         let longPressTimer = null;
@@ -4685,12 +4539,87 @@
           }, 280);
         }
 
+        function syncViewerMuteButtons() {
+          const viewerMuteBtn = container.querySelector('#live-viewer-mute-btn');
+          const muted = viewerIsMuted;
+          const desktopIcon = viewerMuteBtn?.querySelector('.material-symbols-outlined');
+          const mobileIcon = playerMuteBtn?.querySelector('.material-symbols-outlined');
+          if (desktopIcon) desktopIcon.textContent = muted ? 'volume_off' : 'volume_up';
+          if (mobileIcon) mobileIcon.textContent = muted ? 'volume_off' : 'volume_up';
+        }
+
+        function applyViewerMuteState() {
+          const mediaElements = new Set();
+          if (viewerVideo) {
+            mediaElements.add(viewerVideo);
+          }
+          viewerPlayerRoot?.querySelectorAll?.('video').forEach((element) => mediaElements.add(element));
+
+          mediaElements.forEach((element) => {
+            element.muted = viewerIsMuted;
+            element.defaultMuted = viewerIsMuted;
+            element.volume = viewerIsMuted ? 0 : 1;
+            if (!viewerIsMuted) {
+              Promise.resolve(element.play?.()).catch(() => {});
+            }
+          });
+          if (viewerPlayer?.setMute) {
+            try {
+              viewerPlayer.setMute(viewerIsMuted);
+            } catch (_error) {}
+          }
+          syncViewerMuteButtons();
+        }
+
+        function clearViewerTapToUnmute() {
+          if (viewerTapUnmuteHandler && liveVideoWrap) {
+            liveVideoWrap.removeEventListener('click', viewerTapUnmuteHandler);
+          }
+          viewerTapUnmuteHandler = null;
+        }
+
+        function armViewerTapToUnmute() {
+          clearViewerTapToUnmute();
+          if (!viewerIsMuted) {
+            return;
+          }
+          viewerTapUnmuteHandler = () => {
+            viewerIsMuted = false;
+            applyViewerMuteState();
+            clearViewerTapToUnmute();
+          };
+          liveVideoWrap?.addEventListener('click', viewerTapUnmuteHandler);
+        }
+
+        function maybeEscalateViewerTransport() {
+          if (viewerTransportEscalated || viewerTransportMode === LIVESTREAM_FALLBACK_TRANSPORT) {
+            return false;
+          }
+          viewerTransportEscalated = true;
+          viewerTransportMode = LIVESTREAM_FALLBACK_TRANSPORT;
+          window.setTimeout(() => {
+            ensureViewerPlayer(true).catch((error) => {
+              console.warn('No se pudo reintentar el viewer del directo por transporte alterno:', error);
+            });
+          }, 120);
+          return true;
+        }
+
         function destroyPlayer() {
           hideViewerRetrySpinner();
+          if (viewerPlayer && typeof viewerPlayer.remove === 'function') {
+            try {
+              viewerPlayer.remove();
+            } catch (error) {
+              console.warn('No se pudo destruir OvenPlayer del viewer:', error);
+            }
+          }
+          viewerPlayer = null;
           if (viewerHls && typeof viewerHls.destroy === 'function') {
             viewerHls.destroy();
           }
           viewerHls = null;
+          clearViewerTapToUnmute();
           if (viewerVideo) {
             viewerVideo.pause();
             viewerVideo.removeAttribute('src');
@@ -4703,6 +4632,9 @@
           viewerLastMediaProgressAt = 0;
           viewerPendingSourceUrl = null;
           viewerSwitchPrepared = false;
+          viewerBoundSourceUrl = '';
+          viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
+          viewerTransportEscalated = false;
           viewerPlayerRoot.innerHTML = '';
           viewerFreezeFrame = null;
           viewerRetrySpinner = null;
@@ -4805,10 +4737,20 @@
             }
           }
 
+          if (viewerPlayer && typeof viewerPlayer.remove === 'function') {
+            try {
+              viewerPlayer.remove();
+            } catch (error) {
+              console.warn('No se pudo destruir OvenPlayer del viewer antes del cambio:', error);
+            }
+          }
+
+          viewerPlayer = null;
           viewerHls = null;
           viewerPendingSourceUrl = nextSourceUrl;
           viewerSwitchPrepared = true;
           viewerPlayerLastRetryAt = Date.now();
+          clearViewerTapToUnmute();
 
           if (viewerVideo) {
             try {
@@ -4820,6 +4762,7 @@
             }
           }
           viewerVideo = null;
+          viewerBoundSourceUrl = '';
         }
 
         function showFallback(title, copy) {
@@ -4840,12 +4783,19 @@
         function showViewerPlayer() {
           hostPreviewVideo.classList.add('hidden');
           viewerPlayerRoot.classList.remove('hidden');
+          if (!viewerVideo) {
+            const attachedVideo = viewerPlayerRoot.querySelector('video');
+            if (attachedVideo) {
+              viewerVideo = attachedVideo;
+            }
+          }
           // Don't hide fallback yet — wait until video actually has frames
           // The fallback will be hidden in the 'playing' event listener on the video
           if (viewerVideo && viewerVideo.readyState >= 2) {
             liveVideoFallback.classList.add('hidden');
             viewerVideo.style.opacity = '1';
           }
+          applyViewerMuteState();
         }
 
 
@@ -5270,7 +5220,7 @@
           return false;
         }
 
-        function createViewerVideo() {
+function createViewerVideo() {
           const video = document.createElement('video');
           video.className = 'w-full h-full object-contain bg-black absolute inset-0';
           video.style.objectFit = 'contain';
@@ -5283,17 +5233,23 @@
           video.playsInline = true;
           video.setAttribute('playsinline', '');
           video.muted = true;
+          if (viewerTapUnmuteHandler && liveVideoWrap) {
+            liveVideoWrap.removeEventListener('click', viewerTapUnmuteHandler);
+          }
           // Don't clear innerHTML yet — keep old video visible until new one is ready
           viewerPlayerRoot.appendChild(video);
           viewerVideo = video;
           // Tap on video to unmute (only fires once)
-          const unmuteHandler = () => {
+          viewerTapUnmuteHandler = () => {
             if (viewerVideo && viewerVideo.muted) {
               viewerVideo.muted = false;
             }
-            liveVideoWrap?.removeEventListener('click', unmuteHandler);
+            if (liveVideoWrap && viewerTapUnmuteHandler) {
+              liveVideoWrap.removeEventListener('click', viewerTapUnmuteHandler);
+            }
+            viewerTapUnmuteHandler = null;
           };
-          liveVideoWrap?.addEventListener('click', unmuteHandler);
+          liveVideoWrap?.addEventListener('click', viewerTapUnmuteHandler);
           // Re-check layout once dimensions are known
           video.addEventListener('loadedmetadata', () => {
             updateFullscreenButtonVisibility();
@@ -5323,7 +5279,111 @@
           return video;
         }
 
-        async function ensureViewerPlayer(forceRestart = false) {
+        function bindViewerMediaElement(video, sourceUrl, readyAt) {
+          if (!video) {
+            return null;
+          }
+
+          const isSameBinding = viewerVideo === video && viewerBoundSourceUrl === sourceUrl;
+          viewerVideo = video;
+
+          if (isSameBinding) {
+            applyViewerMuteState();
+            return video;
+          }
+
+          video.classList.add('w-full', 'h-full', 'bg-black');
+          video.style.width = '100%';
+          video.style.height = '100%';
+          video.style.objectFit = 'contain';
+          video.style.zIndex = '1';
+          video.style.opacity = '0';
+          video.style.transition = 'opacity 160ms ease';
+          video.style.pointerEvents = 'none';
+          video.autoplay = true;
+          video.controls = false;
+          video.playsInline = true;
+          video.setAttribute('playsinline', '');
+          viewerBoundSourceUrl = sourceUrl;
+          applyViewerMuteState();
+          armViewerTapToUnmute();
+
+          const handleMetadata = () => {
+            updateFullscreenButtonVisibility();
+            updateMobilePlayerControls();
+            updateStreamLayout();
+          };
+          video.addEventListener('loadedmetadata', handleMetadata, { once: true });
+
+          const hideFallback = () => {
+            if (viewerPlayerSourceUrl && viewerPlayerSourceUrl !== sourceUrl) {
+              return;
+            }
+            showViewerPlayer();
+            liveVideoFallback.classList.add('hidden');
+            video.style.opacity = '1';
+            clearViewerFreezeFrame();
+            hideViewerRetrySpinner();
+            endLiveSourceTransition(transitionToken, 1000).catch(() => {});
+          };
+          video.addEventListener('playing', hideFallback, { once: true });
+          video.addEventListener('canplay', hideFallback, { once: true });
+          const pollForFrames = (remainingChecks = 20) => {
+            if (viewerVideo !== video || liveVideoFallback.classList.contains('hidden')) {
+              return;
+            }
+            if (video.readyState >= 2 || (video.videoWidth > 0 && video.videoHeight > 0) || Number(video.currentTime || 0) > 0.05) {
+              hideFallback();
+              return;
+            }
+            if (remainingChecks <= 0) {
+              return;
+            }
+            window.setTimeout(() => pollForFrames(remainingChecks - 1), 150);
+          };
+          pollForFrames();
+          if (video.readyState >= 2 || (video.videoWidth > 0 && video.videoHeight > 0)) {
+            window.requestAnimationFrame(hideFallback);
+          }
+          window.setTimeout(() => {
+            if (viewerVideo === video && viewerPlayerSourceUrl === sourceUrl && !liveVideoFallback.classList.contains('hidden')) {
+              if (!maybeEscalateViewerTransport()) {
+                showViewerRetrySpinner();
+              }
+            }
+          }, 3000);
+
+          viewerPlayerCreatedAt = readyAt;
+          viewerPlayerLastRetryAt = readyAt;
+          viewerLastMediaTime = 0;
+          viewerLastMediaProgressAt = 0;
+          return video;
+        }
+
+        function scheduleViewerMediaBinding(player, sourceUrl, readyAt, attempts = 12) {
+          if (!player || viewerPlayer !== player || !viewerPlayerRoot) {
+            return;
+          }
+
+          const mediaElement = viewerPlayerRoot.querySelector('video');
+
+          if (mediaElement) {
+            bindViewerMediaElement(mediaElement, sourceUrl, readyAt);
+            return;
+          }
+
+          if (attempts <= 0) {
+            return;
+          }
+
+          window.setTimeout(() => {
+            if (viewerPlayer === player) {
+              scheduleViewerMediaBinding(player, sourceUrl, readyAt, attempts - 1);
+            }
+          }, 120);
+        }
+
+async function ensureViewerPlayer(forceRestart = false) {
           if (viewerBootstrapInFlight) {
             return;
           }
@@ -5337,17 +5397,16 @@
 
           try {
             await ensureLivestreamLibraries();
-            const sourceRevision = liveData.updated_at || liveData.playback_url || '';
-            const sourceUrl = normalizeLivestreamPlaybackUrl(liveData.stream_key, liveData.playback_url, sourceRevision);
-            const probeUrl = buildLivestreamProbeUrl(liveData.stream_key, sourceRevision);
-            const switchingExistingStream = !!(viewerVideo && viewerPlayerSourceUrl && viewerPlayerSourceUrl !== sourceUrl);
-            const restartingCurrentStream = !!(forceRestart && viewerVideo && viewerPlayerSourceUrl === sourceUrl);
+            const sourceRevision = `${liveData.live_source || 'camera'}:${liveData.stream_key || ''}`;
+            const sourceUrl = buildLivestreamWebRtcUrl(liveData.stream_key, sourceRevision, viewerTransportMode);
+            const switchingExistingStream = !!(viewerPlayerSourceUrl && viewerPlayerSourceUrl !== sourceUrl);
+            const restartingCurrentStream = !!(forceRestart && viewerPlayerSourceUrl === sourceUrl);
             if (switchingExistingStream) {
               beginLiveSourceTransition();
             }
-            if (!forceRestart && viewerVideo && viewerPlayerSourceUrl === sourceUrl) {
+            if (!forceRestart && viewerPlayer && viewerPlayerSourceUrl === sourceUrl) {
+              scheduleViewerMediaBinding(viewerPlayer, sourceUrl, viewerPlayerCreatedAt || Date.now());
               showViewerPlayer();
-              // Don't call play() — HLS is already streaming, play() interrupts and causes black frames
               return;
             }
 
@@ -5358,117 +5417,71 @@
               disposeViewerHlsKeepFrame(sourceUrl, { showSpinner: true });
             }
 
-            const manifestReady = await ensureViewerManifest(
-              sourceUrl,
-              switchingExistingStream
-                ? { attempts: 10, pauseMs: 180, requestTimeoutMs: 1200, probeUrl }
-                : { attempts: 5, pauseMs: 650, requestTimeoutMs: 2200, probeUrl }
-            );
-            if (!manifestReady) {
-              if (switchingExistingStream || restartingCurrentStream) {
-                showViewerPlayer();
-                if (switchingExistingStream) {
-                  await endLiveSourceTransition(transitionToken, 1000);
-                }
-                return;
-              }
-              showFallback('Esperando directo', 'El stream todavia se esta preparando para los espectadores.');
-              return;
-            }
-
             if (!switchingExistingStream && !restartingCurrentStream) {
               destroyPlayer();
             }
 
             showViewerPlayer();
-            const video = createViewerVideo();
             const readyAt = Date.now();
 
-            if (window.Hls && window.Hls.isSupported()) {
-              const hls = new window.Hls({
-                lowLatencyMode: false,
-                liveDurationInfinity: true,
-                backBufferLength: 8,
-                maxBufferLength: 12,
-                liveSyncDurationCount: 2,
-                liveMaxLatencyDurationCount: 5,
-                maxLiveSyncPlaybackRate: 1.05,
-                startFragPrefetch: true,
-              });
-              viewerHls = hls;
-              hls.loadSource(sourceUrl);
-              hls.attachMedia(video);
-              hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-                if (viewerHls !== hls || viewerVideo !== video) {
-                  return;
-                }
-                syncViewerToLiveEdge(true);
-                video.play().catch(() => {});
-              });
-              hls.on(window.Hls.Events.LEVEL_UPDATED, () => {
-                if (viewerHls !== hls || viewerVideo !== video) {
-                  return;
-                }
-                syncViewerToLiveEdge();
-              });
-              hls.on(window.Hls.Events.FRAG_BUFFERED, () => {
-                if (viewerHls !== hls || viewerVideo !== video) {
-                  return;
-                }
-                syncViewerToLiveEdge();
-              });
-              hls.on(window.Hls.Events.ERROR, (_event, data) => {
-                if (viewerHls !== hls) {
-                  return;
-                }
-
-                if (!data?.fatal) {
-                  return;
-                }
-
-                if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-                  if (liveData?.live_status === 'live') {
-                    captureViewerFreezeFrame({ hideVideo: true });
-                    showViewerRetrySpinner();
-                    showViewerPlayer();
-                  }
-                  hls.startLoad();
-                  return;
-                }
-
-                if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
-                  hls.recoverMediaError();
-                  return;
-                }
-
-                destroyPlayer();
-                showFallback('No se pudo reproducir el directo', 'Intenta entrar de nuevo en unos segundos.');
-              });
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-              video.src = sourceUrl;
-              video.addEventListener('loadedmetadata', () => {
-                const seekable = video.seekable;
-                if (seekable && seekable.length > 0) {
-                  try {
-                    video.currentTime = Math.max(0, seekable.end(seekable.length - 1) - 1);
-                  } catch (error) {
-                    console.warn('No se pudo ajustar el viewer nativo al borde del live:', error);
-                  }
-                }
-                video.play().catch(() => {});
-              }, { once: true });
-            } else {
+            if (!window.OvenPlayer?.create) {
               showFallback('Reproduccion no compatible', 'Este navegador no pudo cargar el directo.');
-                return;
+              return;
             }
 
+            const playerMount = document.createElement('div');
+            playerMount.id = `live-viewer-player-mount-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+            playerMount.className = 'absolute inset-0 w-full h-full bg-black';
+            viewerPlayerRoot.appendChild(playerMount);
             viewerPlayerSourceUrl = sourceUrl;
-            viewerPlayerCreatedAt = readyAt;
-            viewerPlayerLastRetryAt = readyAt;
-            viewerLastMediaTime = 0;
-            viewerLastMediaProgressAt = 0;
             viewerPendingSourceUrl = null;
             viewerSwitchPrepared = false;
+            const player = window.OvenPlayer.create(playerMount, {
+              autoStart: true,
+              controls: false,
+              mute: viewerIsMuted,
+              sources: [{ type: 'webrtc', file: sourceUrl }],
+            });
+            viewerPlayer = player;
+            scheduleViewerMediaBinding(player, sourceUrl, readyAt);
+            if (typeof player.on === 'function') {
+              player.on('ready', () => {
+                if (viewerPlayer !== player) {
+                  return;
+                }
+                scheduleViewerMediaBinding(player, sourceUrl, readyAt);
+              });
+              player.on('stateChanged', (data) => {
+                if (viewerPlayer !== player) {
+                  return;
+                }
+                const nextState = String(data?.newstate || '').toLowerCase();
+                if (nextState === 'playing') {
+                  scheduleViewerMediaBinding(player, sourceUrl, readyAt);
+                  showViewerPlayer();
+                  liveVideoFallback.classList.add('hidden');
+                  hideViewerRetrySpinner();
+                  clearViewerFreezeFrame();
+                } else if ((nextState === 'stalled' || nextState === 'error') && liveData?.live_status === 'live') {
+                  captureViewerFreezeFrame({ hideVideo: true });
+                  if (!maybeEscalateViewerTransport()) {
+                    showViewerRetrySpinner();
+                  }
+                }
+              });
+              player.on('destroy', () => {
+                if (viewerPlayer === player) {
+                  viewerPlayer = null;
+                }
+              });
+            }
+            window.setTimeout(() => {
+              if (viewerPlayer === player && viewerPlayerSourceUrl === sourceUrl && !viewerVideo) {
+                if (!maybeEscalateViewerTransport()) {
+                  showViewerRetrySpinner();
+                }
+              }
+            }, 1500);
           } finally {
             viewerBootstrapInFlight = false;
           }
@@ -5560,21 +5573,21 @@
           const desktop = isDesktopClient();
           const base = source === 'screen'
             ? {
-                width: { ideal: 1920, max: 1920 },
-                height: { ideal: 1080, max: 1080 },
+                // Preserve the shared source dimensions; forcing 1920x1080 stretches narrow windows.
                 frameRate: { ideal: 60, max: 60 },
               }
             : desktop
               ? {
-                  width: { ideal: 1280, max: 1920 },
-                  height: { ideal: 720, max: 1080 },
-                  frameRate: { ideal: 30, max: 30 },
+                  width: { ideal: 1920, max: 1920 },
+                  height: { ideal: 1080, max: 1080 },
+                  frameRate: { ideal: 60, max: 60 },
                   aspectRatio: { ideal: 16 / 9 },
                 }
               : {
-                  width: { ideal: 1280, max: 1280 },
-                  height: { ideal: 720, max: 720 },
-                  frameRate: { ideal: 24, max: 30 },
+                  width: { ideal: 720, max: 1080 },
+                  height: { ideal: 1280, max: 1920 },
+                  frameRate: { ideal: 60, max: 60 },
+                  aspectRatio: { ideal: 9 / 16 },
                 };
 
           return { ...base, ...overrides };
@@ -5909,6 +5922,22 @@
           });
         }
 
+        function buildLivestreamConnectionConfig(source, transportMode = LIVESTREAM_PRIMARY_TRANSPORT) {
+          const isScreen = source === 'screen';
+          const desktop = isDesktopClient();
+          const targetVideoBitrate = isScreen ? 12000 : (desktop ? 10000 : 6500);
+          const startBitrate = isScreen ? 8000 : (desktop ? 7600 : 4600);
+          const minBitrate = isScreen ? 3200 : (desktop ? 3500 : 2200);
+
+          return {
+            preferredVideoFormat: 'H264',
+            maxVideoBitrate: targetVideoBitrate,
+            sdp: {
+              appendFmtp: `x-google-start-bitrate=${startBitrate};x-google-max-bitrate=${targetVideoBitrate};x-google-min-bitrate=${minBitrate}`,
+            },
+          };
+        }
+
         function normalizeWhipResourceUrl(url) {
           if (!url || typeof url !== 'string') {
             return '';
@@ -5980,7 +6009,7 @@
           return message.includes('409');
         }
 
-        async function attachAndPublishBundle(livekit, bundle, source, streamKey) {
+        async function attachAndPublishBundle(livekit, bundle, source, streamKey, transportMode = LIVESTREAM_PRIMARY_TRANSPORT) {
           livekit.attachMedia(hostPreviewVideo);
           await livekit.setMediaStream(bundle.publishedStream);
           hostPreviewVideo.srcObject = bundle.previewStream || bundle.publishedStream;
@@ -5988,7 +6017,10 @@
           showHostPreview();
           await hostPreviewVideo.play().catch(() => {});
 
-          await livekit.startStreaming(buildLivestreamPublishUrl(streamKey));
+          await livekit.startStreaming(
+            buildLivestreamPublishUrl(streamKey, transportMode),
+            buildLivestreamConnectionConfig(source, transportMode),
+          );
           if (
             window.location.protocol === 'https:'
             && typeof livekit.resourceUrl === 'string'
@@ -6003,16 +6035,21 @@
           try {
             await attachAndPublishBundle(livekit, bundle, source, streamKey);
           } catch (error) {
-            if (!isWhipConflictError(error)) {
-              await disposeOvenLivekit(livekit, { clearCurrent: false });
-              throw error;
+            const shouldRetryWithFallback = !isWhipConflictError(error);
+            if (!shouldRetryWithFallback) {
+              console.warn('OME todavia no libero la sesion anterior; reintentando cambio de fuente...', error);
+            } else {
+              console.warn('No se pudo publicar por transporte primario; reintentando con transporte ampliado...', error);
             }
-
-            console.warn('OME todavia no libero la sesion anterior; reintentando cambio de fuente...', error);
             await disposeOvenLivekit(livekit, { clearCurrent: false });
-            await delay(900);
+            await delay(shouldRetryWithFallback ? 400 : 900);
             livekit = createOvenLivekit();
-            await attachAndPublishBundle(livekit, bundle, source, streamKey);
+            try {
+              await attachAndPublishBundle(livekit, bundle, source, streamKey, LIVESTREAM_FALLBACK_TRANSPORT);
+            } catch (fallbackError) {
+              await disposeOvenLivekit(livekit, { clearCurrent: false });
+              throw fallbackError;
+            }
           }
 
           return livekit;
@@ -6058,19 +6095,6 @@
 
             nextBundle = await buildHostInputStream(source);
             nextLivekit = await publishHostBundle(nextBundle, source, nextStreamKey);
-            const manifestReady = await waitForPublishedManifest(nextStreamKey, {
-              attempts: isInitialPublish ? 60 : (isMobileCameraFlip ? 48 : 42),
-              pauseMs: isInitialPublish ? 220 : (isMobileCameraFlip ? 180 : 200),
-              requestTimeoutMs: 1500,
-            });
-            if (!manifestReady && !isInitialPublish) {
-              throw new Error('OME no termino de preparar el manifiesto del directo');
-            }
-
-            if (!manifestReady) {
-              console.warn('OME aun no genero el manifiesto inicial; el viewer seguira reintentando.');
-            }
-
             liveData.live_source = source;
             liveData.stream_key = nextStreamKey;
             liveData.updated_at = new Date().toISOString();
@@ -6117,14 +6141,6 @@
                 const recoveredBundle = await buildHostInputStream(previousSource);
                 const recoveryStreamKey = nextLivestreamStreamKey();
                 const recoveredLivekit = await publishHostBundle(recoveredBundle, previousSource, recoveryStreamKey);
-                const recoveryReady = await waitForPublishedManifest(recoveryStreamKey, {
-                  attempts: 20,
-                  pauseMs: 180,
-                  requestTimeoutMs: 1500,
-                });
-                if (!recoveryReady) {
-                  throw new Error('OME no preparo el manifiesto de recuperacion');
-                }
                 ovenLivekit = recoveredLivekit;
                 hostMediaBundle = recoveredBundle;
                 hostPublishing = true;
@@ -6208,15 +6224,13 @@
             toggleMicMobileButton.classList.toggle('flex', isOwner && !isDesktopClient());
           }
 
-          const isViewerReady = !!liveData?.updated_at
-            && !!liveData?.created_at
-            && liveData.updated_at !== liveData.created_at;
+          const isViewerReady = !!(liveData?.stream_key && liveData?.live_status === 'live');
 
           if (!isOwner && liveData.live_status === 'live' && isViewerReady) {
             // Detect source change → force viewer restart
             const currentSource = liveData.live_source || 'camera';
             const currentStreamKey = liveData.stream_key || '';
-            const currentRevision = liveData.updated_at || liveData.playback_url || '';
+            const currentRevision = `${currentSource}:${currentStreamKey}`;
             const sourceChanged = (lastKnownSource && lastKnownSource !== currentSource)
               || (lastKnownStreamKey && lastKnownStreamKey !== currentStreamKey)
               || (lastKnownSourceRevision && lastKnownSourceRevision !== currentRevision);
@@ -6224,6 +6238,9 @@
             lastKnownStreamKey = currentStreamKey;
             lastKnownSourceRevision = currentRevision;
             if (sourceChanged) {
+              viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
+              viewerTransportEscalated = false;
+              viewerBoundSourceUrl = '';
               captureViewerFreezeFrame({ hideVideo: true });
               beginLiveSourceTransition();
               showViewerPlayer();
@@ -6236,7 +6253,7 @@
           } else if (!isOwner && liveData.live_status === 'live') {
             lastKnownSource = liveData.live_source || 'camera';
             lastKnownStreamKey = liveData.stream_key || '';
-            lastKnownSourceRevision = liveData.updated_at || liveData.playback_url || '';
+            lastKnownSourceRevision = `${lastKnownSource}:${lastKnownStreamKey}`;
             destroyPlayer();
             showFallback('Preparando directo', 'El stream todavia se esta preparando para los espectadores.');
           }
@@ -6441,10 +6458,20 @@
         async function endLivestream() {
           if (endingLivestream) return;
           endingLivestream = true;
+          if (hostEndButton) {
+            hostEndButton.disabled = true;
+            hostEndButton.textContent = 'FINALIZANDO...';
+            hostEndButton.classList.add('opacity-70', 'cursor-not-allowed');
+          }
           const durationSeconds = getLivestreamDurationSeconds();
           const result = await PostsAPI.endLivestream(liveId, durationSeconds);
           if (!result?.ok) {
             showToast(result?.data?.error || 'No se pudo finalizar el directo', 'error');
+            if (hostEndButton) {
+              hostEndButton.disabled = false;
+              hostEndButton.textContent = 'FINALIZAR';
+              hostEndButton.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
             endingLivestream = false; // allow retry
             return;
           }
@@ -6729,31 +6756,26 @@
         // ── Viewer mute/unmute button (desktop) ──
         const viewerMuteBtn = container.querySelector('#live-viewer-mute-btn');
         if (viewerMuteBtn) {
-          viewerMuteBtn.addEventListener('click', () => {
-            if (viewerVideo) {
-              viewerVideo.muted = !viewerVideo.muted;
-              const icon = viewerMuteBtn.querySelector('.material-symbols-outlined');
-              if (icon) icon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
-              // Sync mobile mute icon
-              const mIcon = playerMuteBtn?.querySelector('.material-symbols-outlined');
-              if (mIcon) mIcon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
-            }
+          viewerMuteBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            viewerIsMuted = !viewerIsMuted;
+            applyViewerMuteState();
+            if (!viewerIsMuted) clearViewerTapToUnmute();
+            else armViewerTapToUnmute();
           });
         }
 
         // ── Mobile player mute button ──
         if (playerMuteBtn) {
-          playerMuteBtn.addEventListener('click', () => {
-            if (viewerVideo) {
-              viewerVideo.muted = !viewerVideo.muted;
-              const icon = playerMuteBtn.querySelector('.material-symbols-outlined');
-              if (icon) icon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
-              // Sync desktop mute icon
-              const dIcon = viewerMuteBtn?.querySelector('.material-symbols-outlined');
-              if (dIcon) dIcon.textContent = viewerVideo.muted ? 'volume_off' : 'volume_up';
-            }
+          playerMuteBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            viewerIsMuted = !viewerIsMuted;
+            applyViewerMuteState();
+            if (!viewerIsMuted) clearViewerTapToUnmute();
+            else armViewerTapToUnmute();
           });
         }
+        syncViewerMuteButtons();
 
         // ── Mobile mic button (in input row, host only) ──
         if (toggleMicMobileButton) {
@@ -7012,31 +7034,7 @@
     messages: {
       title: 'Mensajes',
       activeNav: 'messages',
-      render() {
-        return `
-          <main id="messages-layout" class="flex flex-col lg:flex-row bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm min-w-0" style="height:calc(100dvh - 7rem);">
-            <div id="messages-inbox-pane" class="w-full lg:w-[340px] flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 bg-white flex-shrink-0 min-h-0">
-              <div class="p-4 border-b border-slate-100">
-                <div class="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 class="text-xl font-bold text-slate-900">Mensajes</h2>
-                    <p id="messages-summary" class="text-xs text-slate-500 mt-1">Tus conversaciones con amigos apareceran aqui.</p>
-                  </div>
-                  <span id="messages-count" class="hidden inline-flex min-w-[30px] h-8 px-3 rounded-full bg-slate-100 text-slate-700 text-sm font-bold items-center justify-center"></span>
-                </div>
-              </div>
-              <div class="flex-1 overflow-y-auto custom-scrollbar" id="inbox-list">
-                <p class="text-sm text-slate-400 p-4">Cargando conversaciones...</p>
-              </div>
-            </div>
-            <div class="flex-1 flex flex-col bg-[#F6F8FB] min-h-0" id="chat-panel">
-              <div class="flex-1 flex items-center justify-center px-6">
-                <p class="text-slate-400 text-sm text-center">Selecciona un amigo para empezar a conversar.</p>
-              </div>
-            </div>
-          </main>
-        `;
-      },
+      templatePath: '/pages/messages.html',
       mount({ container, user, params, router }) {
         return initMessagesView({ container, user, params, router });
       },
@@ -7044,48 +7042,8 @@
     companions: {
       title: 'Compañeros',
       activeNav: 'companions',
-      render() {
-        return `
-          <div class="flex flex-col gap-6 w-full">
-            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <div class="mb-6 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-                <div>
-                  <h1 class="text-slate-900 mb-2 font-bold tracking-tight text-[28px]">Compañeros</h1>
-                  <p class="text-slate-500 text-[16px]">Gestiona el directorio social y las personas que bloqueaste.</p>
-                </div>
-                <div id="companions-directory-filters" class="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-                  <div class="flex-1 sm:w-48">
-                    <label class="block text-xs text-slate-500 mb-1 font-medium" for="filter-faculty">Facultad</label>
-                    <select id="filter-faculty" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                      <option value="Todos">Todos</option>
-                      <option value="FAING">FAING</option>
-                      <option value="FACEM">FACEM</option>
-                      <option value="FAEDCOH">FAEDCOH</option>
-                      <option value="FADE">FADE</option>
-                      <option value="FACSA">FACSA</option>
-                      <option value="FAU">FAU</option>
-                    </select>
-                  </div>
-                  <div class="flex-1 sm:w-56">
-                    <label class="block text-xs text-slate-500 mb-1 font-medium" for="filter-career">Carrera</label>
-                    <select id="filter-career" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                      <option value="Todos">Todos</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
-                <button type="button" data-companions-tab="directory" class="companions-tab-btn px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Directorio</button>
-                <button type="button" data-companions-tab="blocked" class="companions-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Bloqueados</button>
-              </div>
-              <div id="companions-empty-state" class="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-400"></div>
-              <div id="directory-grid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                <p class="text-slate-400 text-sm col-span-3 text-center py-8">Cargando companeros...</p>
-              </div>
-            </div>
-          `;
-        },
-        mount({ container, router, user }) {
+      templatePath: '/pages/companions.html',
+      mount({ container, router, user }) {
           const grid = container.querySelector('#directory-grid');
           const filterFaculty = container.querySelector('#filter-faculty');
           const filterCareer = container.querySelector('#filter-career');
@@ -7253,119 +7211,11 @@
     groups: {
       title: 'Grupos',
       activeNav: 'groups',
-      render() {
-        return `
-          <div class="flex flex-col gap-6 w-full">
-            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-5 mb-6">
-                <div>
-                  <h1 class="text-slate-900 mb-2 font-bold tracking-tight text-[28px]">Grupos</h1>
-                  <p class="text-slate-500 text-[16px]">Descubre comunidades, crea la tuya y gestiona tus espacios.</p>
-                </div>
-                <div class="w-full lg:w-80">
-                  <label class="block text-xs text-slate-500 mb-1 font-medium" for="groups-search">Buscar grupo</label>
-                  <input id="groups-search" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" placeholder="Nombre o descripcion"/>
-                </div>
-              </div>
-              <div class="w-full overflow-x-auto pb-1 mb-6 custom-scrollbar">
-                <div class="inline-flex min-w-max items-center bg-[#E5E7EB] rounded-full p-1">
-                  <button type="button" data-groups-tab="discover" class="groups-tab-btn whitespace-nowrap px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Descubrir</button>
-                  <button type="button" data-groups-tab="mine" class="groups-tab-btn whitespace-nowrap px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Mis grupos</button>
-                  <button type="button" data-groups-tab="create" class="groups-tab-btn whitespace-nowrap px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Crear grupo</button>
-                </div>
-              </div>
-              <div id="groups-discover-toolbar" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-                <p class="text-sm text-slate-500">Explora grupos y detecta de inmediato si ya formas parte de ellos.</p>
-                <label class="flex items-center gap-2 text-sm font-medium text-slate-600">
-                  <span>Mostrar</span>
-                  <select id="groups-membership-filter" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                    <option value="all">Todos</option>
-                    <option value="without-mine">Sin mis grupos</option>
-                  </select>
-                </label>
-              </div>
-              <div id="groups-list-section">
-                <div id="groups-empty-state" class="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-400"></div>
-                <div id="groups-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  ${renderListSkeleton(4, { lines: ['72%', '100%', '88%'], media: true, avatar: false })}
-                </div>
-              </div>
-              <div id="groups-create-section" class="hidden">
-                <form id="create-group-form" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <div class="space-y-4">
-                    <div>
-                      <label class="block text-sm font-semibold text-slate-700 mb-1" for="group-name">Nombre</label>
-                      <input id="group-name" name="name" required maxlength="150" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" placeholder="Ej. Comunidad de IA UPT"/>
-                    </div>
-                    <div>
-                      <label class="block text-sm font-semibold text-slate-700 mb-1" for="group-description">Descripcion</label>
-                      <textarea id="group-description" name="description" rows="5" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Describe el objetivo del grupo"></textarea>
-                    </div>
-                  </div>
-                  <div class="space-y-4">
-                    <div>
-                      <label class="block text-sm font-semibold text-slate-700 mb-1" for="group-privacy">Privacidad</label>
-                      <select id="group-privacy" name="privacy" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                        <option value="public">Publico</option>
-                        <option value="private">Privado</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block text-sm font-semibold text-slate-700 mb-1" for="group-cover">Portada</label>
-                      <input id="group-cover" name="cover" type="file" accept="image/*" class="hidden"/>
-                      <div id="group-cover-preview" class="h-40 rounded-2xl border border-slate-200 bg-slate-100 bg-cover bg-center" style="background:linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)"></div>
-                      <div class="mt-3 flex items-center gap-3">
-                        <button id="pick-group-cover-btn" type="button" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Seleccionar portada</button>
-                        <button id="clear-group-cover-btn" type="button" class="hidden px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors">Quitar</button>
-                      </div>
-                    </div>
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 leading-6">
-                      En la primera version los grupos incluyen informacion, conversacion, personas y multimedia. Los grupos publicos permiten unirse al instante y los privados requieren aprobacion.
-                    </div>
-                    <div class="flex justify-end">
-                      <button id="create-group-submit" type="submit" class="px-5 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Crear grupo</button>
-                    </div>
-                  </div>
-                </form>
-              </div>
-            </div>
-            <div id="group-create-crop-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 px-3 py-4">
-              <div class="bg-white rounded-[28px] shadow-xl w-full max-w-5xl overflow-hidden flex flex-col">
-                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                  <div>
-                    <h3 class="text-lg font-bold text-slate-900">Ajustar portada del grupo</h3>
-                    <p class="text-sm text-slate-500">Mueve y acerca la imagen para elegir la parte que quieres mostrar.</p>
-                  </div>
-                  <button id="group-create-crop-close-btn" type="button" class="w-10 h-10 rounded-full hover:bg-slate-100 transition-colors flex items-center justify-center">
-                    <span class="material-symbols-outlined text-[20px]">close</span>
-                  </button>
-                </div>
-                <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px] gap-6 p-6">
-                  <div id="group-create-crop-stage" class="rounded-[24px] bg-slate-900 overflow-hidden relative aspect-[16/5]">
-                    <img id="group-create-crop-image" alt="Previsualizacion de portada del grupo" class="absolute top-0 left-0 max-w-none select-none touch-none cursor-grab active:cursor-grabbing"/>
-                  </div>
-                  <div class="space-y-4">
-                    <div class="rounded-2xl border border-slate-200 p-4">
-                      <h4 class="text-sm font-semibold text-slate-900 mb-3">Vista previa</h4>
-                      <canvas id="group-create-crop-preview" class="w-full rounded-2xl border border-slate-200 bg-slate-100 aspect-[16/5]"></canvas>
-                    </div>
-                    <div>
-                      <div class="flex items-center justify-between gap-3 mb-2">
-                        <label for="group-create-crop-zoom" class="text-sm font-semibold text-slate-900">Zoom</label>
-                        <span id="group-create-crop-zoom-label" class="text-xs font-semibold text-slate-500">100%</span>
-                      </div>
-                      <input id="group-create-crop-zoom" type="range" min="100" max="400" value="100" class="w-full accent-[#1B2A6B]"/>
-                    </div>
-                    <div class="flex justify-end gap-3">
-                      <button id="group-create-crop-cancel-btn" type="button" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                      <button id="group-create-crop-save-btn" type="button" class="px-4 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Usar portada</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
+      templatePath: '/pages/groups.html',
+      templateSlots() {
+        return {
+          groupsInitialSkeleton: renderListSkeleton(4, { lines: ['72%', '100%', '88%'], media: true, avatar: false }),
+        };
       },
       mount({ container, router }) {
         const grid = container.querySelector('#groups-grid');
@@ -7833,168 +7683,7 @@
     group: {
       title: 'Grupo',
       activeNav: 'groups',
-      render() {
-        return `
-          <div class="max-w-6xl mx-auto w-full space-y-6">
-            <div id="group-shell" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div class="h-52 md:h-64 bg-slate-200 bg-cover bg-center" id="group-cover-shell" style="background:linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)"></div>
-              <div class="px-6 py-5">
-                <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
-                  <div class="space-y-2">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <h1 id="group-title" class="text-3xl font-bold text-slate-900">Cargando grupo...</h1>
-                      <span id="group-privacy-badge" class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200"></span>
-                    </div>
-                    <p id="group-description" class="text-sm text-slate-600 leading-6 max-w-3xl"></p>
-                    <div class="flex items-center gap-3 flex-wrap text-sm text-slate-500">
-                      <span id="group-member-count">0 miembros</span>
-                      <span>&middot;</span>
-                      <span id="group-creator-label">-</span>
-                    </div>
-                  </div>
-                  <div id="group-actions" class="flex flex-wrap gap-3"></div>
-                </div>
-                <div class="flex flex-wrap items-center bg-[#E5E7EB] rounded-full p-1 w-max mt-6" id="group-tab-bar">
-                  <button type="button" data-group-tab="info" class="group-tab-btn px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Informacion</button>
-                  <button type="button" data-group-tab="conversation" class="group-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Conversacion</button>
-                  <button type="button" data-group-tab="people" class="group-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Personas</button>
-                  <button type="button" data-group-tab="media" class="group-tab-btn px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Multimedia</button>
-                </div>
-              </div>
-            </div>
-
-            <section id="group-tab-info" class="space-y-6"></section>
-            <section id="group-tab-conversation" class="space-y-6 hidden"></section>
-            <section id="group-tab-people" class="space-y-6 hidden"></section>
-            <section id="group-tab-media" class="space-y-6 hidden"></section>
-
-            <div id="group-edit-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 px-3 py-4">
-              <div class="bg-white rounded-[28px] shadow-xl w-full max-w-3xl overflow-hidden flex flex-col">
-                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                  <div>
-                    <h3 class="text-lg font-bold text-slate-900">Editar grupo</h3>
-                    <p class="text-sm text-slate-500">Actualiza la informacion principal y la portada del grupo.</p>
-                  </div>
-                  <button id="close-group-edit-modal-btn" type="button" class="w-10 h-10 rounded-full hover:bg-slate-100 transition-colors flex items-center justify-center">
-                    <span class="material-symbols-outlined text-[20px]">close</span>
-                  </button>
-                </div>
-                <form id="edit-group-modal-form" class="p-6 space-y-5">
-                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    <div class="space-y-4">
-                      <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1" for="edit-group-name">Nombre</label>
-                        <input id="edit-group-name" name="name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none"/>
-                      </div>
-                      <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1" for="edit-group-privacy">Privacidad</label>
-                        <select id="edit-group-privacy" name="privacy" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                          <option value="public">Publico</option>
-                          <option value="private">Privado</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1" for="edit-group-description">Descripcion</label>
-                        <textarea id="edit-group-description" name="description" rows="6" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none"></textarea>
-                      </div>
-                    </div>
-                    <div class="space-y-4">
-                      <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1" for="edit-group-cover-input">Portada</label>
-                        <input id="edit-group-cover-input" name="cover" type="file" accept="image/*" class="hidden"/>
-                        <div id="edit-group-cover-preview" class="h-40 rounded-2xl border border-slate-200 bg-slate-100 bg-cover bg-center" style="background:linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)"></div>
-                        <div class="mt-3 flex items-center gap-3">
-                          <button id="pick-edit-group-cover-btn" type="button" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Cambiar portada</button>
-                          <button id="clear-edit-group-cover-btn" type="button" class="hidden px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors">Quitar cambio</button>
-                        </div>
-                      </div>
-                      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 leading-6">
-                        La portada se ajusta antes de guardarse para que puedas elegir exactamente la parte visible del grupo.
-                      </div>
-                    </div>
-                  </div>
-                  <div class="flex justify-end gap-3 pt-2">
-                    <button id="cancel-group-edit-modal-btn" type="button" class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                    <button id="save-group-edit-modal-btn" type="submit" class="px-5 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Guardar cambios</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-
-            <div id="group-edit-crop-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 px-3 py-4">
-              <div class="bg-white rounded-[28px] shadow-xl w-full max-w-5xl overflow-hidden flex flex-col">
-                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                  <div>
-                    <h3 class="text-lg font-bold text-slate-900">Ajustar portada del grupo</h3>
-                    <p class="text-sm text-slate-500">Mueve y acerca la imagen para elegir la parte que quieres mostrar.</p>
-                  </div>
-                  <button id="group-edit-crop-close-btn" type="button" class="w-10 h-10 rounded-full hover:bg-slate-100 transition-colors flex items-center justify-center">
-                    <span class="material-symbols-outlined text-[20px]">close</span>
-                  </button>
-                </div>
-                <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px] gap-6 p-6">
-                  <div id="group-edit-crop-stage" class="rounded-[24px] bg-slate-900 overflow-hidden relative aspect-[16/5]">
-                    <img id="group-edit-crop-image" alt="Previsualizacion de portada del grupo" class="absolute top-0 left-0 max-w-none select-none touch-none cursor-grab active:cursor-grabbing"/>
-                  </div>
-                  <div class="space-y-4">
-                    <div class="rounded-2xl border border-slate-200 p-4">
-                      <h4 class="text-sm font-semibold text-slate-900 mb-3">Vista previa</h4>
-                      <canvas id="group-edit-crop-preview" class="w-full rounded-2xl border border-slate-200 bg-slate-100 aspect-[16/5]"></canvas>
-                    </div>
-                    <div>
-                      <div class="flex items-center justify-between gap-3 mb-2">
-                        <label for="group-edit-crop-zoom" class="text-sm font-semibold text-slate-900">Zoom</label>
-                        <span id="group-edit-crop-zoom-label" class="text-xs font-semibold text-slate-500">100%</span>
-                      </div>
-                      <input id="group-edit-crop-zoom" type="range" min="100" max="400" value="100" class="w-full accent-[#1B2A6B]"/>
-                    </div>
-                    <div class="flex justify-end gap-3">
-                      <button id="group-edit-crop-cancel-btn" type="button" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                      <button id="group-edit-crop-save-btn" type="button" class="px-4 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Usar portada</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div id="group-comment-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
-              <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
-                <div class="post-comments-topbar">
-                  <h3 class="post-comments-topbar-title">Publicacion</h3>
-                  <button id="group-close-comment-top-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar comentarios de grupo">
-                    <span class="material-symbols-outlined text-[20px]">close</span>
-                  </button>
-                </div>
-                <div class="post-comments-body">
-                  <div class="post-comments-scroll custom-scrollbar">
-                    <div id="group-comment-post-preview" class="post-comments-preview"></div>
-                    <div class="post-comments-side">
-                      <div class="post-comments-section-head">
-                        <span class="post-comments-section-title">Comentarios</span>
-                        <select id="group-comment-sort" class="post-comments-sort">
-                          <option value="newest">Mas recientes</option>
-                          <option value="oldest">Mas antiguos</option>
-                        </select>
-                      </div>
-                      <div id="group-comment-list" class="post-comments-list">
-                        <p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="post-comments-compose">
-                    <div class="post-comments-compose-row">
-                      <textarea id="group-comment-input" enterkeyhint="send" class="post-comments-compose-input" rows="1" placeholder="Escribe un comentario..."></textarea>
-                      <button id="group-confirm-comment-btn" type="button" class="post-comments-compose-send" aria-label="Enviar comentario">
-                        <span class="material-symbols-outlined text-[18px]">send</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
-      },
+      templatePath: '/pages/group.html',
       mount({ container, user, params, router }) {
         const groupId = Number(params.id);
         const cover = container.querySelector('#group-cover-shell');
@@ -8372,7 +8061,7 @@
           commentSort.value = currentCommentSort;
           commentModal.classList.remove('hidden');
           commentModal.classList.add('flex');
-          commentPostPreview.innerHTML = renderPostModalPreview(findGroupPost(postId), user.id);
+          commentPostPreview.innerHTML = renderPostModalPreview(findGroupPost(postId), user.id, { hideGroupBadge: true });
           loadComments(postId, currentCommentSort);
         }
 
@@ -8443,6 +8132,7 @@
 
             postsList.innerHTML = groupPosts.map((post) => renderPostCard(post, user.id, {
               canDelete: Number(post.user_id) === Number(user.id) || groupCanManage(),
+              hideGroupBadge: true,
             })).join('');
           }
 
@@ -8456,7 +8146,7 @@
             groupPosts = getList(result);
             renderPosts();
             if (pendingCommentPostId) {
-              commentPostPreview.innerHTML = renderPostModalPreview(findGroupPost(pendingCommentPostId), user.id);
+              commentPostPreview.innerHTML = renderPostModalPreview(findGroupPost(pendingCommentPostId), user.id, { hideGroupBadge: true });
             }
           }
 
@@ -8534,7 +8224,7 @@
 
             const liveButton = event.target.closest('[data-action="open-livestream"]');
             if (liveButton) {
-              router.navigate('live', { id: liveButton.dataset.liveId });
+              navigateToLivestream(router, liveButton.dataset.liveId);
               return;
             }
 
@@ -8994,198 +8684,16 @@
     profile: {
       title: 'Perfil',
       activeNav: 'profile',
-      render() {
-        const cycleOptions = Array.from({ length: 10 }, (_, index) => index + 1).map((value) => `
+      templatePath: '/pages/profile.html',
+      templateSlots() {
+        const profileCycleOptions = Array.from({ length: 10 }, (_, index) => index + 1).map((value) => `
           <option value="${value}">${value}vo ciclo</option>
         `).join('');
 
-        return `
-          <div class="profile-view max-w-4xl mx-auto w-full space-y-6">
-            <div class="profile-card">
-              <div class="profile-banner" id="profile-banner-view" style="background:#6B1B1B">
-                <button id="change-banner-btn" type="button" class="hidden bg-black/20 hover:bg-black/30 text-white rounded-lg px-4 py-2 items-center gap-2 font-medium text-sm transition-colors border border-white/20 backdrop-blur-sm">
-                  <span class="material-symbols-outlined text-[18px]">photo_camera</span>
-                  Cambiar portada
-                </button>
-                <input id="banner-input" class="hidden" type="file" accept="image/*"/>
-              </div>
-              <div class="px-8 pb-6 relative">
-                <div class="flex flex-col md:flex-row justify-between items-start gap-6">
-                  <div class="-mt-16 flex flex-col">
-                    <div class="profile-avatar-frame">
-                      <div class="profile-avatar" id="profile-avatar-view">U</div>
-                      <button id="change-avatar-btn" type="button" class="camera-btn absolute bottom-1 right-1 hidden">
-                        <span class="material-symbols-outlined text-[18px]">photo_camera</span>
-                      </button>
-                      <input id="avatar-input" class="hidden" type="file" accept="image/*"/>
-                    </div>
-                    <div class="flex flex-col">
-                      <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-2" id="profile-name">Cargando...</h1>
-                      <p class="text-gray-600 mt-1" id="profile-career"></p>
-                      <div class="flex items-center gap-3 mt-3 flex-wrap" id="profile-badges"></div>
-                    </div>
-                  </div>
-                  <div class="mt-4 md:mt-16 flex flex-wrap gap-3" id="profile-actions"></div>
-                </div>
-              </div>
-              <div class="profile-data-row">
-                <div class="profile-data-grid">
-                  <div class="profile-data-item">
-                    <span class="material-symbols-outlined text-gray-500 text-[24px]">badge</span>
-                    <div class="flex flex-col">
-                      <span class="label">CODIGO</span>
-                      <span class="value" id="profile-code">-</span>
-                    </div>
-                  </div>
-                  <div class="profile-data-item">
-                    <span class="material-symbols-outlined text-gray-500 text-[24px]">mail</span>
-                    <div class="flex flex-col">
-                      <span class="label">CORREO</span>
-                      <span class="value" id="profile-email">-</span>
-                    </div>
-                  </div>
-                  <div class="profile-data-item">
-                    <span class="material-symbols-outlined text-gray-500 text-[24px]">calendar_month</span>
-                    <div class="flex flex-col">
-                      <span class="label">SEMESTRE</span>
-                      <span class="value" id="profile-cycle">-</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="profile-about">
-                <div class="flex justify-between items-center mb-4 gap-3">
-                  <h2 class="text-sm font-bold text-gray-600 tracking-wide">SOBRE MI</h2>
-                  <div class="flex items-center gap-2">
-                    <button id="profile-bio-cancel-btn" type="button" class="hidden text-slate-500 hover:text-slate-700 font-medium text-sm items-center gap-1.5 transition-colors">
-                      Cancelar
-                    </button>
-                    <button id="profile-bio-action-btn" type="button" class="hidden text-[#1B2A6B] hover:text-blue-800 font-semibold text-sm items-center gap-1.5 transition-colors">
-                      <span id="profile-bio-action-icon" class="material-symbols-outlined text-[18px]">edit</span>
-                      <span id="profile-bio-action-label">Editar</span>
-                    </button>
-                  </div>
-                </div>
-                <div class="profile-bio text-sm text-gray-900" id="profile-bio" data-empty="false" data-placeholder="Cuentanos algo de ti"></div>
-              </div>
-            </div>
-            <div>
-              <h2 class="text-xl font-bold text-black mb-4">Publicaciones recientes</h2>
-              <div id="profile-posts-list" class="space-y-4">
-                ${renderListSkeleton(2, { lines: ['100%', '92%', '54%'], avatar: true, media: true })}
-              </div>
-            </div>
-          </div>
-          <div id="profile-comment-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
-            <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
-              <div class="post-comments-topbar">
-                <h3 class="post-comments-topbar-title">Publicacion</h3>
-                <button id="profile-close-comment-top-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar modal de comentarios del perfil">
-                  <span class="material-symbols-outlined text-[20px]">close</span>
-                </button>
-              </div>
-              <div class="post-comments-body">
-                <div class="post-comments-scroll custom-scrollbar">
-                  <div id="profile-comment-post-preview" class="post-comments-preview"></div>
-                  <div class="post-comments-side">
-                    <div class="post-comments-section-head">
-                      <span class="post-comments-section-title">Comentarios</span>
-                      <select id="profile-comment-sort" class="post-comments-sort">
-                        <option value="newest">Mas recientes</option>
-                        <option value="oldest">Mas antiguos</option>
-                      </select>
-                    </div>
-                    <div id="profile-comment-list" class="post-comments-list">
-                      <p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>
-                    </div>
-                  </div>
-                </div>
-                <div class="post-comments-compose">
-                  <div class="post-comments-compose-row">
-                    <textarea id="profile-comment-input" enterkeyhint="send" class="post-comments-compose-input" rows="1" placeholder="Escribe un comentario..."></textarea>
-                    <button id="profile-confirm-comment-btn" type="button" class="post-comments-compose-send" aria-label="Enviar comentario del perfil">
-                      <span class="material-symbols-outlined text-[18px]">send</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div id="media-crop-modal" class="fixed inset-0 z-[120] hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm px-3 py-4">
-            <div class="bg-white rounded-[28px] shadow-2xl w-full max-w-5xl mx-4 overflow-hidden max-h-[92vh] flex flex-col">
-              <div class="flex items-center justify-between gap-4 px-5 py-4 border-b border-slate-200">
-                <div>
-                  <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Ajustar imagen</p>
-                  <h3 id="media-crop-title" class="text-lg md:text-xl font-bold text-slate-900 mt-1">Recorta tu imagen</h3>
-                </div>
-                <button id="media-crop-close-btn" type="button" class="w-10 h-10 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors inline-flex items-center justify-center">
-                  <span class="material-symbols-outlined">close</span>
-                </button>
-              </div>
-              <div class="media-crop-layout">
-                <div class="media-crop-workbench">
-                  <div id="media-crop-stage" class="media-crop-stage is-avatar">
-                    <img id="media-crop-image" alt="Vista previa de recorte" draggable="false"/>
-                  </div>
-                </div>
-                <div class="media-crop-sidebar">
-                  <div class="space-y-3">
-                    <div>
-                      <p class="text-sm font-semibold text-slate-900">Vista previa</p>
-                      <p class="text-xs text-slate-500 mt-1">Asi se vera la imagen despues de guardarla.</p>
-                    </div>
-                    <div class="space-y-3">
-                      <canvas id="media-crop-preview-avatar" class="media-crop-preview media-crop-preview-avatar"></canvas>
-                      <canvas id="media-crop-preview-banner" class="media-crop-preview media-crop-preview-banner hidden"></canvas>
-                    </div>
-                  </div>
-                  <div class="space-y-3">
-                    <div class="flex items-center justify-between gap-3">
-                      <label for="media-crop-zoom" class="text-sm font-semibold text-slate-900">Zoom</label>
-                      <span id="media-crop-zoom-label" class="text-xs font-semibold text-slate-500">100%</span>
-                    </div>
-                    <input id="media-crop-zoom" type="range" min="100" max="400" value="100" class="w-full accent-[#1B2A6B]"/>
-                  </div>
-                  <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p id="media-crop-help" class="text-sm text-slate-600 leading-6">Arrastra la imagen para elegir la zona visible y usa el zoom si necesitas acercarte.</p>
-                  </div>
-                  <div class="mt-auto flex flex-wrap justify-end gap-3 pt-2">
-                    <button id="media-crop-reset-btn" type="button" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Restablecer</button>
-                    <button id="media-crop-cancel-btn" type="button" class="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors">Cancelar</button>
-                    <button id="media-crop-save-btn" type="button" class="px-5 py-2 text-sm font-medium text-white bg-[#1B2A6B] hover:bg-[#152259] rounded-xl transition-colors shadow-sm">Guardar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div id="edit-profile-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
-              <div class="flex justify-between items-center p-6 border-b border-slate-200">
-                <h2 class="text-lg font-bold text-slate-900">Editar perfil</h2>
-                <button id="close-edit-profile-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors">
-                  <span class="material-symbols-outlined">close</span>
-                </button>
-              </div>
-              <form id="edit-profile-form" class="p-6 space-y-5">
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-semibold text-gray-700" for="edit-bio">Biografia</label>
-                  <textarea id="edit-bio" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" rows="4" placeholder="Cuéntanos algo de ti"></textarea>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-semibold text-gray-700" for="edit-cycle">Ciclo academico</label>
-                  <select id="edit-cycle" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                    <option value="">Selecciona...</option>
-                    ${cycleOptions}
-                  </select>
-                </div>
-                <div class="flex justify-end gap-3 pt-2">
-                  <button id="cancel-edit-profile-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Guardar cambios</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        `;
+        return {
+          profileCycleOptions,
+          profilePostsSkeleton: renderListSkeleton(2, { lines: ['100%', '92%', '54%'], avatar: true, media: true }),
+        };
       },
       mount({ container, user, params, router }) {
         const bannerView = container.querySelector('#profile-banner-view');
@@ -10009,7 +9517,7 @@
               return;
             }
             if (button.dataset.action === 'open-livestream') {
-              router.navigate('live', { id: button.dataset.liveId });
+              navigateToLivestream(router, button.dataset.liveId);
               return;
             }
             if (button.dataset.action === 'report-post') {
@@ -10200,191 +9708,12 @@
       title: 'Admin',
       activeNav: 'admin',
       adminOnly: true,
-      render() {
-        return `
-          <div class="flex flex-col w-full">
-            <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
-              <div>
-                <h1 class="text-[28px] font-bold text-slate-900 tracking-tight leading-tight mb-1">Panel de administracion</h1>
-                <p class="text-[15px] text-slate-500">Gestiona usuarios de UPT Connect desde un layout compartido.</p>
-              </div>
-              <button type="button" class="bg-[#D4A017] text-[#332200] font-bold text-[13px] px-4 py-2 rounded-full transition-colors flex items-center shadow-sm">
-                ACCESO ADMIN
-              </button>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="admin-user-stats">
-              ${renderAdminStatsSkeleton(4)}
-            </div>
-            <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
-              <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Usuarios</button>
-              <button id="go-admin-posts-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Publicaciones</button>
-              <button id="go-admin-reports-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Reportes</button>
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div class="p-4 border-b border-slate-200 space-y-4">
-                <div class="relative max-w-2xl">
-                  <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
-                  <input id="admin-user-search" class="w-full bg-slate-50 border border-slate-200 rounded-full py-2 pl-10 pr-4 text-sm focus:ring-1 focus:ring-[#1B2A6B] outline-none" placeholder="Buscar usuario..." type="text"/>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <select id="admin-user-faculty-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                    <option value="Todos">Facultad: Todos</option>
-                    <option value="FAING">FAING</option>
-                    <option value="FACEM">FACEM</option>
-                    <option value="FAEDCOH">FAEDCOH</option>
-                    <option value="FADE">FADE</option>
-                    <option value="FACSA">FACSA</option>
-                    <option value="FAU">FAU</option>
-                  </select>
-                  <select id="admin-user-career-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                    <option value="Todos">Carrera: Todos</option>
-                  </select>
-                  <select id="admin-user-role-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                    <option value="Todos">Rol: Todos</option>
-                    <option value="admin">Admin</option>
-                    <option value="teacher">Docente</option>
-                    <option value="administrativo">Administrativo</option>
-                    <option value="student">Estudiante</option>
-                  </select>
-                </div>
-              </div>
-              <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse min-w-[900px]">
-                  <thead>
-                    <tr class="bg-slate-100/50 border-b border-slate-200">
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Usuario</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Carrera</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Facultad</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Estado</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Rol</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody id="users-tbody" class="divide-y divide-slate-100">
-                    ${renderAdminTableSkeleton(6, 5)}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          <div id="edit-user-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
-              <div class="flex justify-between items-center p-6 border-b border-slate-200">
-                <h2 class="text-lg font-bold text-slate-900">Editar usuario</h2>
-                <button id="close-edit-user-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
-              </div>
-              <form id="edit-user-form" class="p-6 space-y-5">
-                <input id="edit-user-id" type="hidden"/>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-semibold text-gray-700">Nombre</label>
-                  <input id="edit-user-name" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm outline-none" type="text" readonly/>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5">
-                    <label class="text-sm font-semibold text-gray-700">Tipo</label>
-                    <select id="edit-user-type" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                      <option value="student">Estudiante</option>
-                      <option value="teacher">Docente</option>
-                      <option value="administrativo">Administrativo</option>
-                    </select>
-                  </div>
-                  <div class="flex flex-col gap-1.5">
-                    <label id="edit-user-faculty-label" class="text-sm font-semibold text-gray-700">Facultad</label>
-                    <select id="edit-user-faculty" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                      <option value="FAING">FAING</option>
-                      <option value="FACEM">FACEM</option>
-                      <option value="FAEDCOH">FAEDCOH</option>
-                      <option value="FADE">FADE</option>
-                      <option value="FACSA">FACSA</option>
-                      <option value="FAU">FAU</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="flex flex-col gap-1.5" id="edit-user-career-group">
-                  <label class="text-sm font-semibold text-gray-700">Carrera</label>
-                  <input id="edit-user-career" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text"/>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5" id="edit-user-cycle-group">
-                    <label class="text-sm font-semibold text-gray-700">Ciclo</label>
-                    <input id="edit-user-cycle" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text" placeholder="Ej. 8"/>
-                  </div>
-                  <div class="flex flex-col gap-1.5" id="edit-user-code-group">
-                    <label class="text-sm font-semibold text-gray-700">Codigo</label>
-                    <input id="edit-user-code" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text"/>
-                  </div>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5" id="edit-user-area-group">
-                    <label class="text-sm font-semibold text-gray-700">Area</label>
-                    <input id="edit-user-area" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text"/>
-                  </div>
-                  <div class="flex flex-col gap-1.5" id="edit-user-position-group">
-                    <label class="text-sm font-semibold text-gray-700">Cargo</label>
-                    <input id="edit-user-position" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="text"/>
-                  </div>
-                </div>
-                <div class="flex justify-end gap-3 pt-2">
-                  <button id="cancel-edit-user-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Guardar cambios</button>
-                </div>
-              </form>
-            </div>
-          </div>
-          <div id="block-user-modal" class="fixed inset-0 z-[110] hidden items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
-              <div class="flex justify-between items-center p-6 border-b border-slate-200">
-                <div>
-                  <h2 class="text-lg font-bold text-slate-900">Bloquear usuario</h2>
-                  <p class="text-sm text-slate-500 mt-1">Define la duración del bloqueo y una razón opcional visible para el usuario.</p>
-                </div>
-                <button id="close-block-user-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
-              </div>
-              <form id="block-user-form" class="p-6 space-y-5">
-                <input id="block-user-id" type="hidden"/>
-                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario</p>
-                  <p id="block-user-name" class="text-sm font-semibold text-slate-900"></p>
-                  <p id="block-user-email" class="text-xs text-slate-500 mt-1"></p>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5">
-                    <label class="text-sm font-semibold text-gray-700" for="block-user-duration">Duracion</label>
-                    <select id="block-user-duration" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                      <option value="24h">24 horas</option>
-                      <option value="48h">48 horas</option>
-                      <option value="1w">1 semana</option>
-                      <option value="custom">Manual</option>
-                      <option value="indefinite">Indefinido</option>
-                    </select>
-                  </div>
-                  <div id="block-user-custom-group" class="hidden grid grid-cols-[1fr_120px] gap-2 items-end">
-                    <div class="flex flex-col gap-1.5">
-                      <label class="text-sm font-semibold text-gray-700" for="block-user-custom-value">Tiempo</label>
-                      <input id="block-user-custom-value" min="1" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <label class="text-sm font-semibold text-gray-700" for="block-user-custom-unit">Unidad</label>
-                      <select id="block-user-custom-unit" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                        <option value="hours">Horas</option>
-                        <option value="days">Dias</option>
-                        <option value="weeks">Semanas</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-semibold text-gray-700" for="block-user-reason">Razon del bloqueo</label>
-                  <textarea id="block-user-reason" class="w-full min-h-[120px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Ej.: Incumplimiento de normas de la comunidad."></textarea>
-                </div>
-                <div class="flex justify-end gap-3 pt-2">
-                  <button id="cancel-block-user-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Bloquear cuenta</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        `;
+      templatePath: '/pages/admin.html',
+      templateSlots() {
+        return {
+          adminUserStatsSkeleton: renderAdminStatsSkeleton(4),
+          adminUsersTableSkeleton: renderAdminTableSkeleton(6, 5),
+        };
       },
       mount({ container, router, user }) {
         const stats = container.querySelector('#admin-user-stats');
@@ -10740,155 +10069,11 @@
       title: 'Admin reportes',
       activeNav: 'admin',
       adminOnly: true,
-      render() {
-        return `
-          <div class="flex flex-col w-full">
-            <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
-              <div>
-                <h1 class="text-[28px] font-bold text-slate-900 tracking-tight leading-tight mb-1">Reportes pendientes</h1>
-                <p class="text-[15px] text-slate-500">Resuelve casos pendientes de publicaciones, comentarios y mensajes.</p>
-              </div>
-              <button type="button" class="bg-[#D4A017] text-[#332200] font-bold text-[13px] px-4 py-2 rounded-full transition-colors flex items-center shadow-sm">
-                ACCESO ADMIN
-              </button>
-            </div>
-            <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
-              <button id="go-admin-users-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Usuarios</button>
-              <button id="go-admin-posts-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Publicaciones</button>
-              <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Reportes</button>
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div class="p-4 border-b border-slate-200 space-y-4">
-                <h2 class="text-sm font-bold text-slate-900">Bandeja de reportes</h2>
-                <p class="text-xs text-slate-500 mt-1">Los casos se retiran de esta lista cuando se descartan o se sancionan.</p>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <select id="admin-report-type-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                    <option value="Todos">Tipo: Todos</option>
-                    <option value="post">Publicacion</option>
-                    <option value="livestream">Stream</option>
-                    <option value="comment">Comentario</option>
-                    <option value="message">Mensaje</option>
-                  </select>
-                  <select id="admin-report-order-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                    <option value="newest">Mas recientes primero</option>
-                    <option value="oldest">Mas antiguos primero</option>
-                  </select>
-                </div>
-              </div>
-              <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse min-w-[980px]">
-                  <thead>
-                    <tr class="bg-slate-100/50 border-b border-slate-200">
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Usuario</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Contenido</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Fecha</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody id="admin-reports-tbody" class="divide-y divide-slate-100">
-                    ${renderAdminTableSkeleton(5, 5)}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          <div id="review-report-modal" class="fixed inset-0 z-[120] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
-              <div class="flex justify-between items-center p-6 border-b border-slate-200">
-                <div>
-                  <h2 class="text-lg font-bold text-slate-900">Revisar reporte</h2>
-                  <p class="text-sm text-slate-500 mt-1">Visualiza el contenido denunciado antes de decidir.</p>
-                </div>
-                <button id="close-review-report-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
-              </div>
-              <div class="p-6 space-y-5">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario</p>
-                    <p id="review-report-user" class="text-sm font-semibold text-slate-900"></p>
-                  </div>
-                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Tipo</p>
-                    <p id="review-report-type" class="text-sm font-semibold text-slate-900"></p>
-                  </div>
-                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Fecha</p>
-                    <p id="review-report-date" class="text-sm font-semibold text-slate-900"></p>
-                  </div>
-                </div>
-                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Contenido denunciado</p>
-                  <p id="review-report-content" class="text-sm text-slate-700 leading-6 whitespace-pre-wrap"></p>
-                  <img id="review-report-image" class="hidden mt-4 w-full max-h-[320px] rounded-2xl object-cover border border-slate-200" alt="Contenido adjunto"/>
-                </div>
-                <div class="flex justify-end">
-                  <button id="close-review-report-footer-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cerrar</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div id="sanction-report-modal" class="fixed inset-0 z-[130] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
-              <div class="flex justify-between items-center p-6 border-b border-slate-200">
-                <div>
-                  <h2 class="text-lg font-bold text-slate-900">Sancionar reporte</h2>
-                  <p class="text-sm text-slate-500 mt-1">Aplica bloqueo y acciones adicionales según el contenido denunciado.</p>
-                </div>
-                <button id="close-sanction-report-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
-              </div>
-              <form id="sanction-report-form" class="p-6 space-y-5">
-                <input id="sanction-report-id" type="hidden"/>
-                <input id="sanction-report-service" type="hidden"/>
-                <input id="sanction-report-target-type" type="hidden"/>
-                <input id="sanction-report-target-id" type="hidden"/>
-                <input id="sanction-report-user-id" type="hidden"/>
-                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario denunciado</p>
-                  <p id="sanction-report-user" class="text-sm font-semibold text-slate-900"></p>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5">
-                    <label class="text-sm font-semibold text-gray-700" for="sanction-duration">Duracion del bloqueo</label>
-                    <select id="sanction-duration" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                      <option value="24h">24 horas</option>
-                      <option value="48h">48 horas</option>
-                      <option value="1w">1 semana</option>
-                      <option value="custom">Manual</option>
-                      <option value="indefinite">Indefinido</option>
-                    </select>
-                  </div>
-                  <div id="sanction-custom-group" class="hidden grid grid-cols-[1fr_120px] gap-2 items-end">
-                    <div class="flex flex-col gap-1.5">
-                      <label class="text-sm font-semibold text-gray-700" for="sanction-custom-value">Tiempo</label>
-                      <input id="sanction-custom-value" min="1" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <label class="text-sm font-semibold text-gray-700" for="sanction-custom-unit">Unidad</label>
-                      <select id="sanction-custom-unit" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                        <option value="hours">Horas</option>
-                        <option value="days">Dias</option>
-                        <option value="weeks">Semanas</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-semibold text-gray-700" for="sanction-reason">Razon de la sancion</label>
-                  <textarea id="sanction-reason" class="w-full min-h-[120px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Esta razón se mostrará cuando el usuario bloqueado intente volver a entrar."></textarea>
-                </div>
-                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Acciones adicionales</p>
-                  <div id="sanction-actions" class="space-y-3"></div>
-                </div>
-                <div class="flex justify-end gap-3 pt-2">
-                  <button id="cancel-sanction-report-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Aplicar sancion</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        `;
+      templatePath: '/pages/admin_reportes.html',
+      templateSlots() {
+        return {
+          adminReportsTableSkeleton: renderAdminTableSkeleton(5, 5),
+        };
       },
       mount({ container, router }) {
         const tbody = container.querySelector('#admin-reports-tbody');
@@ -11230,89 +10415,12 @@
       title: 'Admin publicaciones',
       activeNav: 'admin',
       adminOnly: true,
-      render() {
-        return `
-          <div class="flex flex-col w-full">
-            <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
-              <div>
-                <h1 class="text-[28px] font-bold text-slate-900 tracking-tight leading-tight mb-1">Moderacion de publicaciones</h1>
-                <p class="text-[15px] text-slate-500">Revisa publicaciones y comentarios desde el mismo layout compartido.</p>
-              </div>
-              <button type="button" class="bg-[#D4A017] text-[#332200] font-bold text-[13px] px-4 py-2 rounded-full transition-colors flex items-center shadow-sm">
-                ACCESO ADMIN
-              </button>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="admin-post-stats">
-              ${renderAdminStatsSkeleton(4)}
-            </div>
-            <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
-              <button id="go-admin-users-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Usuarios</button>
-              <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Publicaciones</button>
-              <button id="go-admin-reports-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Reportes</button>
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div class="p-4 border-b border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select id="admin-post-type-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                  <option value="Todos">Tipo: Todos</option>
-                  <option value="standard">Publicacion</option>
-                  <option value="livestream">Stream</option>
-                </select>
-                <select id="admin-post-order-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                  <option value="newest">Mas recientes primero</option>
-                  <option value="oldest">Mas antiguas primero</option>
-                  <option value="comments">Mas comentadas</option>
-                </select>
-              </div>
-              <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse min-w-[900px]">
-                  <thead>
-                    <tr class="bg-slate-100/50 border-b border-slate-200">
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Autor</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Contenido</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Publicado</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody id="admin-posts-tbody" class="divide-y divide-slate-100">
-                    ${renderAdminTableSkeleton(4, 5)}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          <div id="admin-comments-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
-            <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
-              <div class="post-comments-topbar">
-                <h3 class="post-comments-topbar-title">Publicacion</h3>
-                <button id="close-comments-modal-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar modal de publicacion">
-                  <span class="material-symbols-outlined text-[20px]">close</span>
-                </button>
-              </div>
-              <div class="post-comments-body">
-                <div class="post-comments-scroll custom-scrollbar">
-                  <div id="admin-comment-post-preview" class="post-comments-preview"></div>
-                  <div class="post-comments-side">
-                    <div class="post-comments-section-head">
-                      <span class="post-comments-section-title">Comentarios</span>
-                      <select id="admin-comments-sort" class="post-comments-sort">
-                        <option value="newest">Mas recientes</option>
-                        <option value="oldest">Mas antiguos</option>
-                      </select>
-                    </div>
-                    <div id="admin-comments-list" class="post-comments-list">
-                      <p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>
-                    </div>
-                  </div>
-                </div>
-                <div class="post-comments-compose">
-                  <div class="flex justify-end">
-                    <button id="close-comments-modal-footer-btn" type="button" class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cerrar</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
+      templatePath: '/pages/admin_publicaciones.html',
+      templateSlots() {
+        return {
+          adminPostsStatsSkeleton: renderAdminStatsSkeleton(4),
+          adminPostsTableSkeleton: renderAdminTableSkeleton(4, 5),
+        };
       },
       mount({ container, router }) {
         const stats = container.querySelector('#admin-post-stats');
@@ -11550,6 +10658,13 @@
   const AppRouter = {
     currentRoute: null,
     navigate(route, params = {}, options = {}) {
+      if (route === 'live') {
+        const nextLiveId = Number(params?.id);
+        if (!Number.isFinite(nextLiveId) || nextLiveId <= 0) {
+          return;
+        }
+        params = { ...params, id: String(nextLiveId) };
+      }
       const targetHash = buildHash(route, params);
       const targetUrl = `${window.location.pathname}${targetHash}`;
 
@@ -11581,7 +10696,7 @@
       }
 
       this.currentRoute = parsed;
-      appView.innerHTML = view.render({ user: appState.user, params: parsed.params, router: this });
+      appView.innerHTML = await resolveViewMarkup(view, { user: appState.user, params: parsed.params, router: this });
       if (sidebar) sidebar.setAttribute('active-nav', view.activeNav || parsed.route);
       if (window.setupLayoutData) window.setupLayoutData(appState.user);
       setDocumentTitle(view.title || parsed.route);
@@ -11598,7 +10713,7 @@
     },
   };
 
-  function bootstrapGlobalCallManager() {
+  async function bootstrapGlobalCallManager() {
     if (window.__uptCallManager?.id) {
       return;
     }
@@ -11607,7 +10722,11 @@
     host.id = 'global-call-runtime-host';
     host.style.display = 'none';
     host.setAttribute('aria-hidden', 'true');
-    host.innerHTML = views.messages.render();
+    host.innerHTML = await resolveViewMarkup(views.messages, {
+      user: appState.user,
+      params: {},
+      router: AppRouter,
+    });
     document.body.appendChild(host);
 
     const cleanup = initMessagesView({
@@ -11666,11 +10785,25 @@
     window.history.replaceState(null, '', `${window.location.pathname}${buildHash('feed')}`);
   }
 
+  const initialRoute = parseRoute();
+  const initialView = views[initialRoute.route] || views.feed;
+  prewarmViewTemplates([
+    initialView?.templatePath,
+    views.feed?.templatePath,
+    views.messages?.templatePath,
+    views.live?.templatePath,
+  ]);
+  scheduleNonCriticalViewTemplateWarmup(
+    Object.values(views).map((view) => view?.templatePath).filter(Boolean),
+  );
+
   if (window.setupLayoutData) window.setupLayoutData(appState.user);
-  bootstrapGlobalCallManager();
   startGlobalIncomingCallWatcher();
   startNotificationsPolling();
   AppRouter.render();
+  bootstrapGlobalCallManager().catch((error) => {
+    console.error('Global call manager bootstrap error:', error);
+  });
 })().catch((error) => {
   console.error('App bootstrap error:', error);
   const appView = document.getElementById('app-view');

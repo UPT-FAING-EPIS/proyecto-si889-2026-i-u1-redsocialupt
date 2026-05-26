@@ -3,10 +3,96 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Redireccionando...</title>
+  <title>Admin publicaciones - UPT Connect</title>
   <script>
-    window.location.replace('/app.html#admin-posts' + window.location.search);
+    if (window.top === window.self) {
+      window.location.replace('/app.html#admin-posts' + window.location.search);
+    }
   </script>
 </head>
-<body></body>
+<body>
+  <template id="app-view-template">
+          <div class="flex flex-col w-full">
+            <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+              <div>
+                <h1 class="text-[28px] font-bold text-slate-900 tracking-tight leading-tight mb-1">Moderacion de publicaciones</h1>
+                <p class="text-[15px] text-slate-500">Revisa publicaciones y comentarios desde el mismo layout compartido.</p>
+              </div>
+              <button type="button" class="bg-[#D4A017] text-[#332200] font-bold text-[13px] px-4 py-2 rounded-full transition-colors flex items-center shadow-sm">
+                ACCESO ADMIN
+              </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="admin-post-stats">
+              {{adminPostsStatsSkeleton}}
+            </div>
+            <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
+              <button id="go-admin-users-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Usuarios</button>
+              <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Publicaciones</button>
+              <button id="go-admin-reports-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Reportes</button>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div class="p-4 border-b border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <select id="admin-post-type-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                  <option value="Todos">Tipo: Todos</option>
+                  <option value="standard">Publicacion</option>
+                  <option value="livestream">Stream</option>
+                </select>
+                <select id="admin-post-order-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                  <option value="newest">Mas recientes primero</option>
+                  <option value="oldest">Mas antiguas primero</option>
+                  <option value="comments">Mas comentadas</option>
+                </select>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse min-w-[900px]">
+                  <thead>
+                    <tr class="bg-slate-100/50 border-b border-slate-200">
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Autor</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Contenido</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Publicado</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-posts-tbody" class="divide-y divide-slate-100">
+                    {{adminPostsTableSkeleton}}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div id="admin-comments-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
+            <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
+              <div class="post-comments-topbar">
+                <h3 class="post-comments-topbar-title">Publicacion</h3>
+                <button id="close-comments-modal-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar modal de publicacion">
+                  <span class="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+              <div class="post-comments-body">
+                <div class="post-comments-scroll custom-scrollbar">
+                  <div id="admin-comment-post-preview" class="post-comments-preview"></div>
+                  <div class="post-comments-side">
+                    <div class="post-comments-section-head">
+                      <span class="post-comments-section-title">Comentarios</span>
+                      <select id="admin-comments-sort" class="post-comments-sort">
+                        <option value="newest">Mas recientes</option>
+                        <option value="oldest">Mas antiguos</option>
+                      </select>
+                    </div>
+                    <div id="admin-comments-list" class="post-comments-list">
+                      <p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="post-comments-compose">
+                  <div class="flex justify-end">
+                    <button id="close-comments-modal-footer-btn" type="button" class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cerrar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        
+  </template>
+</body>
 </html>

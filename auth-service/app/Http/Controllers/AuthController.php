@@ -63,7 +63,8 @@ class AuthController extends BaseController
         }
 
         try {
-            return response()->json($this->authService->devLogin(), 200);
+            $role = $request->input('role', 'user');
+            return response()->json($this->authService->devLogin((string) $role), 200);
         } catch (\Exception $e) {
             [$message, $code, $reason, $blockedUntil, $isIndefinite] = $this->normalizeExceptionResponse($e);
             return response()->json(array_filter([

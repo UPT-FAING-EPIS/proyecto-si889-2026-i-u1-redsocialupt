@@ -312,6 +312,23 @@
     document.title = title ? `${title} - UPT Connect` : 'UPT Connect';
   }
 
+  const LIVESTREAM_IS_LOCAL_ENGINE = ['localhost', '127.0.0.1'].includes(window.location.hostname || '');
+  const LIVESTREAM_PRIMARY_TRANSPORT = LIVESTREAM_IS_LOCAL_ENGINE ? 'tcp' : '';
+  const LIVESTREAM_FALLBACK_TRANSPORT = LIVESTREAM_IS_LOCAL_ENGINE ? '' : 'tcp';
+
+  function appendLivestreamTransport(url, transport = '') {
+    if (!transport) {
+      return url;
+    }
+
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}transport=${encodeURIComponent(transport)}`;
+  }
+
+  function resolveDefaultLivestreamViewerTransport() {
+    return LIVESTREAM_PRIMARY_TRANSPORT;
+  }
+
   function getLivestreamEngineHost() {
     return window.location.hostname || 'localhost';
   }
@@ -324,6 +341,20 @@
     return `${baseUrl}?v=${encodeURIComponent(revision)}`;
   }
 
+  function buildLivestreamWebRtcUrl(streamKey, _revision = '', transport = LIVESTREAM_PRIMARY_TRANSPORT) {
+    const hostname = window.location.hostname;
+    const encodedKey = encodeURIComponent(streamKey);
+    const playbackPath = `app/${encodedKey}/master`;
+    const resolvedTransport = (typeof transport === 'string' && transport.length)
+      ? transport
+      : resolveDefaultLivestreamViewerTransport();
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return appendLivestreamTransport(`ws://${hostname}:3333/${playbackPath}`, resolvedTransport);
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return appendLivestreamTransport(`${protocol}//${window.location.host}/ome-ws/${playbackPath}`, resolvedTransport);
+  }
+
   function buildLivestreamProbeUrl(streamKey, revision = '') {
     const baseUrl = `${window.location.origin}/ome-ready/app/${encodeURIComponent(streamKey)}/master.m3u8`;
     if (!revision) {
@@ -333,12 +364,12 @@
   }
 
   function normalizeLivestreamPlaybackUrl(streamKey, _playbackUrl, revision = '') {
-    // Always rebuild from stream_key to ensure the viewer uses the frontend proxy
-    return buildLivestreamHlsUrl(streamKey, revision);
+    // Always rebuild from stream_key to ensure the viewer uses the frontend proxy.
+    return buildLivestreamWebRtcUrl(streamKey, revision);
   }
 
-  function buildLivestreamPublishUrl(streamKey) {
-    return `${window.location.origin}/ome/app/${encodeURIComponent(streamKey)}?direction=whip&transport=tcp`;
+  function buildLivestreamPublishUrl(streamKey, transport = LIVESTREAM_PRIMARY_TRANSPORT) {
+    return appendLivestreamTransport(`${window.location.origin}/ome/app/${encodeURIComponent(streamKey)}?direction=whip`, transport);
   }
 
   function buildLivestreamStreamKey(userId) {
@@ -403,7 +434,7 @@
   }
 
   async function ensureLivestreamLibraries() {
-    await loadExternalScript('https://cdn.jsdelivr.net/npm/hls.js@latest', 'Hls');
+    await loadExternalScript('https://cdn.jsdelivr.net/npm/ovenplayer@0.10.14/dist/ovenplayer.js', 'OvenPlayer');
     await loadExternalScript('https://cdn.jsdelivr.net/npm/ovenlivekit@latest/dist/OvenLiveKit.min.js', 'OvenLiveKit');
   }
 
@@ -435,6 +466,7 @@
     setDocumentTitle,
     getLivestreamEngineHost,
     buildLivestreamHlsUrl,
+    buildLivestreamWebRtcUrl,
     buildLivestreamProbeUrl,
     normalizeLivestreamPlaybackUrl,
     buildLivestreamPublishUrl,
@@ -444,5 +476,6 @@
     loadExternalScript,
     loadExternalStyle,
     ensureLivestreamLibraries,
+    LIVESTREAM_FALLBACK_TRANSPORT,
   };
 })();

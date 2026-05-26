@@ -68,27 +68,27 @@ class LivestreamController extends BaseController
         }
     }
 
-    public function show(Request $request, int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         try {
-            return response()->json($this->hydrate($this->livestreamService->getById($id), (int) $request->auth->sub), 200);
+            return response()->json($this->hydrate($this->livestreamService->getById((int) $id), (int) $request->auth->sub), 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
         }
     }
 
-    public function heartbeat(Request $request, int $id): JsonResponse
+    public function heartbeat(Request $request, $id): JsonResponse
     {
         try {
             return response()->json([
-                'viewer_count' => $this->livestreamService->heartbeat((int) $request->auth->sub, $id),
+                'viewer_count' => $this->livestreamService->heartbeat((int) $request->auth->sub, (int) $id),
             ], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
         }
     }
 
-    public function source(Request $request, int $id): JsonResponse
+    public function source(Request $request, $id): JsonResponse
     {
         $this->validate($request, [
             'live_source' => 'required|in:camera,screen',
@@ -100,7 +100,7 @@ class LivestreamController extends BaseController
                 $this->hydrate(
                     $this->livestreamService->updateSource(
                         (int) $request->auth->sub,
-                        $id,
+                        (int) $id,
                         $request->input('live_source'),
                         $request->input('stream_key')
                     ),
@@ -113,12 +113,12 @@ class LivestreamController extends BaseController
         }
     }
 
-    public function end(Request $request, int $id): JsonResponse
+    public function end(Request $request, $id): JsonResponse
     {
         try {
             return response()->json(
                 $this->hydrate(
-                    $this->livestreamService->end((int) $request->auth->sub, $id, $request->input('duration_seconds')),
+                    $this->livestreamService->end((int) $request->auth->sub, (int) $id, $request->input('duration_seconds')),
                     (int) $request->auth->sub
                 ),
                 200
@@ -128,7 +128,7 @@ class LivestreamController extends BaseController
         }
     }
 
-    public function react(Request $request, int $id): JsonResponse
+    public function react(Request $request, $id): JsonResponse
     {
         $this->validate($request, [
             'reaction_type' => 'required|in:me_gusta,me_encanta,me_divierte,me_sorprende,me_enoja',
@@ -138,7 +138,7 @@ class LivestreamController extends BaseController
             return response()->json(
                 $this->livestreamService->react(
                     (int) $request->auth->sub,
-                    $id,
+                    (int) $id,
                     $request->input('reaction_type'),
                     $request->bearerToken() ?? ''
                 ),
@@ -149,12 +149,13 @@ class LivestreamController extends BaseController
         }
     }
 
-    public function events(Request $request, int $id): JsonResponse
+    public function events(Request $request, $id): JsonResponse
     {
         try {
-            $this->livestreamService->getById($id);
+            $normalizedId = (int) $id;
+            $this->livestreamService->getById($normalizedId);
             return response()->json(
-                $this->livestreamService->getRecentEvents($id, (int) $request->query('after', 0)),
+                $this->livestreamService->getRecentEvents($normalizedId, (int) $request->query('after', 0)),
                 200
             );
         } catch (\Exception $e) {

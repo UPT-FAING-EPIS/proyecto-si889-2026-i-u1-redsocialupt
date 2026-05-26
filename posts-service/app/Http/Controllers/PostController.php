@@ -5,7 +5,11 @@ namespace App\Http\Controllers;
 use App\Services\LikeService;
 use App\Services\LivestreamService;
 use App\Services\PostService;
+use App\Models\Like;
+use App\Models\LivestreamViewer;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Laravel\Lumen\Routing\Controller as BaseController;
 
@@ -107,8 +111,7 @@ class PostController extends BaseController
             $request->bearerToken() ?? ''
         );
 
-        $userId = (int) $request->auth->sub;
-        $posts->each(fn ($post) => $this->hydratePost($post, $userId));
+        $this->hydratePosts($posts, (int) $request->auth->sub);
 
         return response()->json($posts, 200);
     }
@@ -117,8 +120,7 @@ class PostController extends BaseController
     {
         try {
             $posts = $this->postService->getGroupPosts($groupId, (int) $request->auth->sub, $request->bearerToken() ?? '');
-            $userId = (int) $request->auth->sub;
-            $posts->each(fn ($post) => $this->hydratePost($post, $userId));
+            $this->hydratePosts($posts, (int) $request->auth->sub);
             return response()->json($posts, 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
@@ -173,14 +175,83 @@ class PostController extends BaseController
 
     private function hydratePost($post, int $userId)
     {
-        $post->reactions_total = $post->reactions()->count();
-        $post->reactions_count = $this->reactionService->getReactionSummary($post->id);
-        $post->comments_count = $post->comments()->count();
-        $post->current_reaction = $this->reactionService->currentReaction($userId, $post->id);
-        if (($post->post_type ?? 'standard') === 'livestream') {
-            $post->viewer_count = $this->livestreamService->getViewerCount((int) $post->id);
-        }
+        $this->hydratePosts(collect([$post]), $userId);
         return $post;
+    }
+
+    private function hydratePosts(Collection $posts, int $userId): void
+    {
+        if ($posts->isEmpty()) {
+            return;
+        }
+
+        $postIds = $posts->pluck('id')
+            ->map(static fn ($value) => (int) $value)
+            ->filter(static fn (int $value) => $value > 0)
+            ->values()
+            ->all();
+
+        if (empty($postIds)) {
+            return;
+        }
+
+        $reactionRows = Like::query()
+            ->whereIn('post_id', $postIds)
+            ->selectRaw('post_id, reaction_type, COUNT(*) as total')
+            ->groupBy('post_id', 'reaction_type')
+            ->get();
+
+        $reactionSummaries = [];
+        foreach ($postIds as $postId) {
+            $reactionSummaries[$postId] = array_fill_keys(LikeService::REACTION_TYPES, 0);
+        }
+
+        foreach ($reactionRows as $reactionRow) {
+            $postId = (int) $reactionRow->post_id;
+            $reactionType = (string) $reactionRow->reaction_type;
+            if (!isset($reactionSummaries[$postId][$reactionType])) {
+                continue;
+            }
+            $reactionSummaries[$postId][$reactionType] = (int) $reactionRow->total;
+        }
+
+        $currentReactions = Like::query()
+            ->where('user_id', $userId)
+            ->whereIn('post_id', $postIds)
+            ->pluck('reaction_type', 'post_id')
+            ->mapWithKeys(static fn ($reactionType, $postId) => [(int) $postId => $reactionType])
+            ->toArray();
+
+        $livePostIds = $posts
+            ->filter(static fn ($post) => ($post->post_type ?? 'standard') === 'livestream' && ($post->live_status ?? '') === 'live')
+            ->pluck('id')
+            ->map(static fn ($value) => (int) $value)
+            ->filter(static fn (int $value) => $value > 0)
+            ->values()
+            ->all();
+
+        $viewerCounts = [];
+        if (!empty($livePostIds)) {
+            $viewerCounts = LivestreamViewer::query()
+                ->whereIn('post_id', $livePostIds)
+                ->where('last_seen_at', '>=', Carbon::now()->subSeconds(35))
+                ->selectRaw('post_id, COUNT(*) as total')
+                ->groupBy('post_id')
+                ->pluck('total', 'post_id')
+                ->mapWithKeys(static fn ($total, $postId) => [(int) $postId => (int) $total])
+                ->toArray();
+        }
+
+        $posts->each(function ($post) use ($reactionSummaries, $currentReactions, $viewerCounts) {
+            $postId = (int) $post->id;
+            $post->reactions_total = (int) ($post->reactions_total ?? 0);
+            $post->comments_count = (int) ($post->comments_count ?? 0);
+            $post->reactions_count = $reactionSummaries[$postId] ?? array_fill_keys(LikeService::REACTION_TYPES, 0);
+            $post->current_reaction = $currentReactions[$postId] ?? null;
+            if (($post->post_type ?? 'standard') === 'livestream') {
+                $post->viewer_count = (int) ($viewerCounts[$postId] ?? 0);
+            }
+        });
     }
 
     private function storeUploadedImage(Request $request): ?string

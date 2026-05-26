@@ -107,6 +107,10 @@
               <span class="material-symbols-outlined text-[19px]">bolt</span>
               Entrar como usuario prueba
             </button>
+            <button id="dev-admin-login-btn" type="button" class="mt-3 w-full rounded-2xl bg-[#D4A017] px-4 py-3 text-sm font-bold text-[#332200] shadow-[0_12px_30px_rgba(212,160,23,0.22)] transition-all hover:bg-[#c49414] active:scale-[0.99] flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-[19px]">admin_panel_settings</span>
+              Entrar como admin local
+            </button>
             <p id="dev-login-message" class="mt-2 hidden text-center text-xs font-medium"></p>
           </div>
           <div class="mt-6 w-full max-w-[380px] py-2 px-4 bg-[#f0f4ff] border border-dashed border-[#8694db] rounded-xl flex items-center justify-center gap-3">
@@ -222,29 +226,47 @@
     function setupDevLogin() {
       const section = document.getElementById('dev-login-section');
       const button = document.getElementById('dev-login-btn');
+      const adminButton = document.getElementById('dev-admin-login-btn');
       const message = document.getElementById('dev-login-message');
-      if (!section || !button || !isLocalDevHost()) return;
+      if (!section || !button || !adminButton || !isLocalDevHost()) return;
 
       section.classList.remove('hidden');
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        button.classList.add('opacity-70', 'cursor-wait');
+      const setLoadingState = (isLoading) => {
+        [button, adminButton].forEach((target) => {
+          target.disabled = isLoading;
+          target.classList.toggle('opacity-70', isLoading);
+          target.classList.toggle('cursor-wait', isLoading);
+        });
+      };
+
+      const runDevLogin = async (role = 'user') => {
+        const isAdmin = role === 'admin';
+        setLoadingState(true);
         message.className = 'mt-2 text-center text-xs font-medium text-on-surface-variant';
-        message.textContent = 'Creando sesion local...';
+        message.textContent = isAdmin ? 'Creando sesion admin local...' : 'Creando sesion local...';
+        message.classList.remove('hidden');
         clearBlockedNotice();
 
-        const result = await AuthAPI.devLogin();
+        const result = await AuthAPI.devLogin(role);
         if (!result || !result.ok) {
-          button.disabled = false;
-          button.classList.remove('opacity-70', 'cursor-wait');
+          setLoadingState(false);
           message.className = 'mt-2 text-center text-xs font-medium text-red-600';
           message.textContent = result?.data?.error || 'No se pudo iniciar sesion de prueba';
+          message.classList.remove('hidden');
           return;
         }
 
         const { token, user } = result.data;
         saveSession(token, user);
-        window.location.href = '/app.html#feed';
+        window.location.href = isAdmin ? '/app.html#admin' : '/app.html#feed';
+      };
+
+      button.addEventListener('click', async () => {
+        await runDevLogin('user');
+      });
+
+      adminButton.addEventListener('click', async () => {
+        await runDevLogin('admin');
       });
     }
 

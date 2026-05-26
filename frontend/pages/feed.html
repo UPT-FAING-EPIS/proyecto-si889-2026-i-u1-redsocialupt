@@ -3,10 +3,201 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Redireccionando...</title>
+  <title>Feed - UPT Connect</title>
   <script>
-    window.location.replace('/app.html#feed' + window.location.search);
+    if (window.top === window.self) {
+      window.location.replace('/app.html#feed' + window.location.search);
+    }
   </script>
 </head>
-<body></body>
+<body>
+  <template id="app-view-template">
+          <div class="grid grid-cols-1 md:grid-cols-9 gap-6">
+            <main class="md:col-span-6 flex flex-col gap-6 min-w-0">
+              <div class="feed-composer-card bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <div class="feed-composer-header">
+                  <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 bg-cover bg-center" id="composer-avatar" style="background:#1B2A6B">U</div>
+                  <div class="feed-composer-input-wrap">
+                    <textarea id="post-content" class="feed-composer-input" placeholder="¿Que esta pasando?" rows="2"></textarea>
+                    <div id="img-preview-wrap" class="feed-composer-preview">
+                      <img id="img-preview" alt="Vista previa"/>
+                      <button id="clear-image-btn" type="button" title="Quitar imagen">x</button>
+                    </div>
+                  </div>
+                </div>
+                <input type="file" id="file-input" accept="image/*" class="hidden"/>
+                <div class="feed-composer-footer">
+                  <div class="feed-composer-tools">
+                    <button id="pick-image-btn" type="button" class="feed-composer-tool">
+                      <span class="material-symbols-outlined text-[19px]">image</span>
+                    </button>
+                    <button id="open-live-modal-btn" type="button" class="feed-composer-tool" title="Iniciar directo">
+                      <span class="material-symbols-outlined text-[19px]">broadcast_on_personal</span>
+                    </button>
+                  </div>
+                  <div class="feed-composer-actions">
+                    <div class="feed-composer-visibility">
+                      <span class="material-symbols-outlined feed-composer-visibility-icon">groups</span>
+                      <span class="feed-composer-visibility-copy">
+                        <span class="feed-composer-visibility-label">Visible para</span>
+                        <input id="post-visibility" type="hidden" value="all"/>
+                        <button id="post-visibility-trigger" type="button" class="feed-composer-select" aria-haspopup="listbox" aria-expanded="false">
+                          <span id="post-visibility-text">Toda la comunidad UPT</span>
+                        </button>
+                        <div id="post-visibility-menu" class="feed-composer-select-menu hidden" role="listbox" aria-label="Opciones de visibilidad">
+                          <button type="button" class="feed-composer-select-option is-active" data-visibility-option="all">
+                            <span class="material-symbols-outlined text-[16px]">public</span>
+                            <span class="feed-composer-select-option-copy">
+                              <span class="feed-composer-select-option-title">Toda la comunidad UPT</span>
+                              <span class="feed-composer-select-option-desc">Visible para todos en la red.</span>
+                            </span>
+                          </button>
+                          <button type="button" class="feed-composer-select-option" data-visibility-option="friends">
+                            <span class="material-symbols-outlined text-[16px]">group</span>
+                            <span class="feed-composer-select-option-copy">
+                              <span class="feed-composer-select-option-title">Solo amigos</span>
+                              <span class="feed-composer-select-option-desc">Solo tus amistades podran verla.</span>
+                            </span>
+                          </button>
+                          <button type="button" class="feed-composer-select-option" data-visibility-option="faculty">
+                            <span class="material-symbols-outlined text-[16px]">school</span>
+                            <span class="feed-composer-select-option-copy">
+                              <span class="feed-composer-select-option-title">Solo mi facultad</span>
+                              <span class="feed-composer-select-option-desc">Visible para usuarios de tu facultad.</span>
+                            </span>
+                          </button>
+                        </div>
+                      </span>
+                    </div>
+                    <button id="btn-publish" type="button" class="feed-composer-submit bg-[#E5D59A] text-[#5A4A1A] px-6 py-1.5 rounded-full text-sm font-bold hover:bg-[#d8c686] transition-colors">Publicar</button>
+                  </div>
+                </div>
+              </div>
+              <div id="feed-new-posts-banner" class="hidden feed-fresh-toast" role="button" tabindex="0" aria-label="Ver nuevas publicaciones">
+                <div>
+                  <div class="text-sm font-bold">Hay nuevas publicaciones</div>
+                  <div class="text-xs text-slate-500 mt-0.5">Actualiza sin perder el contexto del feed.</div>
+                </div>
+                <button id="feed-apply-new-posts-btn" type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#152259] transition-colors">
+                  <span class="material-symbols-outlined text-[18px]">autorenew</span>
+                  <span>Recargar</span>
+                </button>
+              </div>
+              <div id="feed-posts" class="flex flex-col gap-6">
+                {{feedInitialSkeleton}}
+              </div>
+            </main>
+            <aside class="md:col-span-3 hidden md:flex flex-col gap-6">
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                <h3 class="font-bold text-sm text-slate-900 mb-4">Compañeros en linea</h3>
+                <div id="online-friends" class="flex flex-col gap-4">
+                  <p class="text-sm text-slate-400">Cargando...</p>
+                </div>
+              </div>
+            </aside>
+          </div>
+          <div id="delete-modal" class="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4">
+              <h3 class="text-xl font-bold text-slate-900 mb-2">Eliminar publicacion</h3>
+              <p class="text-slate-600 text-sm mb-6">Esta accion no se puede deshacer.</p>
+              <div class="flex justify-end gap-3">
+                <button id="cancel-delete-btn" type="button" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+                <button id="confirm-delete-btn" type="button" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors shadow-sm">Eliminar</button>
+              </div>
+            </div>
+          </div>
+          <div id="comment-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
+            <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
+              <div class="post-comments-topbar">
+                <h3 class="post-comments-topbar-title">Publicacion</h3>
+                <button id="close-comment-top-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar modal de comentarios">
+                  <span class="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+              <div class="post-comments-body">
+                <div class="post-comments-scroll custom-scrollbar">
+                  <div id="comment-post-preview" class="post-comments-preview"></div>
+                  <div class="post-comments-side">
+                    <div class="post-comments-section-head">
+                      <span class="post-comments-section-title">Comentarios</span>
+                      <select id="comment-sort" class="post-comments-sort">
+                        <option value="newest">Mas recientes</option>
+                        <option value="oldest">Mas antiguos</option>
+                      </select>
+                    </div>
+                    <div id="comment-list" class="post-comments-list">
+                      <p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="post-comments-compose">
+                  <div class="post-comments-compose-row">
+                    <textarea id="comment-input" enterkeyhint="send" class="post-comments-compose-input" rows="1" placeholder="Escribe un comentario..."></textarea>
+                    <button id="confirm-comment-btn" type="button" class="post-comments-compose-send" aria-label="Enviar comentario">
+                      <span class="material-symbols-outlined text-[18px]">send</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="livestream-modal" class="fixed inset-0 bg-slate-950/70 hidden items-center justify-center z-50 px-4 py-6">
+            <div class="w-full max-w-2xl bg-[#0f172a] text-white rounded-[32px] border border-white/10 shadow-2xl overflow-hidden">
+              <div class="px-6 py-5 border-b border-white/10 flex items-center justify-between gap-3">
+                <div>
+                  <h3 class="text-xl font-black">Iniciar directo</h3>
+                  <p class="text-sm text-white/65 mt-1">Crearas una publicacion en vivo con comentarios y reacciones en tiempo real.</p>
+                </div>
+                <button id="close-live-modal-btn" type="button" class="w-10 h-10 rounded-full bg-white/8 hover:bg-white/14 flex items-center justify-center">
+                  <span class="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <div class="p-6 space-y-5">
+                <label class="block">
+                  <span class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Titulo</span>
+                  <input id="live-title-input" type="text" maxlength="180" class="mt-2 w-full rounded-2xl bg-slate-950/70 border border-white/10 px-4 py-3 text-sm text-white caret-[#ff0b53] outline-none focus:border-[#ff0b53] placeholder:text-white/35" style="-webkit-text-fill-color:#fff;" placeholder="Ponle un titulo a tu directo"/>
+                </label>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
+                    <p class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Fuente</p>
+                    <div class="mt-3 grid gap-2" id="live-source-options">
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <input type="radio" name="live-source" value="camera" checked/>
+                        <span class="text-sm font-semibold">Camara + microfono</span>
+                      </label>
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3" id="live-screen-option">
+                        <input type="radio" name="live-source" value="screen"/>
+                        <span class="text-sm font-semibold">Compartir pantalla + audio del sistema/microfono</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="rounded-3xl border border-white/10 bg-white/5 p-4">
+                    <p class="text-xs uppercase tracking-[0.2em] text-white/55 font-bold">Visibilidad</p>
+                    <div class="mt-3 grid gap-2">
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <input type="radio" name="live-visibility" value="all" checked/>
+                        <span class="text-sm font-semibold">Toda la comunidad UPT</span>
+                      </label>
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <input type="radio" name="live-visibility" value="friends"/>
+                        <span class="text-sm font-semibold">Solo amigos</span>
+                      </label>
+                      <label class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <input type="radio" name="live-visibility" value="faculty"/>
+                        <span class="text-sm font-semibold">Solo mi facultad</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="px-6 py-5 border-t border-white/10 flex items-center justify-end gap-3">
+                <button id="cancel-live-modal-btn" type="button" class="px-5 py-3 rounded-full bg-white/10 hover:bg-white/14 text-sm font-semibold">Cancelar</button>
+                <button id="confirm-live-create-btn" type="button" class="px-5 py-3 rounded-full bg-[#ff0b53] hover:bg-[#e00549] text-sm font-black tracking-[0.12em]">EMPEZAR</button>
+              </div>
+            </div>
+          </div>
+        
+  </template>
+</body>
 </html>

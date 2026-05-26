@@ -74,12 +74,12 @@
 				<Signalling>
 					<Port>${env:OME_WEBRTC_SIGNALLING_PORT:3333}</Port>
 					<TLSPort>${env:OME_WEBRTC_SIGNALLING_TLS_PORT:3334}</TLSPort>
-					<WorkerCount>1</WorkerCount>
+					<WorkerCount>2</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10004/udp}</IceCandidate>
-					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
-					<TcpForce>true</TcpForce>
+					<IceCandidate>${env:OME_HOST_IP:127.0.0.1}:${env:OME_WEBRTC_CANDIDATE_PORT:10000/udp}</IceCandidate>
+					<TcpRelay>${env:OME_HOST_IP:127.0.0.1}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
+					<TcpForce>false</TcpForce>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
@@ -105,12 +105,12 @@
 				<Signalling>
 					<Port>${env:OME_WEBRTC_SIGNALLING_PORT:3333}</Port>
 					<TLSPort>${env:OME_WEBRTC_SIGNALLING_TLS_PORT:3334}</TLSPort>
-					<WorkerCount>1</WorkerCount>
+					<WorkerCount>2</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10004/udp}</IceCandidate>
-					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
-					<TcpForce>true</TcpForce>
+					<IceCandidate>${env:OME_HOST_IP:127.0.0.1}:${env:OME_WEBRTC_CANDIDATE_PORT:10000/udp}</IceCandidate>
+					<TcpRelay>${env:OME_HOST_IP:127.0.0.1}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
+					<TcpForce>false</TcpForce>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
@@ -229,78 +229,25 @@
 								<Name>adaptive_llhls</Name>
 								<FileName>master</FileName>
 								<Options>
-									<WebRtcAutoAbr>true</WebRtcAutoAbr>
+									<WebRtcAutoAbr>false</WebRtcAutoAbr>
 									<HLSChunklistPathDepth>0</HLSChunklistPathDepth>
 									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>
 								<Rendition>
-									<Name>1080p60</Name>
-									<Video>video_1080_60</Video>
-									<Audio>aac_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>720p60</Name>
-									<Video>video_720_60</Video>
-									<Audio>aac_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>480p</Name>
-									<Video>video_480</Video>
-									<Audio>aac_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>360p</Name>
-									<Video>video_360</Video>
-									<Audio>aac_audio</Audio>
+									<Name>source</Name>
+									<Video>bypass_video</Video>
+									<Audio>bypass_audio</Audio>
 								</Rendition>
 							</Playlist>
 
 							<Encodes>
 								<Video>
-									<Name>video_1080_60</Name>
-									<Codec>h264</Codec>
-									<Bitrate>8000000</Bitrate>
-									<Framerate>60</Framerate>
-									<Height>1080</Height>
-									<Preset>faster</Preset>
-								</Video>
-								<Video>
-									<Name>video_720_60</Name>
-									<Codec>h264</Codec>
-									<Bitrate>4500000</Bitrate>
-									<Framerate>60</Framerate>
-									<Height>720</Height>
-									<Preset>faster</Preset>
-								</Video>
-								<Video>
-									<Name>video_480</Name>
-									<Codec>h264</Codec>
-									<Bitrate>1600000</Bitrate>
-									<Framerate>30</Framerate>
-									<Height>480</Height>
-									<Preset>faster</Preset>
-								</Video>
-								<Video>
-									<Name>video_360</Name>
-									<Codec>h264</Codec>
-									<Bitrate>900000</Bitrate>
-									<Framerate>30</Framerate>
-									<Height>360</Height>
-									<Preset>faster</Preset>
+									<Name>bypass_video</Name>
+									<Bypass>true</Bypass>
 								</Video>
 								<Audio>
-									<Name>aac_audio</Name>
-									<Codec>aac</Codec>
-									<Bitrate>128000</Bitrate>
-									<Samplerate>48000</Samplerate>
-									<Channel>2</Channel>
-								</Audio>								
-								<Audio>
-									<Name>opus_audio</Name>
-									<Codec>opus</Codec>
-									<Bitrate>128000</Bitrate>
-									<Samplerate>48000</Samplerate>
-									<Channel>2</Channel>
+									<Name>bypass_audio</Name>
+									<Bypass>true</Bypass>
 								</Audio>
 							</Encodes>
 						</OutputProfile>
@@ -345,9 +292,9 @@
 						<OVT />
 						<WebRTC>
 							<Timeout>30000</Timeout>
-							<Rtx>false</Rtx>
-							<Ulpfec>false</Ulpfec>
-							<JitterBuffer>false</JitterBuffer>
+							<Rtx>true</Rtx>
+							<Ulpfec>true</Ulpfec>
+							<JitterBuffer>true</JitterBuffer>
 							<CreateDefaultPlaylist>true</CreateDefaultPlaylist>
 						</WebRTC>
 						<LLHLS>

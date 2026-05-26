@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin reportes - UPT Connect</title>
+  <script>
+    if (window.top === window.self) {
+      window.location.replace('/app.html#admin-reports' + window.location.search);
+    }
+  </script>
+</head>
+<body>
+  <template id="app-view-template">
+          <div class="flex flex-col w-full">
+            <div class="flex justify-between items-start mb-6 gap-4 flex-wrap">
+              <div>
+                <h1 class="text-[28px] font-bold text-slate-900 tracking-tight leading-tight mb-1">Reportes pendientes</h1>
+                <p class="text-[15px] text-slate-500">Resuelve casos pendientes de publicaciones, comentarios y mensajes.</p>
+              </div>
+              <button type="button" class="bg-[#D4A017] text-[#332200] font-bold text-[13px] px-4 py-2 rounded-full transition-colors flex items-center shadow-sm">
+                ACCESO ADMIN
+              </button>
+            </div>
+            <div class="flex items-center bg-[#E5E7EB] rounded-full p-1 w-max mb-6">
+              <button id="go-admin-users-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Usuarios</button>
+              <button id="go-admin-posts-btn" type="button" class="px-5 py-1.5 rounded-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Publicaciones</button>
+              <button type="button" class="px-5 py-1.5 bg-white rounded-full text-sm font-semibold text-slate-900 shadow-sm">Reportes</button>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div class="p-4 border-b border-slate-200 space-y-4">
+                <h2 class="text-sm font-bold text-slate-900">Bandeja de reportes</h2>
+                <p class="text-xs text-slate-500 mt-1">Los casos se retiran de esta lista cuando se descartan o se sancionan.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select id="admin-report-type-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                    <option value="Todos">Tipo: Todos</option>
+                    <option value="post">Publicacion</option>
+                    <option value="livestream">Stream</option>
+                    <option value="comment">Comentario</option>
+                    <option value="message">Mensaje</option>
+                  </select>
+                  <select id="admin-report-order-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                    <option value="newest">Mas recientes primero</option>
+                    <option value="oldest">Mas antiguos primero</option>
+                  </select>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse min-w-[980px]">
+                  <thead>
+                    <tr class="bg-slate-100/50 border-b border-slate-200">
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Usuario</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Tipo</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Contenido</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Fecha</th>
+                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-reports-tbody" class="divide-y divide-slate-100">
+                    {{adminReportsTableSkeleton}}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div id="review-report-modal" class="fixed inset-0 z-[120] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
+              <div class="flex justify-between items-center p-6 border-b border-slate-200">
+                <div>
+                  <h2 class="text-lg font-bold text-slate-900">Revisar reporte</h2>
+                  <p class="text-sm text-slate-500 mt-1">Visualiza el contenido denunciado antes de decidir.</p>
+                </div>
+                <button id="close-review-report-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
+              </div>
+              <div class="p-6 space-y-5">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario</p>
+                    <p id="review-report-user" class="text-sm font-semibold text-slate-900"></p>
+                  </div>
+                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Tipo</p>
+                    <p id="review-report-type" class="text-sm font-semibold text-slate-900"></p>
+                  </div>
+                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Fecha</p>
+                    <p id="review-report-date" class="text-sm font-semibold text-slate-900"></p>
+                  </div>
+                </div>
+                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Contenido denunciado</p>
+                  <p id="review-report-content" class="text-sm text-slate-700 leading-6 whitespace-pre-wrap"></p>
+                  <img id="review-report-image" class="hidden mt-4 w-full max-h-[320px] rounded-2xl object-cover border border-slate-200" alt="Contenido adjunto"/>
+                </div>
+                <div class="flex justify-end">
+                  <button id="close-review-report-footer-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cerrar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="sanction-report-modal" class="fixed inset-0 z-[130] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
+              <div class="flex justify-between items-center p-6 border-b border-slate-200">
+                <div>
+                  <h2 class="text-lg font-bold text-slate-900">Sancionar reporte</h2>
+                  <p class="text-sm text-slate-500 mt-1">Aplica bloqueo y acciones adicionales según el contenido denunciado.</p>
+                </div>
+                <button id="close-sanction-report-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
+              </div>
+              <form id="sanction-report-form" class="p-6 space-y-5">
+                <input id="sanction-report-id" type="hidden"/>
+                <input id="sanction-report-service" type="hidden"/>
+                <input id="sanction-report-target-type" type="hidden"/>
+                <input id="sanction-report-target-id" type="hidden"/>
+                <input id="sanction-report-user-id" type="hidden"/>
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario denunciado</p>
+                  <p id="sanction-report-user" class="text-sm font-semibold text-slate-900"></p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="flex flex-col gap-1.5">
+                    <label class="text-sm font-semibold text-gray-700" for="sanction-duration">Duracion del bloqueo</label>
+                    <select id="sanction-duration" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                      <option value="24h">24 horas</option>
+                      <option value="48h">48 horas</option>
+                      <option value="1w">1 semana</option>
+                      <option value="custom">Manual</option>
+                      <option value="indefinite">Indefinido</option>
+                    </select>
+                  </div>
+                  <div id="sanction-custom-group" class="hidden grid grid-cols-[1fr_120px] gap-2 items-end">
+                    <div class="flex flex-col gap-1.5">
+                      <label class="text-sm font-semibold text-gray-700" for="sanction-custom-value">Tiempo</label>
+                      <input id="sanction-custom-value" min="1" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <label class="text-sm font-semibold text-gray-700" for="sanction-custom-unit">Unidad</label>
+                      <select id="sanction-custom-unit" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                        <option value="hours">Horas</option>
+                        <option value="days">Dias</option>
+                        <option value="weeks">Semanas</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-sm font-semibold text-gray-700" for="sanction-reason">Razon de la sancion</label>
+                  <textarea id="sanction-reason" class="w-full min-h-[120px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Esta razón se mostrará cuando el usuario bloqueado intente volver a entrar."></textarea>
+                </div>
+                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Acciones adicionales</p>
+                  <div id="sanction-actions" class="space-y-3"></div>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                  <button id="cancel-sanction-report-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Aplicar sancion</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        
+  </template>
+</body>
+</html>

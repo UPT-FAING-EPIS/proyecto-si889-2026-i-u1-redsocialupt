@@ -88,15 +88,18 @@ class AuthService
         ];
     }
 
-    public function devLogin(): array
+    public function devLogin(string $role = 'user'): array
     {
         $this->releaseExpiredBlocks();
 
+        $normalizedRole = in_array($role, ['user', 'admin'], true) ? $role : 'user';
+        $isAdmin = $normalizedRole === 'admin';
+
         $payload = [
-            'google_id' => 'dev-local-user',
-            'email' => 'dev.local@virtual.upt.pe',
-            'name' => 'Usuario Prueba Local',
-            'full_name' => 'Usuario Prueba Local',
+            'google_id' => $isAdmin ? 'dev-local-admin' : 'dev-local-user',
+            'email' => $isAdmin ? 'dev.admin@virtual.upt.pe' : 'dev.local@virtual.upt.pe',
+            'name' => $isAdmin ? 'Admin Prueba Local' : 'Usuario Prueba Local',
+            'full_name' => $isAdmin ? 'Admin Prueba Local' : 'Usuario Prueba Local',
             'user_type' => 'student',
             'faculty' => 'FAING',
             'career' => 'Ingenieria de Sistemas',
@@ -104,7 +107,7 @@ class AuthService
             'position_title' => null,
             'academic_cycle' => 'X',
             'student_code' => '999999',
-            'role' => 'user',
+            'role' => $normalizedRole,
             'is_active' => true,
             'is_profile_complete' => true,
             'blocked_reason' => null,

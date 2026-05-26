@@ -97,6 +97,99 @@ function authHeaders() {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` };
 }
 
+const FRIEND_IDS_CACHE_TTL_MS = 30000;
+let friendIdsCache = Array.isArray(window.__friendIdsCache) ? window.__friendIdsCache.slice() : [];
+let friendIdsCacheFetchedAt = 0;
+let friendIdsCachePromise = null;
+let friendsListCache = null;
+let friendsListCacheFetchedAt = 0;
+let friendsListCachePromise = null;
+
+function normalizeFriendIds(result) {
+  return getList(result)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+}
+
+function setFriendIdsCache(ids) {
+  const normalized = Array.from(new Set((Array.isArray(ids) ? ids : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))));
+  friendIdsCache = normalized;
+  friendIdsCacheFetchedAt = Date.now();
+  window.__friendIdsCache = normalized;
+  return normalized;
+}
+
+function updateFriendIdsCacheFromResult(result) {
+  if (!result?.ok) {
+    return friendIdsCache.slice();
+  }
+  return setFriendIdsCache(normalizeFriendIds(result));
+}
+
+async function fetchFriendIds(force = false) {
+  const now = Date.now();
+  if (!force && friendIdsCacheFetchedAt && (now - friendIdsCacheFetchedAt) < FRIEND_IDS_CACHE_TTL_MS) {
+    return friendIdsCache.slice();
+  }
+
+  if (!force && friendIdsCachePromise) {
+    return friendIdsCachePromise;
+  }
+
+  friendIdsCachePromise = SocialAPI.getFriends()
+    .then((result) => updateFriendIdsCacheFromResult(result))
+    .catch(() => friendIdsCache.slice())
+    .finally(() => {
+      friendIdsCachePromise = null;
+    });
+
+  return friendIdsCachePromise;
+}
+
+function warmFriendIdsCacheInBackground(force = false) {
+  fetchFriendIds(force).catch(() => {});
+}
+
+function cloneFriendsResult(result) {
+  if (!result || typeof result !== 'object') {
+    return result;
+  }
+  return {
+    ...result,
+    data: Array.isArray(result.data)
+      ? result.data.map((entry) => (entry && typeof entry === 'object' ? { ...entry } : entry))
+      : result.data,
+  };
+}
+
+async function fetchFriendsResult(force = false) {
+  const now = Date.now();
+  if (!force && friendsListCache && (now - friendsListCacheFetchedAt) < FRIEND_IDS_CACHE_TTL_MS) {
+    return cloneFriendsResult(friendsListCache);
+  }
+
+  if (!force && friendsListCachePromise) {
+    return friendsListCachePromise;
+  }
+
+  friendsListCachePromise = apiFetch(`/api/friends`)
+    .then((result) => {
+      if (result?.ok) {
+        friendsListCache = cloneFriendsResult(result);
+        friendsListCacheFetchedAt = Date.now();
+        updateFriendIdsCacheFromResult(result);
+      }
+      return cloneFriendsResult(result);
+    })
+    .finally(() => {
+      friendsListCachePromise = null;
+    });
+
+  return friendsListCachePromise;
+}
+
 /* Normaliza respuesta: array directo o {data:[...]} paginado */
 function getList(result) {
   if (!result || !result.ok) return [];
@@ -190,8 +283,9 @@ const AuthAPI = {
   googleLogin: (idToken) => apiFetch(`${API.auth}/auth/google`, {
     method: 'POST', body: JSON.stringify({ id_token: idToken })
   }),
-  devLogin: () => apiFetch(`${API.auth}/auth/dev-login`, {
-    method: 'POST'
+  devLogin: (role = 'user') => apiFetch(`${API.auth}/auth/dev-login`, {
+    method: 'POST',
+    body: JSON.stringify({ role }),
   }),
   completeProfile: (data) => apiFetch(`${API.auth}/auth/complete-profile`, {
     method: 'POST', body: JSON.stringify(data)
@@ -229,12 +323,11 @@ const AuthAPI = {
 /* ── Posts Service ────────────────────────────────────────────── */
 const PostsAPI = {
   getFeed: async (page = 1) => {
-    let friendIds = [];
-    const friendsResult = await SocialAPI.getFriends();
-    if (friendsResult?.ok) {
-      friendIds = getList(friendsResult)
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value));
+    const friendIds = friendIdsCache.length ? friendIdsCache.slice() : await fetchFriendIds();
+    if (friendIds.length) {
+      warmFriendIdsCacheInBackground();
+    } else {
+      warmFriendIdsCacheInBackground(true);
     }
 
     const currentUser = getUser();
@@ -351,7 +444,7 @@ const SocialAPI = {
   getDirectory: (params = '') => apiFetch(`/api/directory?${params}`),
   searchDirectory: (query) => apiFetch(`/api/directory/search?q=${encodeURIComponent(query)}`),
   getBlockedDirectory: () => apiFetch(`/api/directory/blocked`),
-  getFriends: () => apiFetch(`/api/friends`),
+  getFriends: (force = false) => fetchFriendsResult(force),
   getPendingRequests: () => apiFetch(`/api/friends/pending`),
   sendRequest: (receiverId) => apiFetch(`/api/friends/request`, {
     method: 'POST', body: JSON.stringify({ receiver_id: receiverId })

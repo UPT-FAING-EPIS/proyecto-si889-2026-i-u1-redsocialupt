@@ -143,8 +143,8 @@ services:
     image: airensoft/ovenmediaengine:latest
     restart: unless-stopped
     environment:
-      OME_HOST_IP: 127.0.0.1
-      OME_WEBRTC_CANDIDATE_PORT: 10000-10005/udp
+      OME_HOST_IP: ${OME_HOST_IP:-127.0.0.1}
+      OME_WEBRTC_CANDIDATE_PORT: 10000/udp
       OME_WEBRTC_TCP_RELAY_PORT: 3478
     ports:
       - "1935:1935"

@@ -3,10 +3,201 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Redireccionando...</title>
+  <title>Perfil - UPT Connect</title>
   <script>
-    window.location.replace('/app.html#profile' + window.location.search);
+    if (window.top === window.self) {
+      window.location.replace('/app.html#profile' + window.location.search);
+    }
   </script>
 </head>
-<body></body>
+<body>
+  <template id="app-view-template">
+          <div class="profile-view max-w-4xl mx-auto w-full space-y-6">
+            <div class="profile-card">
+              <div class="profile-banner" id="profile-banner-view" style="background:#6B1B1B">
+                <button id="change-banner-btn" type="button" class="hidden bg-black/20 hover:bg-black/30 text-white rounded-lg px-4 py-2 items-center gap-2 font-medium text-sm transition-colors border border-white/20 backdrop-blur-sm">
+                  <span class="material-symbols-outlined text-[18px]">photo_camera</span>
+                  Cambiar portada
+                </button>
+                <input id="banner-input" class="hidden" type="file" accept="image/*"/>
+              </div>
+              <div class="px-8 pb-6 relative">
+                <div class="flex flex-col md:flex-row justify-between items-start gap-6">
+                  <div class="-mt-16 flex flex-col">
+                    <div class="profile-avatar-frame">
+                      <div class="profile-avatar" id="profile-avatar-view">U</div>
+                      <button id="change-avatar-btn" type="button" class="camera-btn absolute bottom-1 right-1 hidden">
+                        <span class="material-symbols-outlined text-[18px]">photo_camera</span>
+                      </button>
+                      <input id="avatar-input" class="hidden" type="file" accept="image/*"/>
+                    </div>
+                    <div class="flex flex-col">
+                      <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-2" id="profile-name">Cargando...</h1>
+                      <p class="text-gray-600 mt-1" id="profile-career"></p>
+                      <div class="flex items-center gap-3 mt-3 flex-wrap" id="profile-badges"></div>
+                    </div>
+                  </div>
+                  <div class="mt-4 md:mt-16 flex flex-wrap gap-3" id="profile-actions"></div>
+                </div>
+              </div>
+              <div class="profile-data-row">
+                <div class="profile-data-grid">
+                  <div class="profile-data-item">
+                    <span class="material-symbols-outlined text-gray-500 text-[24px]">badge</span>
+                    <div class="flex flex-col">
+                      <span class="label">CODIGO</span>
+                      <span class="value" id="profile-code">-</span>
+                    </div>
+                  </div>
+                  <div class="profile-data-item">
+                    <span class="material-symbols-outlined text-gray-500 text-[24px]">mail</span>
+                    <div class="flex flex-col">
+                      <span class="label">CORREO</span>
+                      <span class="value" id="profile-email">-</span>
+                    </div>
+                  </div>
+                  <div class="profile-data-item">
+                    <span class="material-symbols-outlined text-gray-500 text-[24px]">calendar_month</span>
+                    <div class="flex flex-col">
+                      <span class="label">SEMESTRE</span>
+                      <span class="value" id="profile-cycle">-</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="profile-about">
+                <div class="flex justify-between items-center mb-4 gap-3">
+                  <h2 class="text-sm font-bold text-gray-600 tracking-wide">SOBRE MI</h2>
+                  <div class="flex items-center gap-2">
+                    <button id="profile-bio-cancel-btn" type="button" class="hidden text-slate-500 hover:text-slate-700 font-medium text-sm items-center gap-1.5 transition-colors">
+                      Cancelar
+                    </button>
+                    <button id="profile-bio-action-btn" type="button" class="hidden text-[#1B2A6B] hover:text-blue-800 font-semibold text-sm items-center gap-1.5 transition-colors">
+                      <span id="profile-bio-action-icon" class="material-symbols-outlined text-[18px]">edit</span>
+                      <span id="profile-bio-action-label">Editar</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="profile-bio text-sm text-gray-900" id="profile-bio" data-empty="false" data-placeholder="Cuentanos algo de ti"></div>
+              </div>
+            </div>
+            <div>
+              <h2 class="text-xl font-bold text-black mb-4">Publicaciones recientes</h2>
+              <div id="profile-posts-list" class="space-y-4">
+                {{profilePostsSkeleton}}
+              </div>
+            </div>
+          </div>
+          <div id="profile-comment-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
+            <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
+              <div class="post-comments-topbar">
+                <h3 class="post-comments-topbar-title">Publicacion</h3>
+                <button id="profile-close-comment-top-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar modal de comentarios del perfil">
+                  <span class="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+              <div class="post-comments-body">
+                <div class="post-comments-scroll custom-scrollbar">
+                  <div id="profile-comment-post-preview" class="post-comments-preview"></div>
+                  <div class="post-comments-side">
+                    <div class="post-comments-section-head">
+                      <span class="post-comments-section-title">Comentarios</span>
+                      <select id="profile-comment-sort" class="post-comments-sort">
+                        <option value="newest">Mas recientes</option>
+                        <option value="oldest">Mas antiguos</option>
+                      </select>
+                    </div>
+                    <div id="profile-comment-list" class="post-comments-list">
+                      <p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="post-comments-compose">
+                  <div class="post-comments-compose-row">
+                    <textarea id="profile-comment-input" enterkeyhint="send" class="post-comments-compose-input" rows="1" placeholder="Escribe un comentario..."></textarea>
+                    <button id="profile-confirm-comment-btn" type="button" class="post-comments-compose-send" aria-label="Enviar comentario del perfil">
+                      <span class="material-symbols-outlined text-[18px]">send</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="media-crop-modal" class="fixed inset-0 z-[120] hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm px-3 py-4">
+            <div class="bg-white rounded-[28px] shadow-2xl w-full max-w-5xl mx-4 overflow-hidden max-h-[92vh] flex flex-col">
+              <div class="flex items-center justify-between gap-4 px-5 py-4 border-b border-slate-200">
+                <div>
+                  <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Ajustar imagen</p>
+                  <h3 id="media-crop-title" class="text-lg md:text-xl font-bold text-slate-900 mt-1">Recorta tu imagen</h3>
+                </div>
+                <button id="media-crop-close-btn" type="button" class="w-10 h-10 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors inline-flex items-center justify-center">
+                  <span class="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <div class="media-crop-layout">
+                <div class="media-crop-workbench">
+                  <div id="media-crop-stage" class="media-crop-stage is-avatar">
+                    <img id="media-crop-image" alt="Vista previa de recorte" draggable="false"/>
+                  </div>
+                </div>
+                <div class="media-crop-sidebar">
+                  <div class="space-y-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-900">Vista previa</p>
+                      <p class="text-xs text-slate-500 mt-1">Asi se vera la imagen despues de guardarla.</p>
+                    </div>
+                    <div class="space-y-3">
+                      <canvas id="media-crop-preview-avatar" class="media-crop-preview media-crop-preview-avatar"></canvas>
+                      <canvas id="media-crop-preview-banner" class="media-crop-preview media-crop-preview-banner hidden"></canvas>
+                    </div>
+                  </div>
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <label for="media-crop-zoom" class="text-sm font-semibold text-slate-900">Zoom</label>
+                      <span id="media-crop-zoom-label" class="text-xs font-semibold text-slate-500">100%</span>
+                    </div>
+                    <input id="media-crop-zoom" type="range" min="100" max="400" value="100" class="w-full accent-[#1B2A6B]"/>
+                  </div>
+                  <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p id="media-crop-help" class="text-sm text-slate-600 leading-6">Arrastra la imagen para elegir la zona visible y usa el zoom si necesitas acercarte.</p>
+                  </div>
+                  <div class="mt-auto flex flex-wrap justify-end gap-3 pt-2">
+                    <button id="media-crop-reset-btn" type="button" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Restablecer</button>
+                    <button id="media-crop-cancel-btn" type="button" class="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors">Cancelar</button>
+                    <button id="media-crop-save-btn" type="button" class="px-5 py-2 text-sm font-medium text-white bg-[#1B2A6B] hover:bg-[#152259] rounded-xl transition-colors shadow-sm">Guardar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="edit-profile-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+              <div class="flex justify-between items-center p-6 border-b border-slate-200">
+                <h2 class="text-lg font-bold text-slate-900">Editar perfil</h2>
+                <button id="close-edit-profile-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors">
+                  <span class="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <form id="edit-profile-form" class="p-6 space-y-5">
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-sm font-semibold text-gray-700" for="edit-bio">Biografia</label>
+                  <textarea id="edit-bio" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" rows="4" placeholder="Cuéntanos algo de ti"></textarea>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-sm font-semibold text-gray-700" for="edit-cycle">Ciclo academico</label>
+                  <select id="edit-cycle" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                    <option value="">Selecciona...</option>
+                    {{profileCycleOptions}}
+                  </select>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                  <button id="cancel-edit-profile-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Guardar cambios</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        
+  </template>
+</body>
 </html>
