@@ -1815,62 +1815,62 @@
       if (!root) {
         root = document.createElement('div');
         root.id = 'floating-call-window';
-        root.className = 'hidden fixed z-[70] flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] sm:w-[360px] sm:max-w-[calc(100vw-1rem)] flex-col rounded-[28px] bg-[#1f1f1f] text-white shadow-2xl border border-white/10 overflow-hidden';
+        root.className = 'call-window hidden fixed z-[70] flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] sm:w-[360px] sm:max-w-[calc(100vw-1rem)] flex-col overflow-hidden text-white';
         root.style.top = '96px';
         root.style.right = '24px';
         root.innerHTML = `
-          <div class="cursor-move px-5 pt-4 pb-3 bg-[#232323] flex items-center gap-3 select-none" data-call-drag-handle="true">
-            <div class="w-12 h-12 rounded-full bg-emerald-900/60 flex items-center justify-center text-emerald-400 shrink-0" id="call-avatar-badge">
+          <div class="call-window__header cursor-move select-none" data-call-drag-handle="true">
+            <div class="call-window__avatar" id="call-avatar-badge">
               <span class="material-symbols-outlined text-[28px]">person</span>
             </div>
-            <div class="min-w-0 flex-1">
-              <h3 id="call-window-name" class="font-bold text-lg truncate">Llamada</h3>
-              <p id="call-window-status" class="text-white/70 text-sm">Esperando...</p>
+            <div class="call-window__identity min-w-0 flex-1">
+              <h3 id="call-window-name" class="call-window__name truncate">Llamada</h3>
+              <p id="call-window-status" class="call-window__status">Esperando...</p>
             </div>
-            <button type="button" id="call-minimize-btn" class="w-10 h-10 rounded-full bg-white/8 hover:bg-white/12 transition-colors flex items-center justify-center">
+            <button type="button" id="call-minimize-btn" class="call-window__icon-btn">
               <span class="material-symbols-outlined text-[20px]">remove</span>
             </button>
           </div>
-          <div id="call-video-stage" class="px-4 sm:px-5 pt-3 sm:pt-4 shrink min-h-0">
-            <div class="relative overflow-hidden rounded-3xl bg-[#2b2b2b] min-h-[160px] sm:min-h-[230px] md:min-h-[280px] flex items-center justify-center">
+          <div id="call-video-stage" class="call-window__stage shrink min-h-0">
+            <div class="call-window__video-frame relative flex items-center justify-center overflow-hidden">
               <audio id="call-remote-audio" class="hidden" autoplay playsinline></audio>
-              <video id="call-remote-video" class="absolute inset-0 w-full h-full object-cover hidden" autoplay playsinline muted></video>
-              <div id="call-remote-placeholder" class="absolute inset-0 bg-[linear-gradient(160deg,#21264a_0%,#2f3d8b_60%,#1b2248_100%)] flex flex-col items-center justify-center gap-4">
-                <div class="w-24 h-24 rounded-full border-4 border-white shadow-lg overflow-hidden bg-black/20 flex items-center justify-center">
-                  <div id="call-remote-avatar" class="w-full h-full flex items-center justify-center bg-emerald-900/70 text-emerald-300 text-5xl">
+              <video id="call-remote-video" class="absolute inset-0 hidden h-full w-full object-cover" autoplay playsinline muted></video>
+              <div id="call-remote-placeholder" class="call-window__placeholder absolute inset-0 flex flex-col items-center justify-center gap-4">
+                <div class="call-window__placeholder-avatar">
+                  <div id="call-remote-avatar" class="call-window__placeholder-avatar-inner">
                     <span class="material-symbols-outlined text-[44px]">person</span>
                   </div>
                 </div>
-                <span id="call-video-placeholder-label" class="text-white/70 text-sm">Camara apagada</span>
+                <span id="call-video-placeholder-label" class="call-window__placeholder-label">Camara apagada</span>
               </div>
-              <video id="call-local-video" class="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 w-20 h-14 sm:w-28 sm:h-20 rounded-2xl object-cover bg-black/40 border border-white/20 hidden" autoplay playsinline muted></video>
+              <video id="call-local-video" class="call-window__local-video absolute hidden object-cover" autoplay playsinline muted></video>
             </div>
           </div>
-          <div id="call-actions-row" class="px-3 sm:px-4 py-3 sm:py-4 mt-auto flex flex-col gap-2 sm:gap-3">
-            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              <button type="button" id="call-toggle-video-btn" class="w-12 h-12 shrink-0 rounded-full bg-white text-slate-900 hover:bg-slate-100 transition-colors flex items-center justify-center">
+          <div id="call-actions-row" class="call-window__actions mt-auto">
+            <div class="call-window__toolbar">
+              <button type="button" id="call-toggle-video-btn" class="call-window__round-btn call-window__round-btn--light">
                 <span class="material-symbols-outlined text-[22px]">videocam_off</span>
               </button>
-              <div class="flex items-center gap-2 rounded-full bg-[#2c2c2c] px-3 h-12 shrink-0">
-                <button type="button" id="call-toggle-mic-btn" class="w-8 h-8 shrink-0 rounded-full hover:bg-[#363636] transition-colors flex items-center justify-center">
+              <div class="call-window__pill call-window__pill--meter">
+                <button type="button" id="call-toggle-mic-btn" class="call-window__pill-icon">
                   <span class="material-symbols-outlined text-[22px]">mic</span>
                 </button>
-                <div class="flex items-end gap-1 h-6" aria-label="Medidor de sonido">
-                  <span data-audio-meter-bar class="w-1.5 h-3 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
-                  <span data-audio-meter-bar class="w-1.5 h-4 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
-                  <span data-audio-meter-bar class="w-1.5 h-5 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
-                  <span data-audio-meter-bar class="w-1.5 h-4 rounded-full bg-emerald-400 origin-bottom transition-transform duration-75 opacity-35"></span>
+                <div class="call-window__meter" aria-label="Medidor de sonido">
+                  <span data-audio-meter-bar class="call-window__meter-bar"></span>
+                  <span data-audio-meter-bar class="call-window__meter-bar call-window__meter-bar--medium"></span>
+                  <span data-audio-meter-bar class="call-window__meter-bar call-window__meter-bar--tall"></span>
+                  <span data-audio-meter-bar class="call-window__meter-bar call-window__meter-bar--medium"></span>
                 </div>
               </div>
-              <div class="flex items-center gap-2 rounded-full bg-[#2c2c2c] px-3 h-12 min-w-0 w-full sm:w-[170px]">
-                <span class="material-symbols-outlined text-[18px] text-white/70">volume_down</span>
-                <input id="call-remote-volume" type="range" min="0" max="1" step="0.05" value="1" class="flex-1 min-w-0 accent-emerald-400" aria-label="Volumen de llamada"/>
+              <div class="call-window__pill call-window__pill--volume">
+                <span class="material-symbols-outlined call-window__volume-icon">volume_down</span>
+                <input id="call-remote-volume" type="range" min="0" max="1" step="0.05" value="1" class="call-window__volume-range" aria-label="Volumen de llamada"/>
               </div>
             </div>
-            <div class="grid grid-cols-3 gap-2 w-full shrink-0">
-              <button type="button" id="call-accept-btn" class="hidden px-2 sm:px-4 h-11 sm:h-12 rounded-full bg-emerald-500 hover:bg-emerald-600 transition-colors text-sm font-semibold shrink-0">Aceptar</button>
-              <button type="button" id="call-reject-btn" class="hidden px-2 sm:px-4 h-11 sm:h-12 rounded-full bg-white/10 hover:bg-white/15 transition-colors text-sm font-semibold shrink-0">Rechazar</button>
-              <button type="button" id="call-hangup-btn" class="col-start-3 w-full h-11 sm:h-12 shrink-0 rounded-full bg-[#ff0b53] hover:bg-[#e00549] transition-colors flex items-center justify-center">
+            <div class="call-window__footer">
+              <button type="button" id="call-accept-btn" class="call-window__action-btn call-window__action-btn--accept hidden">Aceptar</button>
+              <button type="button" id="call-reject-btn" class="call-window__action-btn call-window__action-btn--reject hidden">Rechazar</button>
+              <button type="button" id="call-hangup-btn" class="call-window__end-btn">
                 <span class="material-symbols-outlined text-[22px]">call_end</span>
               </button>
             </div>
@@ -4348,9 +4348,11 @@
         let viewerSwitchPrepared = false;
         let viewerFreezeFrame = null;
         let viewerRetrySpinner = null;
+        let viewerReconnectTimer = 0;
         let viewerTapUnmuteHandler = null;
         let viewerIsMuted = false;
         let viewerBoundSourceUrl = '';
+        let viewerSourceWarmupUntil = 0;
         let viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
         let viewerTransportEscalated = false;
         let commentsInitialized = false;
@@ -4607,6 +4609,10 @@
 
         function destroyPlayer() {
           hideViewerRetrySpinner();
+          if (viewerReconnectTimer) {
+            window.clearTimeout(viewerReconnectTimer);
+            viewerReconnectTimer = 0;
+          }
           if (viewerPlayer && typeof viewerPlayer.remove === 'function') {
             try {
               viewerPlayer.remove();
@@ -4662,6 +4668,26 @@
             return;
           }
           viewerRetrySpinner.classList.add('hidden');
+        }
+
+        function queueViewerReconnect(sourceUrl, delayMs = 900) {
+          if (!sourceUrl || viewerReconnectTimer) {
+            return;
+          }
+          viewerPlayerLastRetryAt = Date.now();
+          showViewerRetrySpinner();
+          viewerReconnectTimer = window.setTimeout(() => {
+            viewerReconnectTimer = 0;
+            if ((liveData?.live_status || '') !== 'live') {
+              return;
+            }
+            if (viewerPlayerSourceUrl !== sourceUrl) {
+              return;
+            }
+            ensureViewerPlayer(true).catch((error) => {
+              console.warn('No se pudo reintentar el viewer del directo tras el cambio de fuente:', error);
+            });
+          }, delayMs);
         }
 
         function captureViewerFreezeFrame(options = {}) {
@@ -5457,6 +5483,10 @@ async function ensureViewerPlayer(forceRestart = false) {
                 }
                 const nextState = String(data?.newstate || '').toLowerCase();
                 if (nextState === 'playing') {
+                  if (viewerReconnectTimer) {
+                    window.clearTimeout(viewerReconnectTimer);
+                    viewerReconnectTimer = 0;
+                  }
                   scheduleViewerMediaBinding(player, sourceUrl, readyAt);
                   showViewerPlayer();
                   liveVideoFallback.classList.add('hidden');
@@ -5465,7 +5495,7 @@ async function ensureViewerPlayer(forceRestart = false) {
                 } else if ((nextState === 'stalled' || nextState === 'error') && liveData?.live_status === 'live') {
                   captureViewerFreezeFrame({ hideVideo: true });
                   if (!maybeEscalateViewerTransport()) {
-                    showViewerRetrySpinner();
+                    queueViewerReconnect(sourceUrl, 1200);
                   }
                 }
               });
@@ -5478,7 +5508,7 @@ async function ensureViewerPlayer(forceRestart = false) {
             window.setTimeout(() => {
               if (viewerPlayer === player && viewerPlayerSourceUrl === sourceUrl && !viewerVideo) {
                 if (!maybeEscalateViewerTransport()) {
-                  showViewerRetrySpinner();
+                  queueViewerReconnect(sourceUrl, 1400);
                 }
               }
             }, 1500);
@@ -5912,6 +5942,17 @@ async function ensureViewerPlayer(forceRestart = false) {
           return result.data;
         }
 
+        async function waitForViewerReadyStream(streamKey) {
+          if (!streamKey) {
+            return false;
+          }
+          return waitForPublishedManifest(streamKey, {
+            attempts: 12,
+            pauseMs: 120,
+            requestTimeoutMs: 900,
+          });
+        }
+
         function createOvenLivekit() {
           return window.OvenLiveKit.create({
             callbacks: {
@@ -6095,6 +6136,7 @@ async function ensureViewerPlayer(forceRestart = false) {
 
             nextBundle = await buildHostInputStream(source);
             nextLivekit = await publishHostBundle(nextBundle, source, nextStreamKey);
+            await waitForViewerReadyStream(nextStreamKey);
             liveData.live_source = source;
             liveData.stream_key = nextStreamKey;
             liveData.updated_at = new Date().toISOString();
@@ -6141,6 +6183,7 @@ async function ensureViewerPlayer(forceRestart = false) {
                 const recoveredBundle = await buildHostInputStream(previousSource);
                 const recoveryStreamKey = nextLivestreamStreamKey();
                 const recoveredLivekit = await publishHostBundle(recoveredBundle, previousSource, recoveryStreamKey);
+                await waitForViewerReadyStream(recoveryStreamKey);
                 ovenLivekit = recoveredLivekit;
                 hostMediaBundle = recoveredBundle;
                 hostPublishing = true;
@@ -6241,9 +6284,17 @@ async function ensureViewerPlayer(forceRestart = false) {
               viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
               viewerTransportEscalated = false;
               viewerBoundSourceUrl = '';
+              viewerSourceWarmupUntil = Date.now() + 450;
               captureViewerFreezeFrame({ hideVideo: true });
               beginLiveSourceTransition();
               showViewerPlayer();
+            }
+            if (viewerSourceWarmupUntil && Date.now() < viewerSourceWarmupUntil) {
+              showViewerRetrySpinner();
+              return;
+            }
+            if (viewerSourceWarmupUntil) {
+              viewerSourceWarmupUntil = 0;
             }
             await ensureViewerPlayer(sourceChanged || viewerPlaybackLooksStalled());
             syncViewerToLiveEdge();
@@ -8243,6 +8294,32 @@ async function ensureViewerPlayer(forceRestart = false) {
               } else {
                 showToast(result?.data?.error || 'No se pudo reaccionar', 'error');
               }
+              return;
+            }
+
+            const reactionPickerButton = event.target.closest('[data-action="open-reaction-picker"]');
+            if (reactionPickerButton) {
+              openReactionPicker(reactionPickerButton, {
+                targetType: 'post',
+                targetId: Number(reactionPickerButton.dataset.targetId),
+                currentReaction: reactionPickerButton.dataset.currentReaction || '',
+                onSelect: async (reaction) => {
+                  reactionPickerButton.dataset.currentReaction = reaction;
+                  reactionPickerButton.classList.add('is-active');
+                  reactionPickerButton.innerHTML = `${renderReactionAsset(reaction)}<span>${escapeHtml(REACTION_META[reaction]?.label || 'Reaccionar')}</span>`;
+                  closeReactionPicker();
+
+                  const result = await PostsAPI.reactPost(Number(reactionPickerButton.dataset.targetId), reaction);
+                  if (!result?.ok) {
+                    showToast(result?.data?.error || 'No se pudo reaccionar', 'error');
+                    await reloadPosts();
+                    return;
+                  }
+
+                  await reloadPosts();
+                },
+              });
+              return;
             }
           });
 
