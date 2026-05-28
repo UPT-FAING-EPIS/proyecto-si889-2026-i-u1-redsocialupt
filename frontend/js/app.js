@@ -1089,7 +1089,7 @@
   function buildLivestreamWebRtcUrl(streamKey, _revision = '', transport = LIVESTREAM_PRIMARY_TRANSPORT) {
     const hostname = window.location.hostname;
     const encodedKey = encodeURIComponent(streamKey);
-    const playbackPath = `app/${encodedKey}/master`;
+    const playbackPath = `app/${encodedKey}`;
     const resolvedTransport = (typeof transport === 'string' && transport.length)
       ? transport
       : resolveDefaultLivestreamViewerTransport();
@@ -1118,7 +1118,8 @@
   }
 
   function buildLivestreamStreamKey(userId) {
-    return `upt-live-${userId}-${Date.now().toString(36)}`;
+    const clientTag = isDesktopClient() ? 'pc' : 'mob';
+    return `upt-live-${userId}-${clientTag}-${Date.now().toString(36)}`;
   }
 
   async function navigateToLivestream(router, rawId, extraParams = {}) {
@@ -4630,6 +4631,7 @@
           if (desktop) {
             liveShell.style.removeProperty('--live-mobile-vh');
             liveShell.style.removeProperty('--live-mobile-vw');
+            liveShell.style.removeProperty('--live-mobile-keyboard-offset');
             liveShell.style.removeProperty('--live-mobile-comments-max');
             liveShell.style.removeProperty('--live-mobile-overlay-max');
           }
@@ -4733,6 +4735,7 @@
         let transitionHideTimer = null;
         let liveMobileViewportSyncRaf = 0;
         let liveMobileViewportSyncTimeout = 0;
+        let liveMobileLayoutHeight = 0;
 
         // Mobile-only player controls (on the video itself)
         const playerMuteBtn = container.querySelector('#live-player-mute-btn');
@@ -4767,14 +4770,24 @@
           const viewport = window.visualViewport;
           const viewportHeight = Math.max(1, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
           const viewportWidth = Math.max(1, Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth || 0));
+          const layoutViewportHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || viewportHeight));
+          const activeElement = document.activeElement;
+          const keyboardLikelyOpen = activeElement === liveCommentInputMobile || liveMobileInputRow?.contains(activeElement);
+          if (!keyboardLikelyOpen || !liveMobileLayoutHeight || viewportHeight > liveMobileLayoutHeight * 0.78) {
+            liveMobileLayoutHeight = Math.max(liveMobileLayoutHeight, layoutViewportHeight, viewportHeight);
+          }
+          const stableViewportHeight = Math.max(liveMobileLayoutHeight || 0, layoutViewportHeight, viewportHeight);
+          const visualOffsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0));
+          const keyboardOffset = Math.max(0, stableViewportHeight - viewportHeight - visualOffsetTop);
           const topbarHeight = mobileTopbar?.offsetHeight || 0;
           const headingHeight = liveMobileHeadingRow?.offsetHeight || 0;
           const inputHeight = liveMobileInputRow?.offsetHeight || 0;
           const commentsMax = Math.max(120, Math.min(320, viewportHeight - topbarHeight - headingHeight - inputHeight - 34));
           const overlayMax = Math.max(inputHeight + headingHeight + 24, Math.min(Math.round(viewportHeight * 0.58), commentsMax + headingHeight + inputHeight + 24));
 
-          liveShell.style.setProperty('--live-mobile-vh', `${viewportHeight}px`);
+          liveShell.style.setProperty('--live-mobile-vh', `${stableViewportHeight}px`);
           liveShell.style.setProperty('--live-mobile-vw', `${viewportWidth}px`);
+          liveShell.style.setProperty('--live-mobile-keyboard-offset', `${keyboardOffset}px`);
           liveShell.style.setProperty('--live-mobile-comments-max', `${commentsMax}px`);
           liveShell.style.setProperty('--live-mobile-overlay-max', `${overlayMax}px`);
         }
@@ -4798,6 +4811,20 @@
           }
 
           run();
+        }
+
+        function pinLiveMobileViewport() {
+          if (isDesktopClient()) {
+            return;
+          }
+          try {
+            window.scrollTo(0, 0);
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+          } catch (_error) {}
+          scheduleLiveMobileViewportSync();
+          scheduleLiveMobileViewportSync(90);
+          scheduleLiveMobileViewportSync(240);
         }
 
         function disconnectViewerPlayerMediaObserver() {
@@ -5541,6 +5568,8 @@
             let showFs = false;
             if (liveData?.live_source === 'screen') {
               showFs = true;
+            } else if (isMobileCameraStreamKey()) {
+              showFs = false;
             } else {
               const video = viewerVideo || hostPreviewVideo;
               if (video && video.videoWidth && video.videoHeight) {
@@ -5552,6 +5581,12 @@
           }
         }
 
+        function isMobileCameraStreamKey() {
+          const streamKey = String(liveData?.stream_key || '');
+          return (liveData?.live_source || 'camera') === 'camera'
+            && /(?:^|-)mob(?:-|$)/.test(streamKey);
+        }
+
         // Detect portrait/phone camera streams for viewer → apply full-bleed TikTok layout
         function updateStreamLayout() {
           if (isHostRoute) return;
@@ -5561,15 +5596,13 @@
           const ratio = video.videoWidth / video.videoHeight;
           const isPortrait = ratio < 0.75;
           const liveSource = liveData?.live_source || 'camera';
-          const isPortraitCameraStream = isPortrait && liveSource === 'camera';
+          const isPortraitCameraStream = liveSource === 'camera' && (isPortrait || isMobileCameraStreamKey());
           if (liveShell) {
             liveShell.classList.toggle('live-portrait-stream', isPortrait);
-            if (!isDesktopClient()) {
-              liveShell.classList.toggle('live-cam-stream', isPortraitCameraStream);
-            }
+            liveShell.classList.toggle('live-cam-stream', isPortraitCameraStream);
           }
-          // Always contain on viewer to preserve the emitted aspect ratio.
-          video.style.objectFit = 'contain';
+          video.style.objectFit = isPortraitCameraStream ? 'cover' : 'contain';
+          updateMobilePlayerControls();
         }
 
         function getHostCameraVideoTrack(bundle = hostMediaBundle) {
@@ -5961,7 +5994,6 @@ async function ensureViewerPlayer(forceRestart = false) {
 
             showViewerPlayer();
             const readyAt = Date.now();
-
             if (!window.OvenPlayer?.create) {
               showFallback('Reproduccion no compatible', 'Este navegador no pudo cargar el directo.');
               return;
@@ -6019,6 +6051,7 @@ async function ensureViewerPlayer(forceRestart = false) {
                 }
               });
             }
+
             window.setTimeout(() => {
               if (viewerPlayer === player && viewerPlayerSourceUrl === sourceUrl && !viewerVideo) {
                 if (!maybeEscalateViewerTransport()) {
@@ -6052,6 +6085,14 @@ async function ensureViewerPlayer(forceRestart = false) {
 
           hostTorchEnabled = false;
           hostTorchSupported = false;
+
+          if (bundle.videoTransformer?.stop) {
+            try {
+              bundle.videoTransformer.stop();
+            } catch (error) {
+              console.warn('No se pudo detener el transformador de video del directo:', error);
+            }
+          }
 
           stopMediaStreamVideoTracks(bundle.previewStream);
           if (bundle.publishedStream !== bundle.previewStream) {
@@ -6138,10 +6179,11 @@ async function ensureViewerPlayer(forceRestart = false) {
                   aspectRatio: { ideal: 16 / 9 },
                 }
               : {
-                  width: { ideal: 720, max: 1080 },
-                  height: { ideal: 1280, max: 1920 },
-                  frameRate: { ideal: 60, max: 60 },
-                  aspectRatio: { ideal: 9 / 16 },
+                  // Mobile camera: avoid strict portrait + crop-and-scale because
+                  // some Android devices respond with a zoomed/cropped stream.
+                  width: { ideal: 1280, max: 1280 },
+                  height: { ideal: 720, max: 720 },
+                  frameRate: { ideal: 24, max: 30 },
                 };
 
           return { ...base, ...overrides };
@@ -6330,6 +6372,7 @@ async function ensureViewerPlayer(forceRestart = false) {
             micGainNode: null,
             systemBaseGain: 0.85,
             micBaseGain: 1,
+            videoTransformer: null,
           };
 
           if (source === 'screen' && isDesktopClient()) {
@@ -6433,7 +6476,7 @@ async function ensureViewerPlayer(forceRestart = false) {
           }
 
           const selectedVideoTrack = cameraStream.getVideoTracks()[0] || null;
-          const selectedSettings = selectedVideoTrack?.getSettings?.() || {};
+          let selectedSettings = selectedVideoTrack?.getSettings?.() || {};
 
           if (selectedSettings.deviceId) {
             currentVideoDeviceId = selectedSettings.deviceId;
@@ -6441,9 +6484,23 @@ async function ensureViewerPlayer(forceRestart = false) {
           if (selectedSettings.facingMode === 'user' || selectedSettings.facingMode === 'environment') {
             currentFacingMode = selectedSettings.facingMode;
           }
+          let cameraOutputStream = cameraStream;
+          if (!isDesktopClient()) {
+            try {
+              const portraitOutput = await createMobilePortraitCameraOutput(cameraStream);
+              if (portraitOutput?.stream) {
+                bundle.videoTransformer = portraitOutput;
+                cameraOutputStream = portraitOutput.stream;
+                selectedSettings = { ...selectedSettings, ...portraitOutput.settings };
+              }
+            } catch (error) {
+              console.warn('No se pudo normalizar la camara movil a retrato:', error);
+            }
+          }
+
           bundle.cameraStream = cameraStream;
-          bundle.previewStream = cameraStream;
-          bundle.publishedStream = cameraStream;
+          bundle.previewStream = cameraOutputStream;
+          bundle.publishedStream = cameraOutputStream;
           bundle.micAudioTracks = cameraStream.getAudioTracks();
           bundle.videoSettings = selectedSettings;
           applyLiveTrackHints(bundle.previewStream, 'camera');
@@ -7482,6 +7539,13 @@ async function ensureViewerPlayer(forceRestart = false) {
           syncMobileCloseButton();
         }
 
+        if (!isDesktopClient() && liveCommentInputMobile) {
+          liveCommentInputMobile.addEventListener('focus', pinLiveMobileViewport);
+          liveCommentInputMobile.addEventListener('blur', pinLiveMobileViewport);
+          window.visualViewport?.addEventListener('resize', pinLiveMobileViewport);
+          window.visualViewport?.addEventListener('scroll', pinLiveMobileViewport);
+        }
+
         function getHostSourceUnavailableCopy(error) {
           const message = String(error?.message || error || '').toLowerCase();
           const insecureRemoteHost = !window.isSecureContext && !isDesktopClient() && window.location.protocol !== 'https:';
@@ -7747,6 +7811,10 @@ async function ensureViewerPlayer(forceRestart = false) {
           window.removeEventListener('resize', handleLiveResize);
           window.visualViewport?.removeEventListener('resize', handleLiveResize);
           window.visualViewport?.removeEventListener('scroll', handleLiveResize);
+          liveCommentInputMobile?.removeEventListener('focus', pinLiveMobileViewport);
+          liveCommentInputMobile?.removeEventListener('blur', pinLiveMobileViewport);
+          window.visualViewport?.removeEventListener('resize', pinLiveMobileViewport);
+          window.visualViewport?.removeEventListener('scroll', pinLiveMobileViewport);
           if (overlayTimer) clearTimeout(overlayTimer);
           if (longPressTimer) clearTimeout(longPressTimer);
           window.cancelAnimationFrame(liveMobileViewportSyncRaf);

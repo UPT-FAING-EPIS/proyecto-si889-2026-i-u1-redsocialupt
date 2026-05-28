@@ -373,7 +373,8 @@
   }
 
   function buildLivestreamStreamKey(userId) {
-    return `upt-live-${userId}-${Date.now().toString(36)}`;
+    const clientTag = isDesktopClient() ? 'pc' : 'mob';
+    return `upt-live-${userId}-${clientTag}-${Date.now().toString(36)}`;
   }
 
   function isDesktopClient() {

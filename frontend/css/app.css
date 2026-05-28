@@ -4002,6 +4002,17 @@ body {
     overflow: hidden; /* prevent body scroll — live view fills viewport exactly */
   }
 
+  body:has(.live-root.live-host-mobile),
+  body:has(.live-root.live-mobile-shell.live-cam-stream),
+  body:has(.live-root.live-host-mobile) #app-view,
+  body:has(.live-root.live-mobile-shell.live-cam-stream) #app-view,
+  body:has(.live-root.live-host-mobile) #app-view > section,
+  body:has(.live-root.live-mobile-shell.live-cam-stream) #app-view > section,
+  body:has(.live-root.live-host-mobile) > .max-w-7xl,
+  body:has(.live-root.live-mobile-shell.live-cam-stream) > .max-w-7xl {
+    background: #000;
+  }
+
   body:has(.live-root:not(.live-is-desktop))>.max-w-7xl {
     max-width: none;
     padding-left: 0;
@@ -4192,7 +4203,7 @@ body {
    Video fills full screen, chat overlays on top (TikTok style)
    ═════════════════════════════════════════ */
 .live-host-mobile .live-video-wrap,
-.live-cam-stream .live-video-wrap {
+.live-mobile-shell.live-cam-stream .live-video-wrap {
   aspect-ratio: unset;
   flex: 1;
   height: 100%;
@@ -4200,13 +4211,13 @@ body {
 
 /* Chat becomes an absolute overlay on the video column */
 .live-host-mobile .live-video-col,
-.live-cam-stream .live-video-col {
+.live-mobile-shell.live-cam-stream .live-video-col {
   position: relative;
   flex: 1; /* override flex: 0 0 auto from normal view to fill screen */
 }
 
 .live-host-mobile .live-mobile-content,
-.live-cam-stream .live-mobile-content {
+.live-mobile-shell.live-cam-stream .live-mobile-content {
   display: flex !important;
   position: absolute;
   bottom: 0;
@@ -4227,6 +4238,8 @@ body {
 .live-mobile-shell.live-host-mobile .live-video-col,
 .live-mobile-shell.live-cam-stream .live-video-col {
   min-height: var(--live-mobile-vh, 100dvh);
+  height: var(--live-mobile-vh, 100dvh);
+  overflow: hidden;
 }
 
 .live-mobile-shell.live-host-mobile .live-mobile-content,
@@ -4234,26 +4247,26 @@ body {
   position: fixed !important;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--live-mobile-keyboard-offset, 0px);
   max-height: var(--live-mobile-overlay-max, min(52dvh, 420px));
   min-height: auto;
   padding-bottom: 0;
 }
 
 .live-host-mobile .live-mobile-content>*,
-.live-cam-stream .live-mobile-content>* {
+.live-mobile-shell.live-cam-stream .live-mobile-content>* {
   pointer-events: auto;
 }
 
 /* Title hidden in overlay mode (already shown via top badge area) */
 .live-host-mobile .live-mobile-content>div:first-child,
-.live-cam-stream .live-mobile-content>div:first-child {
+.live-mobile-shell.live-cam-stream .live-mobile-content>div:first-child {
   display: none;
 }
 
 /* Comments fade from transparent at top, visible at bottom */
 .live-host-mobile .live-mobile-comments,
-.live-cam-stream .live-mobile-comments {
+.live-mobile-shell.live-cam-stream .live-mobile-comments {
   /* Avoid mask-image here: it can break touch scrolling on some mobile browsers. */
   background: transparent;
   padding: 8px 12px 8px;
@@ -4287,7 +4300,7 @@ body {
 
 /* Input row: gradient background (no solid border) */
 .live-host-mobile .live-mobile-input-row,
-.live-cam-stream .live-mobile-input-row {
+.live-mobile-shell.live-cam-stream .live-mobile-input-row {
   background: linear-gradient(to top, rgba(0, 0, 0, 0.65) 0%, transparent 100%);
   border-top: none;
   padding-bottom: max(14px, env(safe-area-inset-bottom, 14px));
@@ -4302,8 +4315,6 @@ body {
 }
 
 /* Viewers preserve the received aspect ratio; black bars are expected when needed. */
-.live-cam-stream:not(.live-is-desktop) #live-viewer-player video,
-.live-cam-stream.live-is-desktop #live-viewer-player video,
 .live-is-desktop #live-viewer-player video,
 #live-viewer-player video {
   width: 100% !important;
@@ -4319,11 +4330,22 @@ body {
   overflow: hidden;
 }
 
+#live-viewer-player > .ovenplayer,
+#live-viewer-player .op-wrapper,
+#live-viewer-player .op-ratio,
 #live-viewer-player .op-player,
+#live-viewer-player .op-core-ui-wrapper,
 #live-viewer-player .op-player .op-media-container,
 #live-viewer-player .op-player .op-media-element-container {
+  position: absolute !important;
+  inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  padding: 0 !important;
   background: #000 !important;
 }
 
@@ -4350,6 +4372,54 @@ body {
   right: auto !important;
   bottom: auto !important;
   transform: translate(-50%, -50%) !important;
+}
+
+.live-mobile-shell.live-cam-stream #live-viewer-player .op-player,
+.live-mobile-shell.live-cam-stream #live-viewer-player .op-player .op-media-container,
+.live-mobile-shell.live-cam-stream #live-viewer-player .op-player .op-media-element-container,
+.live-mobile-shell.live-cam-stream #live-viewer-player video {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.live-mobile-shell.live-cam-stream #live-viewer-player video {
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  transform: none !important;
+}
+
+.live-is-desktop.live-cam-stream .live-video-col {
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+.live-is-desktop.live-cam-stream .live-video-wrap {
+  aspect-ratio: 9 / 16;
+  width: min(100%, calc((100vh - 14rem) * 9 / 16));
+  max-width: 560px;
+  height: auto;
+  min-height: 0;
+  flex: 0 1 auto;
+}
+
+.live-is-desktop.live-cam-stream #live-viewer-player video,
+.live-root.live-is-desktop.live-cam-stream #live-viewer-player video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  transform: none !important;
 }
 
 /* ── Player controls on video (mobile) - smooth transition ── */
@@ -4831,7 +4901,7 @@ body.live-immersive-active #app-view {
 }
 
 /* Cam-stream overlay: needs overflow:auto so child comments can scroll */
-.live-cam-stream .live-mobile-content,
+.live-mobile-shell.live-cam-stream .live-mobile-content,
 .live-host-mobile .live-mobile-content {
   /* Keep overlay stable; the comments container itself scrolls. */
   overflow: hidden;
