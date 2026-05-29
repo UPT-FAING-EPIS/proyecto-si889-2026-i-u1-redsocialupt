@@ -1281,9 +1281,9 @@
       user_school: post.user_school,
       user_avatar: post.user_avatar,
     });
-      const authorCareer = careerLabel(author);
-      const visibilityMeta = getVisibilityMeta(post.visibility);
-      const audienceMarkup = hideAudienceBadge ? '' : post.group_id ? `
+    const authorCareer = careerLabel(author);
+    const visibilityMeta = getVisibilityMeta(post.visibility);
+    const audienceMarkup = hideAudienceBadge ? '' : post.group_id ? `
         <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
           <span class="material-symbols-outlined text-[14px]">diversity_3</span>
           ${escapeHtml(post.group_name || 'Grupo')}
@@ -1294,10 +1294,10 @@
           ${escapeHtml(visibilityMeta.label)}
         </span>
       `;
-      const authorMeta = [
-        authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
-        `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
-      ].filter(Boolean).join('<span>&middot;</span>');
+    const authorMeta = [
+      authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
+      `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
+    ].filter(Boolean).join('<span>&middot;</span>');
 
     return `
       <article class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow ${clickable ? 'cursor-pointer' : ''}" ${clickable ? `data-post-card="true" data-post-id="${post.id}"` : ''}>
@@ -1355,30 +1355,30 @@
       `;
     }
 
-      const author = resolveProfileData({
-        id: post.user_id,
-        user_name: post.user_name,
-        user_faculty: post.user_faculty,
-        user_school: post.user_school,
-        user_avatar: post.user_avatar,
-      });
-      const visibilityMeta = getVisibilityMeta(post.visibility);
-      const hideAudienceBadge = options.hideAudienceBadge === true || (options.hideGroupBadge === true && Number(post.group_id) > 0);
-      const audienceLabel = hideAudienceBadge
-        ? ''
-        : (post.group_id
-          ? escapeHtml(post.group_name || 'Grupo')
-          : escapeHtml(visibilityMeta.label));
-      const audienceIcon = post.group_id ? 'groups' : 'public';
-      const authorMeta = [
-        careerLabel(author) ? `<span>${escapeHtml(careerLabel(author))}</span>` : '',
-        `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
-      ].filter(Boolean).join('<span class="post-modal-preview-author-dot">·</span>');
-      const reactionTotal = Number(post.reactions_total || 0);
-      const commentsTotal = Number(post.comments_count || 0);
-      const imageAlt = post.group_id
-        ? `Imagen de la publicacion del grupo ${post.group_name || ''}`.trim()
-        : 'Imagen de la publicacion';
+    const author = resolveProfileData({
+      id: post.user_id,
+      user_name: post.user_name,
+      user_faculty: post.user_faculty,
+      user_school: post.user_school,
+      user_avatar: post.user_avatar,
+    });
+    const visibilityMeta = getVisibilityMeta(post.visibility);
+    const hideAudienceBadge = options.hideAudienceBadge === true || (options.hideGroupBadge === true && Number(post.group_id) > 0);
+    const audienceLabel = hideAudienceBadge
+      ? ''
+      : (post.group_id
+        ? escapeHtml(post.group_name || 'Grupo')
+        : escapeHtml(visibilityMeta.label));
+    const audienceIcon = post.group_id ? 'groups' : 'public';
+    const authorMeta = [
+      careerLabel(author) ? `<span>${escapeHtml(careerLabel(author))}</span>` : '',
+      `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
+    ].filter(Boolean).join('<span class="post-modal-preview-author-dot">·</span>');
+    const reactionTotal = Number(post.reactions_total || 0);
+    const commentsTotal = Number(post.comments_count || 0);
+    const imageAlt = post.group_id
+      ? `Imagen de la publicacion del grupo ${post.group_name || ''}`.trim()
+      : 'Imagen de la publicacion';
 
     return `
       <article class="post-modal-preview-card">
@@ -1953,7 +1953,7 @@
     function ensureCallAudioContext() {
       if (callState.audioContext) {
         if (callState.audioContext.state === 'suspended') {
-          callState.audioContext.resume().catch(() => {});
+          callState.audioContext.resume().catch(() => { });
         }
         return callState.audioContext;
       }
@@ -1965,7 +1965,7 @@
 
       callState.audioContext = new AudioContextClass();
       if (callState.audioContext.state === 'suspended') {
-        callState.audioContext.resume().catch(() => {});
+        callState.audioContext.resume().catch(() => { });
       }
       return callState.audioContext;
     }
@@ -2111,7 +2111,7 @@
       });
 
       const bindControlClick = (element, handler) => {
-        if (!element) return () => {};
+        if (!element) return () => { };
         const listener = (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -2136,7 +2136,7 @@
           offsetY: event.clientY - rect.top,
         };
         if (typeof handle.setPointerCapture === 'function') {
-          try { handle.setPointerCapture(event.pointerId); } catch (error) {}
+          try { handle.setPointerCapture(event.pointerId); } catch (error) { }
         }
         document.body.classList.add('select-none');
         event.preventDefault();
@@ -2152,7 +2152,7 @@
       const onPointerUp = (event) => {
         if (!callState.drag || callState.drag.pointerId !== event.pointerId) return;
         if (typeof handle.releasePointerCapture === 'function') {
-          try { handle.releasePointerCapture(event.pointerId); } catch (error) {}
+          try { handle.releasePointerCapture(event.pointerId); } catch (error) { }
         }
         callState.drag = null;
         document.body.classList.remove('select-none');
@@ -2226,7 +2226,7 @@
 
       root.__callCleanup = () => {
         cleanups.forEach((cleanup) => {
-          try { cleanup(); } catch (error) {}
+          try { cleanup(); } catch (error) { }
         });
         root.__callCleanup = null;
       };
@@ -2325,7 +2325,7 @@
       }
 
       if (stream && typeof element.play === 'function') {
-        element.play().catch(() => {});
+        element.play().catch(() => { });
       }
     }
 
@@ -2343,10 +2343,10 @@
       const remoteVideo = root.querySelector('#call-remote-video');
 
       if (remoteAudio?.srcObject) {
-        remoteAudio.play().catch(() => {});
+        remoteAudio.play().catch(() => { });
       }
       if (remoteVideo?.srcObject) {
-        remoteVideo.play().catch(() => {});
+        remoteVideo.play().catch(() => { });
       }
     }
 
@@ -2499,9 +2499,9 @@
       }
 
       if (callState.peerConnection) {
-        try { callState.peerConnection.ontrack = null; } catch (error) {}
-        try { callState.peerConnection.onicecandidate = null; } catch (error) {}
-        try { callState.peerConnection.close(); } catch (error) {}
+        try { callState.peerConnection.ontrack = null; } catch (error) { }
+        try { callState.peerConnection.onicecandidate = null; } catch (error) { }
+        try { callState.peerConnection.close(); } catch (error) { }
       }
       callState.peerConnection = null;
       callState.remoteStream = null;
@@ -2521,7 +2521,7 @@
       callState.videoSender = null;
       callState.videoTransceiver = null;
       if (callState.audioContext) {
-        callState.audioContext.close().catch(() => {});
+        callState.audioContext.close().catch(() => { });
       }
       callState.audioContext = null;
       callState.localAudioAnalyser = null;
@@ -2628,7 +2628,7 @@
         event.track.onended = () => {
           try {
             callState.remoteStream.removeTrack(event.track);
-          } catch (error) {}
+          } catch (error) { }
           updateCallWindow();
         };
         updateCallWindow();
@@ -2958,7 +2958,7 @@
         showToast(busy
           ? (mode === 'video' ? 'Otro app usa el micrófono/cámara. Ciérrala e inténtalo de nuevo.' : 'Otro app usa el micrófono. Ciérralo e inténtalo de nuevo.')
           : (mode === 'video' ? 'Debes permitir microfono y camara para iniciar la videollamada' : 'Debes permitir el microfono para iniciar la llamada'),
-        'error');
+          'error');
         return;
       }
 
@@ -2994,7 +2994,7 @@
         showToast(busy
           ? (callState.mode === 'video' ? 'Otro app usa el micrófono/cámara. Ciérrala e inténtalo de nuevo.' : 'Otro app usa el micrófono. Ciérralo e inténtalo de nuevo.')
           : (callState.mode === 'video' ? 'Debes permitir microfono y camara para aceptar la videollamada' : 'Debes permitir el microfono para aceptar la llamada'),
-        'error');
+          'error');
         return;
       }
       const result = await ChatAPI.acceptCall(callState.session.id);
@@ -3050,7 +3050,7 @@
         },
         body: JSON.stringify({ duration_seconds: durationSeconds }),
         keepalive: true,
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     async function finalizeCall(toastMessage = '') {
@@ -3749,13 +3749,13 @@
       syncMessagesResponsiveLayout();
     }
 
-      async function handleFriendshipChanged() {
-        await loadInbox(Boolean(activeChat || activeUser));
-      }
+    async function handleFriendshipChanged() {
+      await loadInbox(Boolean(activeChat || activeUser));
+    }
 
-      async function handleBlocksChanged() {
-        await loadInbox(Boolean(activeChat || activeUser));
-      }
+    async function handleBlocksChanged() {
+      await loadInbox(Boolean(activeChat || activeUser));
+    }
 
     async function handlePresenceUpdated() {
       renderInbox();
@@ -3955,7 +3955,7 @@
           }
           commentPollTimer = window.setInterval(() => {
             if (!pendingCommentId || document.hidden) return;
-            loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true }).catch(() => {});
+            loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true }).catch(() => { });
           }, 2500);
           setTimeout(() => commentInput.focus(), 60);
         }
@@ -4361,7 +4361,7 @@
                     await loadFeed();
                     return;
                   }
-                  loadFeed({ passive: true }).catch(() => {});
+                  loadFeed({ passive: true }).catch(() => { });
                 },
               });
               return;
@@ -4411,7 +4411,7 @@
                 await loadFeed();
                 return;
               }
-              loadFeed({ passive: true }).catch(() => {});
+              loadFeed({ passive: true }).catch(() => { });
             },
           });
         });
@@ -4444,7 +4444,7 @@
                   await loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true });
                   return;
                 }
-                loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true }).catch(() => {});
+                loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true }).catch(() => { });
               },
             });
             return;
@@ -4487,7 +4487,7 @@
                 await loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true });
                 return;
               }
-              loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true }).catch(() => {});
+              loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true }).catch(() => { });
             },
           });
         });
@@ -4572,43 +4572,43 @@
         });
         document.addEventListener('click', onDocumentClick);
         // Intentionally no auto-apply of new posts; the user chooses via the toast.
-          async function handleBlocksChanged() {
-            await Promise.all([
-              loadFeed(),
-              loadFriends(),
-            ]);
+        async function handleBlocksChanged() {
+          await Promise.all([
+            loadFeed(),
+            loadFriends(),
+          ]);
+        }
+
+        window.addEventListener('presence:updated', loadFriends);
+        window.addEventListener('blocks:changed', handleBlocksChanged);
+        window.addEventListener('focus', handleBlocksChanged);
+        document.addEventListener('visibilitychange', handleBlocksChanged);
+
+        loadFeed();
+        loadFriends();
+        feedRefreshTimer = window.setInterval(() => {
+          if (document.hidden) return;
+          loadFeed({ passive: true });
+        }, 3000);
+
+        return () => {
+          document.removeEventListener('click', onDocumentClick);
+          window.removeEventListener('presence:updated', loadFriends);
+          window.removeEventListener('blocks:changed', handleBlocksChanged);
+          window.removeEventListener('focus', handleBlocksChanged);
+          document.removeEventListener('visibilitychange', handleBlocksChanged);
+          if (feedRefreshTimer) {
+            window.clearInterval(feedRefreshTimer);
+            feedRefreshTimer = null;
           }
-
-          window.addEventListener('presence:updated', loadFriends);
-          window.addEventListener('blocks:changed', handleBlocksChanged);
-          window.addEventListener('focus', handleBlocksChanged);
-          document.addEventListener('visibilitychange', handleBlocksChanged);
-
-          loadFeed();
-          loadFriends();
-          feedRefreshTimer = window.setInterval(() => {
-            if (document.hidden) return;
-            loadFeed({ passive: true });
-          }, 3000);
-
-          return () => {
-            document.removeEventListener('click', onDocumentClick);
-            window.removeEventListener('presence:updated', loadFriends);
-            window.removeEventListener('blocks:changed', handleBlocksChanged);
-            window.removeEventListener('focus', handleBlocksChanged);
-            document.removeEventListener('visibilitychange', handleBlocksChanged);
-            if (feedRefreshTimer) {
-              window.clearInterval(feedRefreshTimer);
-              feedRefreshTimer = null;
-            }
-            if (commentPollTimer) {
-              window.clearInterval(commentPollTimer);
-              commentPollTimer = null;
-            }
-            closeReactionPicker();
-          };
-        },
+          if (commentPollTimer) {
+            window.clearInterval(commentPollTimer);
+            commentPollTimer = null;
+          }
+          closeReactionPicker();
+        };
       },
+    },
     live: {
       title: 'Directo',
       activeNav: 'feed',
@@ -4618,7 +4618,7 @@
         const isHostRoute = String(params.host || '') === '1';
         if (!Number.isFinite(liveId) || liveId <= 0) {
           container.innerHTML = '<section class="rounded-3xl border border-slate-200 bg-white p-8 text-center text-slate-700">Directo no disponible.</section>';
-          return () => {};
+          return () => { };
         }
 
         const liveShell = container.querySelector('#live-shell');
@@ -4628,6 +4628,9 @@
           liveShell.classList.toggle('live-is-desktop', desktop);
           liveShell.classList.toggle('live-host-mobile', isHostRoute && !desktop);
           liveShell.classList.toggle('live-mobile-shell', !desktop);
+          if (!desktop && !isHostRoute) {
+            liveShell.classList.add('live-cam-stream');
+          }
           if (desktop) {
             liveShell.style.removeProperty('--live-mobile-vh');
             liveShell.style.removeProperty('--live-mobile-vw');
@@ -4760,7 +4763,7 @@
           return (Date.now() - lastCommentsUserScrollAt) < 1500;
         }
         function releaseWakeLock() {
-          if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+          if (wakeLock) { wakeLock.release().catch(() => { }); wakeLock = null; }
         }
         function syncLiveMobileViewportMetrics() {
           if (!liveShell || isDesktopClient()) {
@@ -4774,11 +4777,15 @@
           const activeElement = document.activeElement;
           const keyboardLikelyOpen = activeElement === liveCommentInputMobile || liveMobileInputRow?.contains(activeElement);
           if (!keyboardLikelyOpen || !liveMobileLayoutHeight || viewportHeight > liveMobileLayoutHeight * 0.78) {
-            liveMobileLayoutHeight = Math.max(liveMobileLayoutHeight, layoutViewportHeight, viewportHeight);
+            liveMobileLayoutHeight = Math.max(layoutViewportHeight, viewportHeight);
           }
           const stableViewportHeight = Math.max(liveMobileLayoutHeight || 0, layoutViewportHeight, viewportHeight);
           const visualOffsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0));
-          const keyboardOffset = Math.max(0, stableViewportHeight - viewportHeight - visualOffsetTop);
+          
+          let keyboardOffset = 0;
+          if (layoutViewportHeight > viewportHeight + 5) {
+            keyboardOffset = Math.max(0, stableViewportHeight - viewportHeight - visualOffsetTop);
+          }
           const topbarHeight = mobileTopbar?.offsetHeight || 0;
           const headingHeight = liveMobileHeadingRow?.offsetHeight || 0;
           const inputHeight = liveMobileInputRow?.offsetHeight || 0;
@@ -4821,7 +4828,7 @@
             window.scrollTo(0, 0);
             document.documentElement.scrollTop = 0;
             document.body.scrollTop = 0;
-          } catch (_error) {}
+          } catch (_error) { }
           scheduleLiveMobileViewportSync();
           scheduleLiveMobileViewportSync(90);
           scheduleLiveMobileViewportSync(240);
@@ -4833,7 +4840,7 @@
           }
           try {
             viewerPlayerMediaObserver.disconnect();
-          } catch (_error) {}
+          } catch (_error) { }
           viewerPlayerMediaObserver = null;
         }
 
@@ -4879,11 +4886,11 @@
               if (typeof video?.webkitExitFullscreen === 'function' && video.webkitDisplayingFullscreen) {
                 video.webkitExitFullscreen();
               }
-            } catch (_error) {}
+            } catch (_error) { }
 
             const fsEl = document.fullscreenElement;
             if (fsEl && fsEl !== liveShell) {
-              document.exitFullscreen().catch(() => {});
+              document.exitFullscreen().catch(() => { });
             }
 
             restoreViewerShellLayout();
@@ -4912,7 +4919,7 @@
           video.setAttribute('x-webkit-airplay', 'deny');
           try {
             video.disablePictureInPicture = true;
-          } catch (_error) {}
+          } catch (_error) { }
 
           if (video.dataset.liveViewerFullscreenGuardAttached !== '1') {
             const preventFullscreenTakeover = () => {
@@ -5021,7 +5028,7 @@
           });
 
           if (bundle.audioContext) {
-            bundle.audioContext.close().catch(() => {});
+            bundle.audioContext.close().catch(() => { });
           }
         }
 
@@ -5103,13 +5110,13 @@
             element.defaultMuted = viewerIsMuted;
             element.volume = viewerIsMuted ? 0 : 1;
             if (!viewerIsMuted) {
-              Promise.resolve(element.play?.()).catch(() => {});
+              Promise.resolve(element.play?.()).catch(() => { });
             }
           });
           if (viewerPlayer?.setMute) {
             try {
               viewerPlayer.setMute(viewerIsMuted);
-            } catch (_error) {}
+            } catch (_error) { }
           }
           syncViewerMuteButtons();
         }
@@ -5809,7 +5816,7 @@
           return false;
         }
 
-function createViewerVideo() {
+        function createViewerVideo() {
           const video = document.createElement('video');
           video.className = 'w-full h-full object-contain bg-black absolute inset-0';
           prepareViewerMediaElement(video);
@@ -5847,7 +5854,7 @@ function createViewerVideo() {
             video.style.opacity = '1';
             clearViewerFreezeFrame();
             hideViewerRetrySpinner();
-            endLiveSourceTransition(transitionToken, 1000).catch(() => {});
+            endLiveSourceTransition(transitionToken, 1000).catch(() => { });
           };
           video.addEventListener('playing', hideFallback, { once: true });
           video.addEventListener('canplay', hideFallback, { once: true });
@@ -5894,7 +5901,7 @@ function createViewerVideo() {
             video.style.opacity = '1';
             clearViewerFreezeFrame();
             hideViewerRetrySpinner();
-            endLiveSourceTransition(transitionToken, 1000).catch(() => {});
+            endLiveSourceTransition(transitionToken, 1000).catch(() => { });
           };
           video.addEventListener('playing', hideFallback, { once: true });
           video.addEventListener('canplay', hideFallback, { once: true });
@@ -5954,7 +5961,7 @@ function createViewerVideo() {
           }, 120);
         }
 
-async function ensureViewerPlayer(forceRestart = false) {
+        async function ensureViewerPlayer(forceRestart = false) {
           if (viewerBootstrapInFlight) {
             return;
           }
@@ -6147,44 +6154,44 @@ async function ensureViewerPlayer(forceRestart = false) {
           const musicLike = profile === 'screen' || profile === 'mixed' || profile === 'system';
           return musicLike
             ? {
-                echoCancellation: { ideal: false },
-                noiseSuppression: { ideal: false },
-                autoGainControl: { ideal: false },
-                channelCount: { ideal: 2 },
-                sampleRate: { ideal: 48000 },
-                sampleSize: { ideal: 16 },
-              }
+              echoCancellation: { ideal: false },
+              noiseSuppression: { ideal: false },
+              autoGainControl: { ideal: false },
+              channelCount: { ideal: 2 },
+              sampleRate: { ideal: 48000 },
+              sampleSize: { ideal: 16 },
+            }
             : {
-                echoCancellation: { ideal: true },
-                noiseSuppression: { ideal: true },
-                autoGainControl: { ideal: false },
-                channelCount: { ideal: 1 },
-                sampleRate: { ideal: 48000 },
-                sampleSize: { ideal: 16 },
-              };
+              echoCancellation: { ideal: true },
+              noiseSuppression: { ideal: true },
+              autoGainControl: { ideal: false },
+              channelCount: { ideal: 1 },
+              sampleRate: { ideal: 48000 },
+              sampleSize: { ideal: 16 },
+            };
         }
 
         function getLiveVideoConstraints(source, overrides = {}) {
           const desktop = isDesktopClient();
           const base = source === 'screen'
             ? {
-                // Preserve the shared source dimensions; forcing 1920x1080 stretches narrow windows.
-                frameRate: { ideal: 60, max: 60 },
-              }
+              // Preserve the shared source dimensions; forcing 1920x1080 stretches narrow windows.
+              frameRate: { ideal: 60, max: 60 },
+            }
             : desktop
               ? {
-                  width: { ideal: 1920, max: 1920 },
-                  height: { ideal: 1080, max: 1080 },
-                  frameRate: { ideal: 60, max: 60 },
-                  aspectRatio: { ideal: 16 / 9 },
-                }
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 },
+                frameRate: { ideal: 60, max: 60 },
+                aspectRatio: { ideal: 16 / 9 },
+              }
               : {
-                  // Mobile camera: avoid strict portrait + crop-and-scale because
-                  // some Android devices respond with a zoomed/cropped stream.
-                  width: { ideal: 1280, max: 1280 },
-                  height: { ideal: 720, max: 720 },
-                  frameRate: { ideal: 24, max: 30 },
-                };
+                // Mobile camera: avoid strict portrait + crop-and-scale because
+                // some Android devices respond with a zoomed/cropped stream.
+                width: { ideal: 1280, max: 1280 },
+                height: { ideal: 720, max: 720 },
+                frameRate: { ideal: 24, max: 30 },
+              };
 
           return { ...base, ...overrides };
         }
@@ -6197,13 +6204,13 @@ async function ensureViewerPlayer(forceRestart = false) {
           stream.getVideoTracks().forEach((track) => {
             try {
               track.contentHint = source === 'screen' ? 'detail' : 'motion';
-            } catch (_error) {}
+            } catch (_error) { }
           });
 
           stream.getAudioTracks().forEach((track) => {
             try {
               track.contentHint = source === 'screen' ? 'music' : 'speech';
-            } catch (_error) {}
+            } catch (_error) { }
           });
         }
 
@@ -6244,11 +6251,11 @@ async function ensureViewerPlayer(forceRestart = false) {
             if (mixedTrack) {
               try {
                 mixedTrack.contentHint = 'music';
-              } catch (_error) {}
+              } catch (_error) { }
             }
 
             if (audioContext.state === 'suspended') {
-              audioContext.resume().catch(() => {});
+              audioContext.resume().catch(() => { });
             }
 
             return {
@@ -6284,7 +6291,7 @@ async function ensureViewerPlayer(forceRestart = false) {
             probeVideo.addEventListener('loadedmetadata', done, { once: true });
             window.setTimeout(done, 700);
           });
-          await probeVideo.play().catch(() => {});
+          await probeVideo.play().catch(() => { });
 
           const sourceWidth = Number(probeVideo.videoWidth || sourceTrack.getSettings?.().width || 0);
           const sourceHeight = Number(probeVideo.videoHeight || sourceTrack.getSettings?.().height || 0);
@@ -6637,7 +6644,7 @@ async function ensureViewerPlayer(forceRestart = false) {
           hostPreviewVideo.srcObject = bundle.previewStream || bundle.publishedStream;
           hostPreviewVideo.style.objectFit = (!isDesktopClient() && source === 'camera') ? 'cover' : 'contain';
           showHostPreview();
-          await hostPreviewVideo.play().catch(() => {});
+          await hostPreviewVideo.play().catch(() => { });
 
           await livekit.startStreaming(
             buildLivestreamPublishUrl(streamKey, transportMode),
@@ -6800,7 +6807,7 @@ async function ensureViewerPlayer(forceRestart = false) {
           } finally {
             sourceBusy = false;
             if (transitionId) {
-              endLiveSourceTransition(transitionId, 1000).catch(() => {});
+              endLiveSourceTransition(transitionId, 1000).catch(() => { });
             }
           }
         }
@@ -7093,8 +7100,8 @@ async function ensureViewerPlayer(forceRestart = false) {
               },
               body,
               keepalive: true,
-            }).catch(() => {});
-          } catch (_error) {}
+            }).catch(() => { });
+          } catch (_error) { }
         }
 
         async function endLivestream() {
@@ -7131,8 +7138,8 @@ async function ensureViewerPlayer(forceRestart = false) {
           exitLivestream();
         }
 
-        const commentsLoop = () => loadComments().catch(() => {});
-        const heartbeatLoop = () => heartbeat().catch(() => {});
+        const commentsLoop = () => loadComments().catch(() => { });
+        const heartbeatLoop = () => heartbeat().catch(() => { });
         const stateLoop = async () => {
           await loadLivestream();
           await pollReactionEvents();
@@ -7252,12 +7259,12 @@ async function ensureViewerPlayer(forceRestart = false) {
         function maybeRequestViewerShellFullscreenFromGesture() {
           if (isDesktopClient() || isHostOnMobile || shouldUseFullscreenOnlyImmersive || !immersiveActive || !liveShell) return;
           if (document.fullscreenElement) return;
-          requestLiveShellFullscreen().catch(() => {});
+          requestLiveShellFullscreen().catch(() => { });
         }
         let lastTouchTime = 0; // guard against synthetic mouse events after touch
         if (liveVideoWrap) {
           liveVideoWrap.addEventListener('mouseenter', () => { if (Date.now() - lastTouchTime > 600) showOverlay(); });
-          liveVideoWrap.addEventListener('mousemove',  () => { if (Date.now() - lastTouchTime > 600) showOverlay(); });
+          liveVideoWrap.addEventListener('mousemove', () => { if (Date.now() - lastTouchTime > 600) showOverlay(); });
           liveVideoWrap.addEventListener('mouseleave', () => {
             if (isHostOnDesktop) return;
             if (Date.now() - lastTouchTime > 600) {
@@ -7360,14 +7367,14 @@ async function ensureViewerPlayer(forceRestart = false) {
         if (fullscreenBtn && liveVideoWrap) {
           fullscreenBtn.addEventListener('click', async () => {
             if (document.fullscreenElement === liveVideoWrap) {
-              document.exitFullscreen().catch(() => {});
-              try { screen.orientation.unlock(); } catch(e) {}
+              document.exitFullscreen().catch(() => { });
+              try { screen.orientation.unlock(); } catch (e) { }
             } else {
               pendingVideoFs = true;
               try {
                 await liveVideoWrap.requestFullscreen();
-                try { await screen.orientation.lock('landscape'); } catch(e) {}
-              } catch(e) {}
+                try { await screen.orientation.lock('landscape'); } catch (e) { }
+              } catch (e) { }
               pendingVideoFs = false;
             }
           });
@@ -7404,7 +7411,7 @@ async function ensureViewerPlayer(forceRestart = false) {
               // can promote the inner video into an unwanted vertical fullscreen takeover.
             } else {
               // Host mobile: full-bleed camera mode.
-              requestLiveShellFullscreen().catch(() => {});
+              requestLiveShellFullscreen().catch(() => { });
               // Move the X button out of the overlay so overlay timer can't hide it
               if (immersiveBtn && liveShell) liveShell.appendChild(immersiveBtn);
             }
@@ -7428,7 +7435,7 @@ async function ensureViewerPlayer(forceRestart = false) {
 
           // Exit fullscreen if shell is the fullscreen element
           if (document.fullscreenElement === liveShell) {
-            document.exitFullscreen().catch(() => {});
+            document.exitFullscreen().catch(() => { });
           }
 
           // Mobile: move button back to its original parent (the overlay)
@@ -7516,7 +7523,7 @@ async function ensureViewerPlayer(forceRestart = false) {
               // Exited video fullscreen → restore mobileOverlay, re-enter shell fullscreen
               inVideoFullscreen = false;
               liveVideoWrap?.classList.remove('live-video-hud-hidden');
-              try { screen.orientation.unlock(); } catch(e) {}
+              try { screen.orientation.unlock(); } catch (e) { }
               const icon = fullscreenBtn?.querySelector('.material-symbols-outlined');
               if (icon) icon.textContent = 'fullscreen';
               const playerFsIcon = playerFsBtn?.querySelector('.material-symbols-outlined');
@@ -7605,14 +7612,14 @@ async function ensureViewerPlayer(forceRestart = false) {
         if (playerFsBtn && liveVideoWrap) {
           playerFsBtn.addEventListener('click', async () => {
             if (document.fullscreenElement === liveVideoWrap) {
-              document.exitFullscreen().catch(() => {});
-              try { screen.orientation.unlock(); } catch(e) {}
+              document.exitFullscreen().catch(() => { });
+              try { screen.orientation.unlock(); } catch (e) { }
             } else {
               pendingVideoFs = true;
               try {
                 await liveVideoWrap.requestFullscreen();
-                try { await screen.orientation.lock('landscape'); } catch(e) {}
-              } catch(e) {
+                try { await screen.orientation.lock('landscape'); } catch (e) { }
+              } catch (e) {
                 pendingVideoFs = false;
               }
             }
@@ -7818,24 +7825,24 @@ async function ensureViewerPlayer(forceRestart = false) {
           if (overlayTimer) clearTimeout(overlayTimer);
           if (longPressTimer) clearTimeout(longPressTimer);
           window.cancelAnimationFrame(liveMobileViewportSyncRaf);
-            window.clearTimeout(liveMobileViewportSyncTimeout);
-            document.removeEventListener('touchend', handleGlobalLiveTouchToggle);
-            removeFullscreenTapListeners(document);
-            removeFullscreenTapListeners(liveVideoWrap);
-            removeFullscreenTapListeners(viewerPlayerRoot);
-            removeFullscreenTapListeners(playerTapCatcher);
-            if (viewerPlayerRoot) {
-              viewerPlayerRoot.removeEventListener('touchend', guardViewerPlayerTap, true);
-              viewerPlayerRoot.removeEventListener('click', guardViewerPlayerTap, true);
-            }
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            // Clean up immersive mode
-            document.body.classList.remove('live-immersive-active');
-            if (liveShell) {
-              liveShell.classList.remove('live-immersive-shell');
-              liveShell.classList.remove('live-shell-fullscreen');
-            }
-            releaseWakeLock();
+          window.clearTimeout(liveMobileViewportSyncTimeout);
+          document.removeEventListener('touchend', handleGlobalLiveTouchToggle);
+          removeFullscreenTapListeners(document);
+          removeFullscreenTapListeners(liveVideoWrap);
+          removeFullscreenTapListeners(viewerPlayerRoot);
+          removeFullscreenTapListeners(playerTapCatcher);
+          if (viewerPlayerRoot) {
+            viewerPlayerRoot.removeEventListener('touchend', guardViewerPlayerTap, true);
+            viewerPlayerRoot.removeEventListener('click', guardViewerPlayerTap, true);
+          }
+          document.removeEventListener('fullscreenchange', handleFullscreenChange);
+          // Clean up immersive mode
+          document.body.classList.remove('live-immersive-active');
+          if (liveShell) {
+            liveShell.classList.remove('live-immersive-shell');
+            liveShell.classList.remove('live-shell-fullscreen');
+          }
+          releaseWakeLock();
           // If host mobile navigates away while stream is active, auto-end the stream via API
           window.removeEventListener('pagehide', endHostStreamOnPageLeave);
           window.removeEventListener('beforeunload', endHostStreamOnPageLeave);
@@ -7873,53 +7880,53 @@ async function ensureViewerPlayer(forceRestart = false) {
       activeNav: 'companions',
       templatePath: '/pages/companions.html',
       mount({ container, router, user }) {
-          const grid = container.querySelector('#directory-grid');
-          const filterFaculty = container.querySelector('#filter-faculty');
-          const filterCareer = container.querySelector('#filter-career');
-          const emptyState = container.querySelector('#companions-empty-state');
-          const filtersWrap = container.querySelector('#companions-directory-filters');
-          const tabButtons = Array.from(container.querySelectorAll('[data-companions-tab]'));
-          let activeTab = 'directory';
+        const grid = container.querySelector('#directory-grid');
+        const filterFaculty = container.querySelector('#filter-faculty');
+        const filterCareer = container.querySelector('#filter-career');
+        const emptyState = container.querySelector('#companions-empty-state');
+        const filtersWrap = container.querySelector('#companions-directory-filters');
+        const tabButtons = Array.from(container.querySelectorAll('[data-companions-tab]'));
+        let activeTab = 'directory';
 
-          function setCompanionsTab(tab) {
-            activeTab = tab;
-            tabButtons.forEach((button) => {
-              const isActive = button.dataset.companionsTab === tab;
-              button.classList.toggle('bg-white', isActive);
-              button.classList.toggle('shadow-sm', isActive);
-              button.classList.toggle('text-slate-900', isActive);
-              button.classList.toggle('font-semibold', isActive);
-              button.classList.toggle('text-slate-600', !isActive);
-              button.classList.toggle('font-medium', !isActive);
-            });
-            filtersWrap.classList.toggle('hidden', tab !== 'directory');
+        function setCompanionsTab(tab) {
+          activeTab = tab;
+          tabButtons.forEach((button) => {
+            const isActive = button.dataset.companionsTab === tab;
+            button.classList.toggle('bg-white', isActive);
+            button.classList.toggle('shadow-sm', isActive);
+            button.classList.toggle('text-slate-900', isActive);
+            button.classList.toggle('font-semibold', isActive);
+            button.classList.toggle('text-slate-600', !isActive);
+            button.classList.toggle('font-medium', !isActive);
+          });
+          filtersWrap.classList.toggle('hidden', tab !== 'directory');
+        }
+
+        function syncCareerOptions() {
+          const faculty = filterFaculty.value || 'Todos';
+          const careers = getFacultyCareerOptions(faculty);
+          const previous = filterCareer.value;
+          filterCareer.innerHTML = careers.map((career) => `<option value="${escapeHtml(career)}">${escapeHtml(career)}</option>`).join('');
+          if (careers.includes(previous)) {
+            filterCareer.value = previous;
+          }
+        }
+
+        function renderCards(users, options = {}) {
+          const {
+            emptyMessage = 'No hay usuarios para mostrar.',
+            blocked = false,
+          } = options;
+
+          if (!users.length) {
+            grid.innerHTML = '';
+            emptyState.textContent = emptyMessage;
+            emptyState.classList.remove('hidden');
+            return;
           }
 
-          function syncCareerOptions() {
-            const faculty = filterFaculty.value || 'Todos';
-            const careers = getFacultyCareerOptions(faculty);
-            const previous = filterCareer.value;
-            filterCareer.innerHTML = careers.map((career) => `<option value="${escapeHtml(career)}">${escapeHtml(career)}</option>`).join('');
-            if (careers.includes(previous)) {
-              filterCareer.value = previous;
-            }
-          }
-
-          function renderCards(users, options = {}) {
-            const {
-              emptyMessage = 'No hay usuarios para mostrar.',
-              blocked = false,
-            } = options;
-
-            if (!users.length) {
-              grid.innerHTML = '';
-              emptyState.textContent = emptyMessage;
-              emptyState.classList.remove('hidden');
-              return;
-            }
-
-            emptyState.classList.add('hidden');
-            grid.innerHTML = users.map((directoryUser) => `
+          emptyState.classList.add('hidden');
+          grid.innerHTML = users.map((directoryUser) => `
               <div class="bg-white rounded-[24px] border border-slate-200 p-5 flex flex-col items-center text-center hover:shadow-md transition-shadow relative">
                 <div class="absolute top-3 right-3">
                   <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold text-white" style="background:${userColor(directoryUser)}">${escapeHtml(directoryUser.faculty || 'UPT')}</span>
@@ -7936,105 +7943,105 @@ async function ensureViewerPlayer(forceRestart = false) {
                 </div>
               </div>
             `).join('');
+        }
+
+        async function loadDirectory() {
+          const faculty = filterFaculty.value;
+          const career = filterCareer.value;
+          const query = new URLSearchParams();
+          if (faculty && faculty !== 'Todos') query.set('faculty', faculty);
+          if (career && career !== 'Todos') query.set('career', career);
+          const params = query.toString();
+          const result = await SocialAPI.getDirectory(params);
+          const users = getList(result).filter((directoryUser) => Number(directoryUser.id) !== Number(user.id));
+
+          if (!result?.ok) {
+            grid.innerHTML = '';
+            emptyState.textContent = 'No se pudieron cargar los companeros.';
+            emptyState.classList.remove('hidden');
+            return;
           }
 
-          async function loadDirectory() {
-            const faculty = filterFaculty.value;
-            const career = filterCareer.value;
-            const query = new URLSearchParams();
-            if (faculty && faculty !== 'Todos') query.set('faculty', faculty);
-            if (career && career !== 'Todos') query.set('career', career);
-            const params = query.toString();
-            const result = await SocialAPI.getDirectory(params);
-            const users = getList(result).filter((directoryUser) => Number(directoryUser.id) !== Number(user.id));
+          renderCards(users, {
+            emptyMessage: 'No se encontraron companeros.',
+          });
+        }
 
-            if (!result?.ok) {
-              grid.innerHTML = '';
-              emptyState.textContent = 'No se pudieron cargar los companeros.';
-              emptyState.classList.remove('hidden');
-              return;
-            }
+        async function loadBlockedUsers() {
+          const result = await SocialAPI.getBlockedDirectory();
+          const users = getList(result).filter((blockedUser) => Number(blockedUser.id) !== Number(user.id));
 
-            renderCards(users, {
-              emptyMessage: 'No se encontraron companeros.',
-            });
+          if (!result?.ok) {
+            grid.innerHTML = '';
+            emptyState.textContent = 'No se pudo cargar la lista de bloqueados.';
+            emptyState.classList.remove('hidden');
+            return;
           }
 
-          async function loadBlockedUsers() {
-            const result = await SocialAPI.getBlockedDirectory();
-            const users = getList(result).filter((blockedUser) => Number(blockedUser.id) !== Number(user.id));
+          renderCards(users, {
+            blocked: true,
+            emptyMessage: 'No tienes usuarios bloqueados.',
+          });
+        }
 
-            if (!result?.ok) {
-              grid.innerHTML = '';
-              emptyState.textContent = 'No se pudo cargar la lista de bloqueados.';
-              emptyState.classList.remove('hidden');
-              return;
-            }
+        async function loadActiveTab() {
+          grid.innerHTML = '<p class="text-slate-400 text-sm col-span-3 text-center py-8">Cargando...</p>';
+          emptyState.classList.add('hidden');
 
-            renderCards(users, {
-              blocked: true,
-              emptyMessage: 'No tienes usuarios bloqueados.',
-            });
+          if (activeTab === 'blocked') {
+            await loadBlockedUsers();
+            return;
           }
 
-          async function loadActiveTab() {
-            grid.innerHTML = '<p class="text-slate-400 text-sm col-span-3 text-center py-8">Cargando...</p>';
-            emptyState.classList.add('hidden');
+          await loadDirectory();
+        }
 
-            if (activeTab === 'blocked') {
-              await loadBlockedUsers();
-              return;
-            }
+        async function handleBlocksChanged() {
+          await loadActiveTab();
+        }
 
-            await loadDirectory();
-          }
-
-          async function handleBlocksChanged() {
-            await loadActiveTab();
-          }
-
-          filterFaculty.value = 'Todos';
+        filterFaculty.value = 'Todos';
+        syncCareerOptions();
+        filterFaculty.addEventListener('change', async () => {
           syncCareerOptions();
-          filterFaculty.addEventListener('change', async () => {
-            syncCareerOptions();
+          await loadActiveTab();
+        });
+        filterCareer.addEventListener('change', loadActiveTab);
+        tabButtons.forEach((button) => {
+          button.addEventListener('click', async () => {
+            setCompanionsTab(button.dataset.companionsTab);
             await loadActiveTab();
           });
-          filterCareer.addEventListener('change', loadActiveTab);
-          tabButtons.forEach((button) => {
-            button.addEventListener('click', async () => {
-              setCompanionsTab(button.dataset.companionsTab);
-              await loadActiveTab();
-            });
-          });
-          grid.addEventListener('click', async (event) => {
-            const button = event.target.closest('[data-view-profile]');
-            if (button) {
-              router.navigate('profile', { id: button.dataset.viewProfile });
-              return;
-            }
+        });
+        grid.addEventListener('click', async (event) => {
+          const button = event.target.closest('[data-view-profile]');
+          if (button) {
+            router.navigate('profile', { id: button.dataset.viewProfile });
+            return;
+          }
 
-            const unblockButton = event.target.closest('[data-unblock-user]');
-            if (!unblockButton) return;
+          const unblockButton = event.target.closest('[data-unblock-user]');
+          if (!unblockButton) return;
 
-            const result = await SocialAPI.unblockUser(unblockButton.dataset.unblockUser);
-            if (result?.ok) {
-              showToast('Usuario desbloqueado', 'success');
-              window.dispatchEvent(new CustomEvent('blocks:changed'));
-              await loadActiveTab();
-              return;
-            }
+          const result = await SocialAPI.unblockUser(unblockButton.dataset.unblockUser);
+          if (result?.ok) {
+            showToast('Usuario desbloqueado', 'success');
+            window.dispatchEvent(new CustomEvent('blocks:changed'));
+            await loadActiveTab();
+            return;
+          }
 
-            showToast(result?.data?.error || 'No se pudo desbloquear al usuario', 'error');
-          });
+          showToast(result?.data?.error || 'No se pudo desbloquear al usuario', 'error');
+        });
 
-          setCompanionsTab('directory');
-          loadActiveTab();
+        setCompanionsTab('directory');
+        loadActiveTab();
 
-          window.addEventListener('blocks:changed', handleBlocksChanged);
+        window.addEventListener('blocks:changed', handleBlocksChanged);
 
-          return () => {
-            window.removeEventListener('blocks:changed', handleBlocksChanged);
-          };
+        return () => {
+          window.removeEventListener('blocks:changed', handleBlocksChanged);
+        };
       },
     },
     groups: {
@@ -8849,7 +8856,7 @@ async function ensureViewerPlayer(forceRestart = false) {
               </div>
             </div>
             `;
-          }
+        }
 
         function renderConversationTabSkeleton() {
           if (!groupData?.can_view_conversation) {
@@ -9148,10 +9155,10 @@ async function ensureViewerPlayer(forceRestart = false) {
               <h2 class="text-lg font-bold text-slate-900 mb-4">Miembros</h2>
               <div id="group-members-list" class="space-y-3">
                 ${members.map((member) => {
-                  const isSelf = Number(member.user_id) === Number(user.id);
-                  const canManageMember = groupCanManage() && member.role !== 'creator' && !isSelf;
-                  const canChangeRole = groupData.current_role === 'creator' && member.role !== 'creator' && !isSelf;
-                  return `
+            const isSelf = Number(member.user_id) === Number(user.id);
+            const canManageMember = groupCanManage() && member.role !== 'creator' && !isSelf;
+            const canChangeRole = groupData.current_role === 'creator' && member.role !== 'creator' && !isSelf;
+            return `
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4">
                       <div class="flex items-center gap-3">
                         ${renderAvatar(member.user || {}, { sizeClass: 'w-11 h-11', textClass: 'text-white font-bold text-sm' })}
@@ -9174,7 +9181,7 @@ async function ensureViewerPlayer(forceRestart = false) {
                       </div>
                     </div>
                   `;
-                }).join('')}
+          }).join('')}
               </div>
             </div>
           `;
@@ -9267,12 +9274,12 @@ async function ensureViewerPlayer(forceRestart = false) {
                   </div>
                   <div class="p-4">
                     <p class="font-semibold text-slate-900 text-sm">${escapeHtml(displayName(resolveProfileData({
-                      id: post.user_id,
-                      user_name: post.user_name,
-                      user_faculty: post.user_faculty,
-                      user_school: post.user_school,
-                      user_avatar: post.user_avatar,
-                    })))}</p>
+            id: post.user_id,
+            user_name: post.user_name,
+            user_faculty: post.user_faculty,
+            user_school: post.user_school,
+            user_avatar: post.user_avatar,
+          })))}</p>
                     <p class="text-xs text-slate-500 mt-1">${escapeHtml(timeAgo(post.created_at))}</p>
                     ${post.content ? `<p class="text-sm text-slate-600 mt-3 leading-6">${escapeHtml(post.content.slice(0, 120))}</p>` : ''}
                   </div>
@@ -9579,7 +9586,7 @@ async function ensureViewerPlayer(forceRestart = false) {
           if (!ok) return null;
           setTab('info');
           renderInfoTab();
-          return () => {};
+          return () => { };
         })();
       },
     },
@@ -10159,7 +10166,7 @@ async function ensureViewerPlayer(forceRestart = false) {
 
           profileRelationshipPollTimer = window.setInterval(() => {
             if (document.hidden) return;
-            loadProfile({ skipPosts: true, silent: true }).catch(() => {});
+            loadProfile({ skipPosts: true, silent: true }).catch(() => { });
           }, PROFILE_RELATIONSHIP_POLL_INTERVAL_MS);
         }
 
@@ -10294,8 +10301,8 @@ async function ensureViewerPlayer(forceRestart = false) {
                   Bloquear
                 </button>
               `;
-            } else if (incomingRequestId) {
-              profileActions.innerHTML = `
+          } else if (incomingRequestId) {
+            profileActions.innerHTML = `
                 <button type="button" data-profile-action="accept-request" class="bg-[#1B2A6B] hover:bg-[#152259] text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
                   <span class="material-symbols-outlined text-[20px]">how_to_reg</span>
                   Aceptar solicitud
@@ -10305,8 +10312,8 @@ async function ensureViewerPlayer(forceRestart = false) {
                   Bloquear
                 </button>
               `;
-            } else {
-              profileActions.innerHTML = `
+          } else {
+            profileActions.innerHTML = `
                 <button type="button" data-profile-action="send-request" class="bg-[#D4A017] hover:bg-[#C19015] text-black font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
                   <span class="material-symbols-outlined text-[20px]">person_add</span>
                   Enviar solicitud
@@ -10316,7 +10323,7 @@ async function ensureViewerPlayer(forceRestart = false) {
                   Bloquear
                 </button>
               `;
-            }
+          }
 
           if (!skipPosts) {
             await loadPosts(profileData.id);
@@ -10324,64 +10331,64 @@ async function ensureViewerPlayer(forceRestart = false) {
         }
 
         function handleProfileFriendshipChanged() {
-          loadProfile({ skipPosts: true, silent: true }).catch(() => {});
+          loadProfile({ skipPosts: true, silent: true }).catch(() => { });
         }
 
         function handleProfileVisibilityChange() {
           if (document.hidden) {
             return;
           }
-          loadProfile({ skipPosts: true, silent: true }).catch(() => {});
+          loadProfile({ skipPosts: true, silent: true }).catch(() => { });
         }
 
         profileActions.addEventListener('click', async (event) => {
           const button = event.target.closest('[data-profile-action]');
           if (!button || !profileData) return;
 
-            if (button.dataset.profileAction === 'message') {
-              router.navigate('messages', { user: profileData.id });
+          if (button.dataset.profileAction === 'message') {
+            router.navigate('messages', { user: profileData.id });
+            return;
+          }
+
+          if (button.dataset.profileAction === 'block-user') {
+            const confirmed = await confirmAction({
+              title: 'Bloquear usuario',
+              copy: 'Se cortara la amistad, el chat y las interacciones sociales entre ambos.',
+              acceptLabel: 'Bloquear',
+              tone: 'danger',
+            });
+            if (!confirmed) return;
+
+            const result = await SocialAPI.blockUser(profileData.id);
+            if (result?.ok) {
+              showToast('Usuario bloqueado', 'success');
+              window.dispatchEvent(new CustomEvent('friendship:changed'));
+              window.dispatchEvent(new CustomEvent('blocks:changed'));
+              if (window.loadNotifications) window.loadNotifications();
+              loadProfile();
               return;
             }
 
-            if (button.dataset.profileAction === 'block-user') {
-              const confirmed = await confirmAction({
-                title: 'Bloquear usuario',
-                copy: 'Se cortara la amistad, el chat y las interacciones sociales entre ambos.',
-                acceptLabel: 'Bloquear',
-                tone: 'danger',
-              });
-              if (!confirmed) return;
+            showToast(result?.data?.error || 'No se pudo bloquear al usuario', 'error');
+            return;
+          }
 
-              const result = await SocialAPI.blockUser(profileData.id);
-              if (result?.ok) {
-                showToast('Usuario bloqueado', 'success');
-                window.dispatchEvent(new CustomEvent('friendship:changed'));
-                window.dispatchEvent(new CustomEvent('blocks:changed'));
-                if (window.loadNotifications) window.loadNotifications();
-                loadProfile();
-                return;
-              }
-
-              showToast(result?.data?.error || 'No se pudo bloquear al usuario', 'error');
+          if (button.dataset.profileAction === 'unblock-user') {
+            const result = await SocialAPI.unblockUser(profileData.id);
+            if (result?.ok) {
+              showToast('Usuario desbloqueado', 'success');
+              window.dispatchEvent(new CustomEvent('blocks:changed'));
+              loadProfile();
               return;
             }
 
-            if (button.dataset.profileAction === 'unblock-user') {
-              const result = await SocialAPI.unblockUser(profileData.id);
-              if (result?.ok) {
-                showToast('Usuario desbloqueado', 'success');
-                window.dispatchEvent(new CustomEvent('blocks:changed'));
-                loadProfile();
-                return;
-              }
+            showToast(result?.data?.error || 'No se pudo desbloquear al usuario', 'error');
+            return;
+          }
 
-              showToast(result?.data?.error || 'No se pudo desbloquear al usuario', 'error');
-              return;
-            }
-
-            if (button.dataset.profileAction === 'send-request') {
-              const result = await SocialAPI.sendRequest(profileData.id);
-              if (result?.ok) {
+          if (button.dataset.profileAction === 'send-request') {
+            const result = await SocialAPI.sendRequest(profileData.id);
+            if (result?.ok) {
               showToast('Solicitud enviada', 'success');
               window.dispatchEvent(new CustomEvent('friendship:changed'));
               button.disabled = true;
@@ -10801,9 +10808,9 @@ async function ensureViewerPlayer(forceRestart = false) {
                 <td class="py-3 px-5"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold text-white tracking-wide" style="background:${userColor(listedUser)}">${escapeHtml(listedUser.faculty || 'UPT')}</span></td>
                 <td class="py-3 px-5">
                   ${active
-                    ? '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold text-[#16A34A] bg-[#DCFCE7]"><span class="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span> Activo</span>'
-                    : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold text-[#DC2626] bg-[#FEE2E2]"><span class="w-1.5 h-1.5 rounded-full bg-[#DC2626]"></span> ${escapeHtml(formatBlockedUntilLabel(listedUser.blocked_until, listedUser.is_blocked_indefinitely))}</span>`
-                  }
+                ? '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold text-[#16A34A] bg-[#DCFCE7]"><span class="w-1.5 h-1.5 rounded-full bg-[#16A34A]"></span> Activo</span>'
+                : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold text-[#DC2626] bg-[#FEE2E2]"><span class="w-1.5 h-1.5 rounded-full bg-[#DC2626]"></span> ${escapeHtml(formatBlockedUntilLabel(listedUser.blocked_until, listedUser.is_blocked_indefinitely))}</span>`
+              }
                 </td>
                 <td class="py-3 px-5">
                   ${renderAdminRoleBadges(listedUser)}

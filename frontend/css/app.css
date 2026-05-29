@@ -5008,6 +5008,19 @@ body.live-immersive-active #app-view {
   border-color: rgba(236, 72, 153, 0.4);
 }
 
+/* Fix mobile overlap of player controls with input row */
+.live-mobile-shell.live-cam-stream #live-player-controls,
+.live-host-mobile #live-player-controls {
+  bottom: 96px !important;
+}
+
+@media (max-width: 520px) {
+  .live-mobile-shell.live-cam-stream #live-player-controls,
+  .live-host-mobile #live-player-controls {
+    bottom: calc(env(safe-area-inset-bottom, 10px) + 80px) !important;
+  }
+}
+
 /* ── Overlay auto-hide transition ── */
 .live-source-transition {
   position: absolute;
