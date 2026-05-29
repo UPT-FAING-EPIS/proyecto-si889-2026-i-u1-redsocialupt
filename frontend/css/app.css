@@ -4272,18 +4272,22 @@ body {
   padding: 8px 12px 8px;
   /* Let the composer own its own row so it never gets pushed out of view. */
   height: auto !important;
-  max-height: none !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   overscroll-behavior: contain;
-  pointer-events: auto;
-  /* Keep the container scrollable and let short chats sit at the bottom. */
+  pointer-events: auto !important;
+  z-index: 40 !important;
+  /* Keep the container scrollable and let short chats sit at the bottom using margin-top: auto on first child */
   display: flex !important;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-start;
   min-height: 0;
   align-self: stretch;
+}
+
+.live-mobile-comments > :first-child {
+  margin-top: auto !important;
 }
 
 .live-mobile-shell.live-host-mobile .live-mobile-comments,
@@ -4291,10 +4295,6 @@ body {
   flex: 0 1 auto;
   max-height: var(--live-mobile-comments-max, 220px);
   padding-bottom: 10px;
-}
-
-.live-mobile-comments.live-comments-overflowing {
-  justify-content: flex-start;
 }
 
 
@@ -4352,6 +4352,7 @@ body {
 #live-viewer-player,
 #live-viewer-player .op-player,
 #live-viewer-player .op-core-ui-wrapper,
+#live-viewer-player,
 #live-viewer-player .op-media-element-container,
 #live-viewer-player video {
   pointer-events: none !important;
@@ -4545,6 +4546,8 @@ body {
    Comments + input + actions = one block
    ══════════════════════════════════════ */
 .live-chat-col {
+  position: relative;
+  z-index: 20;
   width: 100%;
   min-width: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.1);

@@ -4628,9 +4628,6 @@
           liveShell.classList.toggle('live-is-desktop', desktop);
           liveShell.classList.toggle('live-host-mobile', isHostRoute && !desktop);
           liveShell.classList.toggle('live-mobile-shell', !desktop);
-          if (!desktop && !isHostRoute) {
-            liveShell.classList.add('live-cam-stream');
-          }
           if (desktop) {
             liveShell.style.removeProperty('--live-mobile-vh');
             liveShell.style.removeProperty('--live-mobile-vw');
@@ -4640,6 +4637,9 @@
           }
         }
         syncLiveDeviceClasses();
+        if (!isDesktopClient() && !isHostRoute && liveShell) {
+          liveShell.classList.add('live-cam-stream');
+        }
 
         const viewerPlayerRoot = container.querySelector('#live-viewer-player');
         const hostPreviewVideo = container.querySelector('#live-host-preview');
@@ -4935,7 +4935,7 @@
         }
 
         function guardViewerPlayerTap(event) {
-          if (isDesktopClient() || isHostOnMobile || !viewerPlayerRoot) {
+          if (isDesktopClient() || isHostOnMobile || !liveVideoWrap) {
             return;
           }
           if (isVideoFullscreenActive()) {
@@ -4945,7 +4945,7 @@
           if (!(target instanceof Element)) {
             return;
           }
-          if (!viewerPlayerRoot.contains(target)) {
+          if (!liveVideoWrap.contains(target)) {
             return;
           }
           if (target.closest('button, input, textarea')) {
@@ -6929,24 +6929,6 @@
             return;
           }
 
-          const items = Array.from(liveCommentsMobile.children)
-            .filter((node) => node.nodeType === Node.ELEMENT_NODE);
-          const computedStyle = window.getComputedStyle(liveCommentsMobile);
-          const gap = parseFloat(computedStyle.rowGap || computedStyle.gap || '0') || 0;
-          const paddingTop = parseFloat(computedStyle.paddingTop || '0') || 0;
-          const paddingBottom = parseFloat(computedStyle.paddingBottom || '0') || 0;
-          const renderedItemsHeight = items.reduce((sum, item) => sum + item.getBoundingClientRect().height, 0);
-          const renderedContentHeight = renderedItemsHeight
-            + (gap * Math.max(0, items.length - 1))
-            + paddingTop
-            + paddingBottom;
-          const isOverflowing = renderedContentHeight > (liveCommentsMobile.clientHeight + 6);
-          liveCommentsMobile.classList.toggle('live-comments-overflowing', isOverflowing);
-
-          if (isOverflowing && !userRecentlyScrolledComments() && liveCommentsMobile.scrollTop === 0) {
-            liveCommentsMobile.scrollTop = liveCommentsMobile.scrollHeight;
-          }
-
           scheduleLiveMobileViewportSync();
         }
 
@@ -7049,21 +7031,29 @@
           }
         }
 
+        let isPollingEvents = false;
         async function pollReactionEvents() {
-          const result = await PostsAPI.getLivestreamEvents(liveId, lastEventId);
-          const events = getList(result);
-          if (!result?.ok) return;
-          if (!events.length) {
-            reactionEventsCursorReady = true;
-            return;
-          }
-          events.forEach((event) => {
-            lastEventId = Math.max(lastEventId, Number(event.id || 0));
-            if (reactionEventsCursorReady) {
-              addFloatingReaction(event.reaction_type);
+          if (isPollingEvents) return;
+          isPollingEvents = true;
+          try {
+            const result = await PostsAPI.getLivestreamEvents(liveId, lastEventId);
+            const events = getList(result);
+            if (!result?.ok) return;
+            if (!events.length) {
+              reactionEventsCursorReady = true;
+              return;
             }
-          });
-          reactionEventsCursorReady = true;
+            events.forEach((event) => {
+              const eventId = Number(event.id || 0);
+              if (reactionEventsCursorReady && eventId > lastEventId) {
+                addFloatingReaction(event.reaction_type);
+              }
+              lastEventId = Math.max(lastEventId, eventId);
+            });
+            reactionEventsCursorReady = true;
+          } finally {
+            isPollingEvents = false;
+          }
         }
 
         async function sendActiveReaction() {
@@ -7343,9 +7333,9 @@
           addFullscreenTapListeners(viewerPlayerRoot);
           addFullscreenTapListeners(playerTapCatcher);
           document.addEventListener('touchend', handleGlobalLiveTouchToggle, { passive: true });
-          if (viewerPlayerRoot) {
-            viewerPlayerRoot.addEventListener('touchend', guardViewerPlayerTap, true);
-            viewerPlayerRoot.addEventListener('click', guardViewerPlayerTap, true);
+          if (liveVideoWrap) {
+            liveVideoWrap.addEventListener('touchend', guardViewerPlayerTap, true);
+            liveVideoWrap.addEventListener('click', guardViewerPlayerTap, true);
           }
           scheduleLiveMobileViewportSync();
           scheduleLiveMobileViewportSync(140);
@@ -7831,9 +7821,9 @@
           removeFullscreenTapListeners(liveVideoWrap);
           removeFullscreenTapListeners(viewerPlayerRoot);
           removeFullscreenTapListeners(playerTapCatcher);
-          if (viewerPlayerRoot) {
-            viewerPlayerRoot.removeEventListener('touchend', guardViewerPlayerTap, true);
-            viewerPlayerRoot.removeEventListener('click', guardViewerPlayerTap, true);
+          if (liveVideoWrap) {
+            liveVideoWrap.removeEventListener('touchend', guardViewerPlayerTap, true);
+            liveVideoWrap.removeEventListener('click', guardViewerPlayerTap, true);
           }
           document.removeEventListener('fullscreenchange', handleFullscreenChange);
           // Clean up immersive mode
