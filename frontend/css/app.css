@@ -5145,6 +5145,7 @@ body.live-immersive-active #app-view {
   bottom: 12px;
   font-size: 28px;
   line-height: 1;
+  contain: layout paint style;
   animation: live-float-up 2.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   pointer-events: none;
   will-change: transform, opacity;
@@ -5217,6 +5218,48 @@ body.live-immersive-active #app-view {
 }
 
 /* ===== Final hard overrides: call widget + publication modal ===== */
+
+.live-mobile-comments [data-comment-id],
+.live-desktop-comment {
+  align-items: flex-start !important;
+}
+
+.live-freeze-frame {
+  filter: blur(10px) brightness(0.78) saturate(0.92);
+  transform: scale(1.035);
+  transition: opacity 0.18s ease;
+}
+
+.live-mobile-comments [data-comment-id] > div:first-child,
+.live-desktop-comment .comment-avatar-wrap {
+  margin-top: 0.05rem !important;
+}
+
+.live-mobile-comments [data-comment-id] > div:last-child,
+.live-desktop-comment .comment-body {
+  padding-top: 0 !important;
+  line-height: 1.2 !important;
+}
+
+@media (max-width: 767.98px) {
+  .live-mobile-comments [data-comment-id] {
+    gap: 0.42rem !important;
+  }
+
+  .live-mobile-comments [data-comment-id] > div:first-child {
+    width: 1.85rem !important;
+    height: 1.85rem !important;
+  }
+
+  .live-mobile-comments [data-comment-id] span {
+    font-size: 0.68rem !important;
+  }
+
+  .live-mobile-comments [data-comment-id] p {
+    font-size: 0.72rem !important;
+    line-height: 1.05rem !important;
+  }
+}
 
 .call-window .call-window__header-actions {
   display: inline-flex;
@@ -6565,10 +6608,26 @@ body #profile-comment-modal .post-comments-compose-send .material-symbols-outlin
   border: 1px solid rgba(42, 45, 53, 1) !important;
   background: linear-gradient(180deg, #20222a 0%, #181a22 100%) !important;
   overflow: hidden !important;
+  transition: min-height 0.22s ease, aspect-ratio 0.22s ease !important;
 }
 
 .call-window.call-window--video .call-window__video-frame {
   min-height: 28.5rem !important;
+}
+
+.call-window #call-remote-video {
+  object-fit: contain !important;
+  background: #050608 !important;
+}
+
+.call-window.call-window--video.call-window--remote-landscape .call-window__video-frame {
+  aspect-ratio: var(--call-remote-aspect, 16 / 9) !important;
+  min-height: 12.75rem !important;
+}
+
+.call-window.call-window--video.call-window--remote-portrait .call-window__video-frame {
+  aspect-ratio: var(--call-remote-aspect, 9 / 16) !important;
+  min-height: min(28.5rem, calc(100dvh - 12rem)) !important;
 }
 
 .call-window .call-window__placeholder {
@@ -6964,6 +7023,14 @@ body #profile-comment-modal .post-comments-compose-send .material-symbols-outlin
 
   .call-window.call-window--video .call-window__video-frame {
     min-height: 23rem !important;
+  }
+
+  .call-window.call-window--video.call-window--remote-landscape .call-window__video-frame {
+    min-height: 11.5rem !important;
+  }
+
+  .call-window.call-window--video.call-window--remote-portrait .call-window__video-frame {
+    min-height: min(23rem, calc(100dvh - 11rem)) !important;
   }
 
   .call-window .call-window__local-preview-shell {

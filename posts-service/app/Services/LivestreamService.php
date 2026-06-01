@@ -23,9 +23,10 @@ class LivestreamService
     public function create(int $userId, array $data): Post
     {
         $source = $this->normalizeSource($data['live_source'] ?? 'camera');
-        $streamKey = $data['stream_key'] ?? $this->generateStreamKey($userId);
+        $streamKey = trim((string) ($data['stream_key'] ?? '')) ?: $this->generateStreamKey($userId);
+        $aspectRatio = $this->normalizeAspectRatio($data['stream_aspect_ratio'] ?? null, $source);
 
-        return Post::create([
+        $payload = [
             'user_id' => $userId,
             'post_type' => 'livestream',
             'user_name' => $data['user_name'] ?? 'Usuario',
@@ -38,8 +39,33 @@ class LivestreamService
             'stream_key' => $streamKey,
             'playback_url' => $data['playback_url'] ?? null,
             'live_source' => $source,
+            'stream_aspect_ratio' => $aspectRatio,
             'duration_seconds' => 0,
-        ]);
+        ];
+
+        $activeLive = Post::where('post_type', 'livestream')
+            ->where('user_id', $userId)
+            ->where('live_status', 'live')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if ($activeLive) {
+            $activeLive->fill($payload);
+            $activeLive->save();
+
+            Post::where('post_type', 'livestream')
+                ->where('user_id', $userId)
+                ->where('live_status', 'live')
+                ->where('id', '<>', $activeLive->id)
+                ->update([
+                    'live_status' => 'ended',
+                    'updated_at' => Carbon::now(),
+                ]);
+
+            return $activeLive->fresh();
+        }
+
+        return Post::create($payload);
     }
 
     public function listActive(int $userId, array $friendIds, ?string $userFaculty, string $jwt = '')
@@ -68,6 +94,7 @@ class LivestreamService
                     default => false,
                 };
             })
+            ->unique('user_id')
             ->values();
     }
 
@@ -88,11 +115,30 @@ class LivestreamService
             throw new PostsServiceException('No autorizado para finalizar este directo', 403);
         }
 
-        $post->live_status = 'ended';
+        $update = [
+            'live_status' => 'ended',
+            'updated_at' => Carbon::now(),
+        ];
         if ($durationSeconds !== null && $durationSeconds >= 0) {
-            $post->duration_seconds = $durationSeconds;
+            $update['duration_seconds'] = $durationSeconds;
         }
-        $post->save();
+
+        Post::where('post_type', 'livestream')
+            ->where('user_id', $userId)
+            ->where('live_status', 'live')
+            ->where(function ($query) use ($post) {
+                $query->where('id', $post->id);
+                if ($post->stream_key) {
+                    $query->orWhere('stream_key', $post->stream_key);
+                }
+            })
+            ->update($update);
+
+        // If a duplicated live was already created for the same user, close it too.
+        Post::where('post_type', 'livestream')
+            ->where('user_id', $userId)
+            ->where('live_status', 'live')
+            ->update($update);
 
         return $post->fresh();
     }
@@ -113,14 +159,16 @@ class LivestreamService
         return $this->getViewerCount($post->id);
     }
 
-    public function updateSource(int $userId, int $postId, string $source, ?string $streamKey = null): Post
+    public function updateSource(int $userId, int $postId, string $source, ?string $streamKey = null, ?string $aspectRatio = null): Post
     {
         $post = $this->getById($postId);
         if ((int) $post->user_id !== $userId) {
             throw new PostsServiceException('No autorizado para actualizar este directo', 403);
         }
 
-        $post->live_source = $this->normalizeSource($source);
+        $normalizedSource = $this->normalizeSource($source);
+        $post->live_source = $normalizedSource;
+        $post->stream_aspect_ratio = $this->normalizeAspectRatio($aspectRatio, $normalizedSource);
         if ($streamKey !== null && trim($streamKey) !== '') {
             $post->stream_key = trim($streamKey);
         }
@@ -194,6 +242,16 @@ class LivestreamService
     private function normalizeSource(string $source): string
     {
         return in_array($source, ['camera', 'screen'], true) ? $source : 'camera';
+    }
+
+    private function normalizeAspectRatio(?string $aspectRatio, string $source): string
+    {
+        $normalized = trim((string) $aspectRatio);
+        if (in_array($normalized, ['9:16', '16:9'], true)) {
+            return $normalized;
+        }
+
+        return $source === 'screen' ? '16:9' : '9:16';
     }
 
     private function generateStreamKey(int $userId): string

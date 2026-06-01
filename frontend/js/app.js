@@ -139,6 +139,14 @@
     return String(url || '').replace(/'/g, '%27');
   }
 
+  function normalizeSearchText(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
   function reactionAsset(type) {
     return REACTION_ASSETS[type] || REACTION_ASSETS.me_gusta;
   }
@@ -1194,6 +1202,27 @@
     return `upt-live-${userId}-${clientTag}-${Date.now().toString(36)}`;
   }
 
+  function getInitialLivestreamAspectRatio(source = 'camera') {
+    if (source === 'screen') {
+      return '16:9';
+    }
+    return isDesktopClient() ? '16:9' : '9:16';
+  }
+
+  function getLivestreamAspectRatioFromSettings(source = 'camera', settings = {}) {
+    if (source === 'screen') {
+      return '16:9';
+    }
+
+    const width = Number(settings.width || 0);
+    const height = Number(settings.height || 0);
+    if (width > 0 && height > 0) {
+      return width >= height ? '16:9' : '9:16';
+    }
+
+    return getInitialLivestreamAspectRatio(source);
+  }
+
   async function navigateToLivestream(router, rawId, extraParams = {}) {
     const liveId = Number(rawId);
     if (!Number.isFinite(liveId) || liveId <= 0) {
@@ -1841,6 +1870,7 @@
       isMuted: false,
       remoteVolume: 1,
       adjustingVolume: false,
+      remoteVideoAspect: null,
       minimized: false,
       outgoingOfferSent: false,
       isFinalizing: false,
@@ -2444,6 +2474,29 @@
       }
     }
 
+    function updateCallRemoteVideoAspect(video = ensureCallWindow().querySelector('#call-remote-video')) {
+      const root = ensureCallWindow();
+      if (!video || !video.videoWidth || !video.videoHeight) {
+        return;
+      }
+
+      const ratio = video.videoWidth / video.videoHeight;
+      const normalized = ratio >= 1 ? '16 / 9' : '9 / 16';
+      callState.remoteVideoAspect = normalized;
+      root.style.setProperty('--call-remote-aspect', normalized);
+      root.classList.toggle('call-window--remote-landscape', ratio >= 1);
+      root.classList.toggle('call-window--remote-portrait', ratio < 1);
+    }
+
+    function bindCallRemoteVideoAspect(video) {
+      if (!video || video.dataset.callAspectBound === '1') {
+        return;
+      }
+      video.dataset.callAspectBound = '1';
+      video.addEventListener('loadedmetadata', () => updateCallRemoteVideoAspect(video));
+      video.addEventListener('resize', () => updateCallRemoteVideoAspect(video));
+    }
+
     function getLocalAudioTrack() {
       return callState.localStream?.getAudioTracks()?.[0] || null;
     }
@@ -2530,6 +2583,8 @@
       const localVideo = root.querySelector('#call-local-video');
       const remotePlaceholder = root.querySelector('#call-remote-placeholder');
       const remoteLabel = root.querySelector('#call-video-placeholder-label');
+      bindCallRemoteVideoAspect(remoteVideo);
+      updateCallRemoteVideoAspect(remoteVideo);
       if (headerAvatar) setAvatarElement(headerAvatar, otherUser);
       if (remoteAvatar) setAvatarElement(remoteAvatar, otherUser);
       if (modeBadge) modeBadge.textContent = isVideoMode ? 'VIDEO' : 'VOZ';
@@ -3188,6 +3243,8 @@
       root.querySelector('#call-remote-video').classList.add('hidden');
       root.querySelector('#call-remote-placeholder').classList.remove('hidden');
       root.querySelector('#call-video-placeholder-label').textContent = 'Camara apagada';
+      root.classList.remove('call-window--remote-landscape', 'call-window--remote-portrait');
+      root.style.removeProperty('--call-remote-aspect');
 
       callState.session = null;
       callState.otherUser = null;
@@ -3200,6 +3257,7 @@
       callState.drag = null;
       callState.minimized = false;
       callState.isFinalizing = false;
+      callState.remoteVideoAspect = null;
       callState.videoSender = null;
       resetCallNegotiationState();
       releaseCallRuntime();
@@ -4349,6 +4407,7 @@
             liveSource,
             streamKey,
             playbackUrl,
+            streamAspectRatio: getInitialLivestreamAspectRatio(liveSource),
           });
 
           confirmLiveCreateButton.disabled = false;
@@ -4821,9 +4880,6 @@
           }
         }
         syncLiveDeviceClasses();
-        if (!isDesktopClient() && !isHostRoute && liveShell) {
-          liveShell.classList.add('live-cam-stream');
-        }
 
         const viewerPlayerRoot = container.querySelector('#live-viewer-player');
         const hostPreviewVideo = container.querySelector('#live-host-preview');
@@ -5441,7 +5497,7 @@
 
             if (!viewerFreezeFrame) {
               viewerFreezeFrame = document.createElement('img');
-              viewerFreezeFrame.className = 'absolute inset-0 w-full h-full object-contain bg-black pointer-events-none';
+              viewerFreezeFrame.className = 'live-freeze-frame absolute inset-0 w-full h-full object-contain bg-black pointer-events-none';
               viewerFreezeFrame.style.zIndex = '0';
             }
 
@@ -5468,6 +5524,31 @@
           if (viewerVideo) {
             viewerVideo.style.opacity = '1';
           }
+        }
+
+        function bindViewerFreezeFrameEvents(video) {
+          if (!video || video.dataset.liveFreezeFrameEventsAttached === '1') {
+            return;
+          }
+          video.dataset.liveFreezeFrameEventsAttached = '1';
+          const showLastFrame = () => {
+            if (viewerVideo !== video || liveVideoFallback.classList.contains('hidden') === false) {
+              return;
+            }
+            captureViewerFreezeFrame({ hideVideo: true });
+          };
+          const recover = () => {
+            if (viewerVideo !== video || video.readyState < 2) {
+              return;
+            }
+            clearViewerFreezeFrame();
+          };
+          ['waiting', 'stalled', 'suspend'].forEach((eventName) => {
+            video.addEventListener(eventName, showLastFrame);
+          });
+          ['playing', 'canplay', 'timeupdate'].forEach((eventName) => {
+            video.addEventListener(eventName, recover);
+          });
         }
 
         function disposeViewerHlsKeepFrame(nextSourceUrl = null, options = {}) {
@@ -5596,17 +5677,23 @@
 
           [floatingReactions].forEach((target) => {
             if (!target) return;
+            const activeBubbles = target.querySelectorAll('.live-float-emoji');
+            if (activeBubbles.length > 18) {
+              activeBubbles[0]?.remove();
+            }
             const nextAvailableAt = floatingReactionQueues.get(target) || 0;
             const now = Date.now();
             const delayMs = Math.max(0, nextAvailableAt - now);
-            floatingReactionQueues.set(target, Math.max(now, nextAvailableAt) + 140);
+            const spacingMs = isDesktopClient() ? 185 : 225;
+            floatingReactionQueues.set(target, Math.max(now, nextAvailableAt) + spacingMs);
 
             window.setTimeout(() => {
               const bubble = document.createElement('div');
-              const lane = Math.floor(Math.random() * 4);
-              const laneOffset = lane * 16;
-              const xOffset = (Math.random() - 0.5) * 28;
-              const durationMs = 2400 + Math.floor(Math.random() * 520);
+              const lanes = isDesktopClient() ? 5 : 4;
+              const lane = Math.floor(Math.random() * lanes);
+              const laneOffset = lane * (isDesktopClient() ? 18 : 14);
+              const xOffset = (Math.random() - 0.5) * (isDesktopClient() ? 42 : 28);
+              const durationMs = 2600 + Math.floor(Math.random() * 640);
               bubble.textContent = emoji;
               bubble.className = 'live-float-emoji';
               bubble.style.right = `${8 + laneOffset}px`;
@@ -5779,7 +5866,31 @@
         }
 
         // Detect portrait/phone camera streams for viewer → apply full-bleed TikTok layout
+        function normalizeLiveAspectRatio(value, source = 'camera') {
+          if (value === '9:16' || value === '16:9') {
+            return value;
+          }
+          return getInitialLivestreamAspectRatio(source);
+        }
+
+        function applyStreamAspectLayoutFromMetadata() {
+          if (isHostRoute || !liveShell || !liveData) {
+            return;
+          }
+          const liveSource = liveData.live_source || 'camera';
+          const aspectRatio = normalizeLiveAspectRatio(liveData.stream_aspect_ratio, liveSource);
+          const isPortrait = aspectRatio === '9:16';
+          const isPortraitCameraStream = liveSource === 'camera' && isPortrait;
+          liveShell.classList.toggle('live-portrait-stream', isPortrait);
+          liveShell.classList.toggle('live-cam-stream', isPortraitCameraStream);
+          if (viewerVideo && (!viewerVideo.videoWidth || !viewerVideo.videoHeight)) {
+            viewerVideo.style.objectFit = isPortraitCameraStream ? 'cover' : 'contain';
+          }
+          updateMobilePlayerControls();
+        }
+
         function updateStreamLayout() {
+          applyStreamAspectLayoutFromMetadata();
           if (isHostRoute) return;
           const video = viewerVideo;
           if (!video || !video.videoWidth || !video.videoHeight) return;
@@ -6004,6 +6115,7 @@
           const video = document.createElement('video');
           video.className = 'w-full h-full object-contain bg-black absolute inset-0';
           prepareViewerMediaElement(video);
+          bindViewerFreezeFrameEvents(video);
           video.muted = true;
           if (viewerTapUnmuteHandler && liveVideoWrap) {
             liveVideoWrap.removeEventListener('click', viewerTapUnmuteHandler);
@@ -6065,6 +6177,7 @@
           }
 
           prepareViewerMediaElement(video);
+          bindViewerFreezeFrameEvents(video);
           viewerBoundSourceUrl = sourceUrl;
           applyViewerMuteState();
           armViewerTapToUnmute();
@@ -6614,6 +6727,7 @@
             }
 
             bundle.publishedStream = finalStream;
+            bundle.videoSettings = displayStream.getVideoTracks()[0]?.getSettings?.() || {};
             applyLiveTrackHints(bundle.previewStream, 'screen');
             applyLiveTrackHints(bundle.publishedStream, 'screen');
             applyHostAudioState(bundle);
@@ -6700,17 +6814,18 @@
           return bundle;
         }
 
-        async function syncLivestreamSourceState(source, streamKey = null) {
+        async function syncLivestreamSourceState(source, streamKey = null, streamAspectRatio = null) {
           if (!liveId || !PostsAPI.updateLivestreamSource) {
             throw new Error('No existe API para sincronizar la fuente del directo');
           }
 
-          const result = await PostsAPI.updateLivestreamSource(liveId, source, streamKey);
+          const result = await PostsAPI.updateLivestreamSource(liveId, source, streamKey, streamAspectRatio || getInitialLivestreamAspectRatio(source));
           if (!result?.ok || !result.data) {
             throw new Error(result?.data?.error || 'No se pudo sincronizar la fuente del directo');
           }
 
           liveData = { ...liveData, ...result.data };
+          applyStreamAspectLayoutFromMetadata();
           return result.data;
         }
 
@@ -6909,10 +7024,12 @@
             nextBundle = await buildHostInputStream(source);
             nextLivekit = await publishHostBundle(nextBundle, source, nextStreamKey);
             await waitForViewerReadyStream(nextStreamKey);
+            const nextAspectRatio = getLivestreamAspectRatioFromSettings(source, nextBundle?.videoSettings || {});
             liveData.live_source = source;
             liveData.stream_key = nextStreamKey;
+            liveData.stream_aspect_ratio = nextAspectRatio;
             liveData.updated_at = new Date().toISOString();
-            await syncLivestreamSourceState(source, nextStreamKey);
+            await syncLivestreamSourceState(source, nextStreamKey, nextAspectRatio);
             ovenLivekit = nextLivekit;
             hostMediaBundle = nextBundle;
             hostPublishing = true;
@@ -6944,8 +7061,9 @@
               hostPublishedSource = previousSource;
               liveData.live_source = previousSource;
               liveData.stream_key = previousStreamKey;
+              liveData.stream_aspect_ratio = getLivestreamAspectRatioFromSettings(previousSource, previousBundle?.videoSettings || {});
               liveData.updated_at = new Date().toISOString();
-              await syncLivestreamSourceState(previousSource, previousStreamKey);
+              await syncLivestreamSourceState(previousSource, previousStreamKey, liveData.stream_aspect_ratio);
               refreshHostAudioButtons();
               showHostPreview();
               restored = true;
@@ -6960,10 +7078,12 @@
                 hostMediaBundle = recoveredBundle;
                 hostPublishing = true;
                 hostPublishedSource = previousSource;
+                const recoveredAspectRatio = getLivestreamAspectRatioFromSettings(previousSource, recoveredBundle?.videoSettings || {});
                 liveData.live_source = previousSource;
                 liveData.stream_key = recoveryStreamKey;
+                liveData.stream_aspect_ratio = recoveredAspectRatio;
                 liveData.updated_at = new Date().toISOString();
-                await syncLivestreamSourceState(previousSource, recoveryStreamKey);
+                await syncLivestreamSourceState(previousSource, recoveryStreamKey, recoveredAspectRatio);
                 restored = true;
                 showHostPreview();
                 refreshHostAudioButtons();
@@ -7005,6 +7125,7 @@
           }
 
           liveData = result.data;
+          applyStreamAspectLayoutFromMetadata();
           const titleText = liveData.live_title || 'Directo UPT';
           liveTitle.textContent = titleText;
           if (liveTitleMobile) liveTitleMobile.textContent = titleText;
@@ -11526,13 +11647,15 @@
                 <div class="text-xs text-slate-500">${escapeHtml(report.service === 'chat' ? 'Mensajes' : 'Publicaciones')}</div>
               </td>
               <td class="py-4 px-5 text-sm text-slate-600">${renderReportTypeBadge(report)}</td>
-              <td class="py-4 px-5 text-sm text-slate-700">${escapeHtml((formatReportType(report) === 'livestream' ? (report.live_title || report.content_preview) : report.content_preview) || 'Sin contenido')}</td>
-              <td class="py-4 px-5 text-sm text-slate-500">${escapeHtml(timeAgo(report.created_at))}</td>
-              <td class="py-4 px-5">
-                <div class="flex justify-end gap-2 flex-wrap">
-                  <button type="button" data-report-review="${report.id}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Revisar</button>
-                  <button type="button" data-report-dismiss="${report.id}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Descartar</button>
-                  <button type="button" data-report-sanction="${report.id}" class="px-3 py-1.5 rounded-lg bg-[#1B2A6B] text-xs font-semibold text-white hover:bg-[#15215a]">Sancionar</button>
+              <td class="py-4 px-5 text-sm text-slate-700">
+                <p class="line-clamp-2 content-break">${escapeHtml((formatReportType(report) === 'livestream' ? (report.live_title || report.content_preview) : report.content_preview) || 'Sin contenido')}</p>
+              </td>
+              <td class="py-4 px-4 text-sm text-slate-500 whitespace-nowrap">${escapeHtml(timeAgo(report.created_at))}</td>
+              <td class="py-4 pl-6 pr-5">
+                <div class="flex justify-end gap-2 flex-nowrap">
+                  <button type="button" data-report-review="${report.id}" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50">Revisar</button>
+                  <button type="button" data-report-dismiss="${report.id}" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50">Descartar</button>
+                  <button type="button" data-report-sanction="${report.id}" class="px-2.5 py-1.5 rounded-lg bg-[#1B2A6B] text-[11px] font-semibold text-white hover:bg-[#15215a]">Sancionar</button>
                 </div>
               </td>
             </tr>
@@ -11725,7 +11848,12 @@
         const stats = container.querySelector('#admin-post-stats');
         const tbody = container.querySelector('#admin-posts-tbody');
         const typeFilter = container.querySelector('#admin-post-type-filter');
+        const facultyFilter = container.querySelector('#admin-post-faculty-filter');
+        const authorFilter = container.querySelector('#admin-post-author-filter');
+        const dateFromFilter = container.querySelector('#admin-post-date-from-filter');
+        const dateToFilter = container.querySelector('#admin-post-date-to-filter');
         const orderFilter = container.querySelector('#admin-post-order-filter');
+        const clearFiltersButton = container.querySelector('#admin-post-clear-filters-btn');
         const commentsModal = container.querySelector('#admin-comments-modal');
         const commentPostPreview = container.querySelector('#admin-comment-post-preview');
         const commentsList = container.querySelector('#admin-comments-list');
@@ -11820,7 +11948,7 @@
                 <td class="py-4 px-5">
                   <div class="flex justify-end gap-2">
                     <button type="button" data-view-comments="${post.id}" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-                      <span class="material-symbols-outlined text-[16px]">visibility</span> Ver detalles <span class="font-semibold ml-1">${post.comments_count || 0}</span>
+                      <span class="material-symbols-outlined text-[16px]">visibility</span> Ver mas <span class="font-semibold ml-1">${post.comments_count || 0}</span>
                     </button>
                     <button type="button" data-delete-post="${post.id}" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-[#DC2626] hover:bg-slate-50 transition-colors shadow-sm">
                       <span class="material-symbols-outlined text-[16px]">delete</span> Eliminar
@@ -11835,9 +11963,35 @@
         function applyAdminPostFilters() {
           let filtered = [...allPosts];
           const type = typeFilter.value;
+          const faculty = facultyFilter?.value || 'Todos';
+          const authorQuery = normalizeSearchText(authorFilter?.value || '');
+          const fromValue = dateFromFilter?.value || '';
+          const toValue = dateToFilter?.value || '';
           const order = orderFilter.value;
           if (type && type !== 'Todos') {
-            filtered = filtered.filter((post) => String(post.post_type || 'standard') === type);
+            filtered = filtered.filter((post) => {
+              const postType = String(post.post_type || 'standard');
+              if (type === 'image') return !!post.image_url;
+              if (type === 'text') return postType === 'standard' && !post.image_url;
+              if (type === 'group') return !!post.group_id;
+              if (type === 'live_camera') return postType === 'livestream' && (post.live_source || 'camera') === 'camera';
+              if (type === 'live_screen') return postType === 'livestream' && post.live_source === 'screen';
+              return postType === type;
+            });
+          }
+          if (faculty && faculty !== 'Todos') {
+            filtered = filtered.filter((post) => String(post.user_faculty || '').trim() === faculty);
+          }
+          if (authorQuery) {
+            filtered = filtered.filter((post) => normalizeSearchText(post.user_name || '').includes(authorQuery));
+          }
+          if (fromValue) {
+            const fromTime = new Date(`${fromValue}T00:00:00`).getTime();
+            filtered = filtered.filter((post) => new Date(post.created_at || 0).getTime() >= fromTime);
+          }
+          if (toValue) {
+            const toTime = new Date(`${toValue}T23:59:59`).getTime();
+            filtered = filtered.filter((post) => new Date(post.created_at || 0).getTime() <= toTime);
           }
           if (order === 'oldest') {
             filtered.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
@@ -11849,6 +12003,28 @@
           renderPosts(filtered);
         }
 
+        function clearAdminPostFilters() {
+          typeFilter.value = 'Todos';
+          if (facultyFilter) facultyFilter.value = 'Todos';
+          if (authorFilter) authorFilter.value = '';
+          if (dateFromFilter) dateFromFilter.value = '';
+          if (dateToFilter) dateToFilter.value = '';
+          orderFilter.value = 'newest';
+          applyAdminPostFilters();
+        }
+
+        function renderFacultyFilterOptions(posts) {
+          if (!facultyFilter) return;
+          const faculties = [...new Set(posts.map((post) => String(post.user_faculty || '').trim()).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b, 'es'));
+          const currentValue = facultyFilter.value || 'Todos';
+          facultyFilter.innerHTML = [
+            '<option value="Todos">Facultad: Todas</option>',
+            ...faculties.map((faculty) => `<option value="${escapeHtml(faculty)}">${escapeHtml(faculty)}</option>`),
+          ].join('');
+          facultyFilter.value = faculties.includes(currentValue) ? currentValue : 'Todos';
+        }
+
         async function loadPosts() {
           await ensurePublicUsersLoaded();
           const result = await PostsAPI.listAdminPosts();
@@ -11858,6 +12034,7 @@
           }
 
           allPosts = getList(result);
+          renderFacultyFilterOptions(allPosts);
           renderStats(allPosts);
           applyAdminPostFilters();
         }
@@ -11913,7 +12090,12 @@
         container.querySelector('#go-admin-users-btn').addEventListener('click', () => router.navigate('admin'));
         container.querySelector('#go-admin-reports-btn').addEventListener('click', () => router.navigate('admin-reports'));
         typeFilter.addEventListener('change', applyAdminPostFilters);
+        facultyFilter?.addEventListener('change', applyAdminPostFilters);
+        authorFilter?.addEventListener('input', applyAdminPostFilters);
+        dateFromFilter?.addEventListener('change', applyAdminPostFilters);
+        dateToFilter?.addEventListener('change', applyAdminPostFilters);
         orderFilter.addEventListener('change', applyAdminPostFilters);
+        clearFiltersButton?.addEventListener('click', clearAdminPostFilters);
         container.querySelector('#close-comments-modal-btn').addEventListener('click', closeCommentsModal);
         confirmCommentButton.addEventListener('click', confirmAdminComment);
         commentsInput.addEventListener('keydown', async (event) => {

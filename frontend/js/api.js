@@ -353,13 +353,14 @@ const PostsAPI = {
       body: JSON.stringify({ content, visibility }),
     });
   },
-  createLivestream: ({ liveTitle, content = '', visibility = 'all', liveSource = 'camera', streamKey, playbackUrl }) => apiFetch(`/api/livestreams`, {
+  createLivestream: ({ liveTitle, content = '', visibility = 'all', liveSource = 'camera', streamKey, playbackUrl, streamAspectRatio }) => apiFetch(`/api/livestreams`, {
     method: 'POST',
     body: JSON.stringify({
       live_title: liveTitle,
       content,
       visibility,
       live_source: liveSource,
+      ...(streamAspectRatio ? { stream_aspect_ratio: streamAspectRatio } : {}),
       stream_key: streamKey,
       playback_url: playbackUrl,
     }),
@@ -372,11 +373,12 @@ const PostsAPI = {
     },
   }),
   getLivestream: (id) => apiFetch(`/api/livestreams/${id}`),
-  updateLivestreamSource: (id, liveSource = 'camera', streamKey = null) => apiFetch(`/api/livestreams/${id}/source`, {
+  updateLivestreamSource: (id, liveSource = 'camera', streamKey = null, streamAspectRatio = null) => apiFetch(`/api/livestreams/${id}/source`, {
     method: 'PUT',
     body: JSON.stringify({
       live_source: liveSource,
       ...(streamKey ? { stream_key: streamKey } : {}),
+      ...(streamAspectRatio ? { stream_aspect_ratio: streamAspectRatio } : {}),
     }),
   }),
   endLivestream: (id, durationSeconds = 0) => apiFetch(`/api/livestreams/${id}/end`, {

@@ -25,6 +25,7 @@ class LivestreamController extends BaseController
             'live_title' => 'required|string|max:180',
             'visibility' => 'nullable|in:all,friends,faculty',
             'live_source' => 'nullable|in:camera,screen',
+            'stream_aspect_ratio' => 'nullable|in:9:16,16:9',
             'stream_key' => 'nullable|string|max:120',
             'playback_url' => 'nullable|string|max:500',
         ]);
@@ -34,6 +35,7 @@ class LivestreamController extends BaseController
                 'live_title' => $request->input('live_title'),
                 'visibility' => $request->input('visibility', 'all'),
                 'live_source' => $request->input('live_source', 'camera'),
+                'stream_aspect_ratio' => $request->input('stream_aspect_ratio'),
                 'stream_key' => $request->input('stream_key'),
                 'playback_url' => $request->input('playback_url'),
                 'user_name' => $request->auth->name ?? 'Usuario',
@@ -92,6 +94,7 @@ class LivestreamController extends BaseController
     {
         $this->validate($request, [
             'live_source' => 'required|in:camera,screen',
+            'stream_aspect_ratio' => 'nullable|in:9:16,16:9',
             'stream_key' => 'nullable|string|max:120',
         ]);
 
@@ -102,7 +105,8 @@ class LivestreamController extends BaseController
                         (int) $request->auth->sub,
                         (int) $id,
                         $request->input('live_source'),
-                        $request->input('stream_key')
+                        $request->input('stream_key'),
+                        $request->input('stream_aspect_ratio')
                     ),
                     (int) $request->auth->sub
                 ),
