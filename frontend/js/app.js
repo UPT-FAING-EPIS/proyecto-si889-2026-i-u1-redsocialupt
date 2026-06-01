@@ -1107,7 +1107,7 @@
   }
 
   function getShortHashParamKey(route) {
-    if (route === 'profile' || route === 'group') return 'id';
+    if (route === 'profile' || route === 'group' || route === 'live') return 'id';
     if (route === 'messages') return 'user';
     return '';
   }
@@ -1130,6 +1130,33 @@
     if (!Number.isFinite(mixed)) return null;
     const id = (mixed - 104729) / 7919;
     return Number.isInteger(id) && id > 0 ? id : null;
+  }
+
+  function liveHostSessionKey(liveId) {
+    return `upt.liveHostRoute.${liveId}`;
+  }
+
+  function rememberLiveHostRoute(liveId) {
+    if (!Number.isFinite(Number(liveId)) || Number(liveId) <= 0) return;
+    try {
+      window.sessionStorage.setItem(liveHostSessionKey(Number(liveId)), '1');
+    } catch (_error) { }
+  }
+
+  function forgetLiveHostRoute(liveId) {
+    if (!Number.isFinite(Number(liveId)) || Number(liveId) <= 0) return;
+    try {
+      window.sessionStorage.removeItem(liveHostSessionKey(Number(liveId)));
+    } catch (_error) { }
+  }
+
+  function isRememberedLiveHostRoute(liveId) {
+    if (!Number.isFinite(Number(liveId)) || Number(liveId) <= 0) return false;
+    try {
+      return window.sessionStorage.getItem(liveHostSessionKey(Number(liveId))) === '1';
+    } catch (_error) {
+      return false;
+    }
   }
 
   function setDocumentTitle(title) {
@@ -1228,7 +1255,12 @@
     if (!Number.isFinite(liveId) || liveId <= 0) {
       return false;
     }
-    router.navigate('live', { id: String(liveId), ...extraParams });
+    const nextParams = { id: String(liveId), ...extraParams };
+    if (String(nextParams.host || '') === '1') {
+      rememberLiveHostRoute(liveId);
+      delete nextParams.host;
+    }
+    router.navigate('live', nextParams);
     return true;
   }
 
@@ -2476,14 +2508,21 @@
 
     function updateCallRemoteVideoAspect(video = ensureCallWindow().querySelector('#call-remote-video')) {
       const root = ensureCallWindow();
-      if (!video || !video.videoWidth || !video.videoHeight) {
+      const remoteTrack = video?.srcObject?.getVideoTracks?.()?.find((track) => track.readyState === 'live') || null;
+      const settings = remoteTrack?.getSettings?.() || {};
+      const width = Number(video?.videoWidth || settings.width || 0);
+      const height = Number(video?.videoHeight || settings.height || 0);
+      if (!video || !width || !height) {
+        root.classList.remove('call-window--remote-ready', 'call-window--remote-landscape', 'call-window--remote-portrait');
+        root.style.removeProperty('--call-remote-aspect');
         return;
       }
 
-      const ratio = video.videoWidth / video.videoHeight;
-      const normalized = ratio >= 1 ? '16 / 9' : '9 / 16';
+      const ratio = width / height;
+      const normalized = `${Math.max(1, Math.round(width))} / ${Math.max(1, Math.round(height))}`;
       callState.remoteVideoAspect = normalized;
       root.style.setProperty('--call-remote-aspect', normalized);
+      root.classList.add('call-window--remote-ready');
       root.classList.toggle('call-window--remote-landscape', ratio >= 1);
       root.classList.toggle('call-window--remote-portrait', ratio < 1);
     }
@@ -2495,6 +2534,8 @@
       video.dataset.callAspectBound = '1';
       video.addEventListener('loadedmetadata', () => updateCallRemoteVideoAspect(video));
       video.addEventListener('resize', () => updateCallRemoteVideoAspect(video));
+      video.addEventListener('playing', () => updateCallRemoteVideoAspect(video));
+      video.addEventListener('canplay', () => updateCallRemoteVideoAspect(video));
     }
 
     function getLocalAudioTrack() {
@@ -2784,7 +2825,12 @@
         }
 
         syncMediaElementStream(root.querySelector('#call-remote-audio'), callState.remoteStream);
-        syncMediaElementStream(root.querySelector('#call-remote-video'), callState.remoteStream);
+        const remoteVideo = root.querySelector('#call-remote-video');
+        syncMediaElementStream(remoteVideo, callState.remoteStream);
+        bindCallRemoteVideoAspect(remoteVideo);
+        updateCallRemoteVideoAspect(remoteVideo);
+        window.setTimeout(() => updateCallRemoteVideoAspect(remoteVideo), 180);
+        window.setTimeout(() => updateCallRemoteVideoAspect(remoteVideo), 700);
         ensureRemoteAudioMeter();
         syncRemoteMediaVolume();
         tryPlayRemoteMedia();
@@ -3243,7 +3289,7 @@
       root.querySelector('#call-remote-video').classList.add('hidden');
       root.querySelector('#call-remote-placeholder').classList.remove('hidden');
       root.querySelector('#call-video-placeholder-label').textContent = 'Camara apagada';
-      root.classList.remove('call-window--remote-landscape', 'call-window--remote-portrait');
+      root.classList.remove('call-window--remote-ready', 'call-window--remote-landscape', 'call-window--remote-portrait');
       root.style.removeProperty('--call-remote-aspect');
 
       callState.session = null;
@@ -4823,10 +4869,17 @@
       templatePath: '/pages/live.html',
       mount({ container, user, params, router }) {
         const liveId = Number(params.id || 0);
-        const isHostRoute = String(params.host || '') === '1';
+        const isHostRoute = String(params.host || '') === '1' || isRememberedLiveHostRoute(liveId);
         if (!Number.isFinite(liveId) || liveId <= 0) {
           container.innerHTML = '<section class="rounded-3xl border border-slate-200 bg-white p-8 text-center text-slate-700">Directo no disponible.</section>';
           return () => { };
+        }
+        if (String(params.host || '') === '1') {
+          rememberLiveHostRoute(liveId);
+        }
+        const canonicalLiveHash = buildHash('live', { id: String(liveId) });
+        if (window.location.hash !== canonicalLiveHash) {
+          window.history.replaceState(null, '', `${window.location.pathname}${canonicalLiveHash}`);
         }
 
         const liveStatusMetaCleanup = (() => {
@@ -5881,10 +5934,11 @@
           const aspectRatio = normalizeLiveAspectRatio(liveData.stream_aspect_ratio, liveSource);
           const isPortrait = aspectRatio === '9:16';
           const isPortraitCameraStream = liveSource === 'camera' && isPortrait;
+          liveShell.style.setProperty('--live-stream-aspect', isPortrait ? '9 / 16' : '16 / 9');
           liveShell.classList.toggle('live-portrait-stream', isPortrait);
           liveShell.classList.toggle('live-cam-stream', isPortraitCameraStream);
           if (viewerVideo && (!viewerVideo.videoWidth || !viewerVideo.videoHeight)) {
-            viewerVideo.style.objectFit = isPortraitCameraStream ? 'cover' : 'contain';
+            viewerVideo.style.objectFit = 'contain';
           }
           updateMobilePlayerControls();
         }
@@ -5900,10 +5954,11 @@
           const liveSource = liveData?.live_source || 'camera';
           const isPortraitCameraStream = liveSource === 'camera' && (isPortrait || isMobileCameraStreamKey());
           if (liveShell) {
+            liveShell.style.setProperty('--live-stream-aspect', `${Math.max(1, video.videoWidth)} / ${Math.max(1, video.videoHeight)}`);
             liveShell.classList.toggle('live-portrait-stream', isPortrait);
             liveShell.classList.toggle('live-cam-stream', isPortraitCameraStream);
           }
-          video.style.objectFit = isPortraitCameraStream ? 'cover' : 'contain';
+          video.style.objectFit = (!isDesktopClient() && isPortraitCameraStream) ? 'cover' : 'contain';
           updateMobilePlayerControls();
         }
 
@@ -7421,6 +7476,7 @@
             return;
           }
           endedByHost = true;
+          forgetLiveHostRoute(liveId);
           if (ovenLivekit && typeof ovenLivekit.stopStreaming === 'function') {
             try {
               ovenLivekit.stopStreaming();
@@ -8145,6 +8201,9 @@
           window.removeEventListener('beforeunload', endHostStreamOnPageLeave);
           if (shouldAutoEndHostStream()) {
             endHostStreamOnPageLeave();
+          }
+          if (isHostRoute) {
+            forgetLiveHostRoute(liveId);
           }
           if (!endedByHost && ovenLivekit && typeof ovenLivekit.stopStreaming === 'function') {
             try {

@@ -329,7 +329,7 @@
   }
 
   function getShortHashParamKey(route) {
-    if (route === 'profile' || route === 'group') return 'id';
+    if (route === 'profile' || route === 'group' || route === 'live') return 'id';
     if (route === 'messages') return 'user';
     return '';
   }

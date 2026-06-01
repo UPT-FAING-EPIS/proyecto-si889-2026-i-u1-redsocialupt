@@ -4423,10 +4423,11 @@ body {
 }
 
 .live-is-desktop.live-cam-stream .live-video-wrap {
-  aspect-ratio: 9 / 16;
-  width: min(100%, calc((100vh - 14rem) * 9 / 16));
-  max-width: 560px;
-  height: auto;
+  aspect-ratio: var(--live-stream-aspect, 9 / 16);
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
   min-height: 0;
   flex: 0 1 auto;
 }
@@ -4437,7 +4438,7 @@ body {
   height: 100% !important;
   max-width: none !important;
   max-height: none !important;
-  object-fit: cover !important;
+  object-fit: contain !important;
   top: 0 !important;
   left: 0 !important;
   right: 0 !important;
@@ -4485,6 +4486,14 @@ body {
 }
 
 .live-video-wrap:fullscreen video {
+  object-fit: contain !important;
+}
+
+.live-video-wrap:fullscreen #live-viewer-player video,
+.live-is-desktop.live-cam-stream .live-video-wrap:fullscreen #live-viewer-player video,
+.live-root.live-is-desktop.live-cam-stream .live-video-wrap:fullscreen #live-viewer-player video {
+  width: 100% !important;
+  height: 100% !important;
   object-fit: contain !important;
 }
 
@@ -7140,6 +7149,55 @@ body #profile-comment-modal .post-comments-compose-send .material-symbols-outlin
     #374151 var(--call-volume-level),
     #374151 100%
   ) !important;
+}
+
+/* Video calls adapt the card to the real incoming camera ratio instead of reserving a fixed block. */
+.call-window.call-window--video {
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+.call-window.call-window--video .call-window__stage {
+  flex: 0 0 auto !important;
+}
+
+.call-window.call-window--video .call-window__video-frame {
+  width: 100% !important;
+  aspect-ratio: 16 / 9 !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+.call-window.call-window--video.call-window--remote-ready .call-window__video-frame {
+  aspect-ratio: var(--call-remote-aspect, 16 / 9) !important;
+}
+
+.call-window.call-window--video #call-remote-video {
+  object-fit: contain !important;
+  background: #050608 !important;
+}
+
+.call-window.call-window--video.call-window--remote-ready #call-remote-video {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.call-window.call-window--video .call-window__actions,
+.call-window.call-window--accepted .call-window__actions,
+.call-window.call-window--ringing .call-window__actions {
+  margin-top: 0 !important;
+}
+
+@media (max-width: 639px) {
+  .call-window.call-window--video {
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .call-window.call-window--video .call-window__video-frame {
+    min-height: 0 !important;
+    max-height: calc(100dvh - 10rem) !important;
+  }
 }
 
 /* Admin post details modal should reuse the same publication modal geometry. */

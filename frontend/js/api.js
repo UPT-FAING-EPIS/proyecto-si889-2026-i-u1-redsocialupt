@@ -715,7 +715,7 @@ function requireAuth() {
     // Skip inactivity logout if user is in a livestream (watching or streaming)
     const isInLive = document.body.classList.contains('live-immersive-active')
                   || !!document.querySelector('#live-shell')
-                  || window.location.hash?.includes('/live/');
+                  || /^#?live(?:[/?]|$)/.test(String(window.location.hash || '').replace(/^#/, ''));
     if (!isInLive && Date.now() - lastActivity >= INACTIVITY_LIMIT) {
       logout();
       return;
