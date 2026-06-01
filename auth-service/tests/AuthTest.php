@@ -167,6 +167,56 @@ class AuthTest extends TestCase
         $this->seeStatusCode(422);
     }
 
+    #[TestDox('Correo institucional de estudiante bloquea rol y autocompleta codigo y nombre')]
+    public function testInstitutionalStudentEmailLocksRoleAndAutocompletesData(): void
+    {
+        $user = $this->createUser([
+            'email' => 'rc9912345601@virtual.upt.pe',
+            'name' => 'Ricardo Cutipa',
+        ]);
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email]);
+
+        $this->post('/api/auth/complete-profile', [
+            'full_name' => 'Nombre Manipulado',
+            'user_type' => 'teacher',
+            'faculty' => 'FAING',
+            'career' => 'Ingenieria de Sistemas',
+            'academic_cycle' => '5',
+            'student_code' => '000',
+        ], $this->authHeader($token));
+
+        $this->seeStatusCode(200);
+        $this->seeJson([
+            'full_name' => 'Ricardo Cutipa',
+            'user_type' => 'student',
+            'student_code' => '9912345601',
+        ]);
+    }
+
+    #[TestDox('Correo con iniciales que no coinciden no puede registrarse como estudiante')]
+    public function testMismatchedStudentEmailCannotChooseStudentRole(): void
+    {
+        $user = $this->createUser([
+            'email' => 'xx9912345602@virtual.upt.pe',
+            'name' => 'Ricardo Cutipa',
+        ]);
+        $token = $this->generateTestToken(['sub' => $user->id, 'email' => $user->email]);
+
+        $this->post('/api/auth/complete-profile', [
+            'full_name' => 'Ricardo Cutipa',
+            'user_type' => 'student',
+            'faculty' => 'FAING',
+            'career' => 'Ingenieria de Sistemas',
+            'academic_cycle' => '5',
+            'student_code' => '9912345602',
+        ], $this->authHeader($token));
+
+        $this->seeStatusCode(422);
+        $this->seeJson([
+            'error' => 'El correo institucional no corresponde al patron de estudiante',
+        ]);
+    }
+
     #[TestDox('Actualizar perfil sin JWT es rechazado')]
     public function testUpdateProfileWithoutJwt(): void
     {

@@ -13,6 +13,7 @@ $router->get('/', function () {
 $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($router) {
     $router->post('/posts', 'PostController@store');
     $router->get('/posts', 'PostController@index');
+    $router->get('/posts/admin/all', 'PostController@adminIndex');
     $router->get('/posts/{id}', 'PostController@show');
     $router->post('/livestreams', 'LivestreamController@store');
     $router->get('/livestreams/active', 'LivestreamController@active');

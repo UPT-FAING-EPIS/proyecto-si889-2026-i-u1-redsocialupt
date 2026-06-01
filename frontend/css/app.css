@@ -3660,6 +3660,28 @@ body {
   word-break: break-word;
 }
 
+@media (max-width: 767px) {
+  .live-mobile-comments [data-comment-id] {
+    gap: 0.5rem !important;
+  }
+
+  .live-mobile-comments [data-comment-id] > div:first-child {
+    width: 2rem !important;
+    height: 2rem !important;
+    font-size: 0.68rem !important;
+  }
+
+  .live-mobile-comments [data-comment-id] span {
+    font-size: 0.72rem !important;
+  }
+
+  .live-mobile-comments [data-comment-id] p {
+    margin-top: 0.05rem !important;
+    font-size: 0.76rem !important;
+    line-height: 1.22rem !important;
+  }
+}
+
 /* Mobile input bar */
 .live-mobile-input-bar {
   display: flex;
@@ -7051,4 +7073,686 @@ body #profile-comment-modal .post-comments-compose-send .material-symbols-outlin
     #374151 var(--call-volume-level),
     #374151 100%
   ) !important;
+}
+
+/* Admin post details modal should reuse the same publication modal geometry. */
+body #admin-comments-modal .post-comments-modal {
+  width: min(100%, 500px) !important;
+  max-width: min(500px, calc(100vw - 1rem)) !important;
+  max-height: min(92vh, 980px) !important;
+  border-radius: 1rem !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #fff !important;
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.18) !important;
+}
+
+body #admin-comments-modal .post-comments-topbar {
+  display: grid !important;
+  grid-template-columns: 2rem 1fr 2rem !important;
+  align-items: center !important;
+  min-height: 3.5rem !important;
+  padding: 0.8rem 0.9rem !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+body #admin-comments-modal .post-comments-topbar-title {
+  text-align: center !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  color: #1e293b !important;
+}
+
+body #admin-comments-modal .post-comments-topbar-close {
+  position: static !important;
+  justify-self: end !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  border-radius: 999px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #f8fafc !important;
+  color: #64748b !important;
+}
+
+body #admin-comments-modal .post-comments-body,
+body #admin-comments-modal .post-comments-scroll,
+body #admin-comments-modal .post-comments-preview,
+body #admin-comments-modal .post-comments-side {
+  background: #fff !important;
+}
+
+body #admin-comments-modal .post-comments-scroll {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-y: auto !important;
+  max-height: calc(92vh - 7.75rem) !important;
+}
+
+body #admin-comments-modal .post-modal-preview-card {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+body #admin-comments-modal .post-modal-preview-head {
+  padding: 1rem 1rem 0.8rem !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 0.75rem !important;
+}
+
+body #admin-comments-modal .post-modal-preview-copy {
+  margin-top: 0.9rem !important;
+  color: #1f2937 !important;
+  font-size: 0.9rem !important;
+  line-height: 1.6 !important;
+}
+
+body #admin-comments-modal .post-modal-preview-media {
+  padding: 0 1rem 0.95rem !important;
+  background: #fff !important;
+}
+
+body #admin-comments-modal .post-modal-preview-media img {
+  width: 100% !important;
+  max-height: 300px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.85rem !important;
+  object-fit: cover !important;
+}
+
+body #admin-comments-modal .post-modal-preview-stats {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.9rem !important;
+  padding: 0.75rem 1rem !important;
+  border-top: 1px solid #e2e8f0 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+  font-size: 0.77rem !important;
+}
+
+body #admin-comments-modal .post-modal-preview-actions {
+  display: none !important;
+}
+
+body #admin-comments-modal .post-comments-section-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.8rem !important;
+  padding: 0.95rem 1rem 0.8rem !important;
+  background: #fff !important;
+}
+
+body #admin-comments-modal .post-comments-list {
+  padding: 0 1rem 1rem !important;
+}
+
+/* Unified publication modals: feed, groups, profile and admin share the same post detail layout. */
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-modal {
+  width: min(100%, 500px) !important;
+  max-width: min(500px, calc(100vw - 1rem)) !important;
+  max-height: min(92vh, 980px) !important;
+  border-radius: 1rem !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #fff !important;
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.18) !important;
+  overflow: hidden !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-topbar {
+  display: grid !important;
+  grid-template-columns: 2rem 1fr 2rem !important;
+  align-items: center !important;
+  min-height: 3.5rem !important;
+  padding: 0.8rem 0.9rem !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  background: #fff !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-topbar-title {
+  text-align: center !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  color: #1e293b !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-topbar-close {
+  position: static !important;
+  justify-self: end !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  border-radius: 999px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #f8fafc !important;
+  color: #64748b !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-body,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-scroll,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-preview,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-side {
+  background: #fff !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-scroll {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-y: auto !important;
+  max-height: calc(92vh - 7.75rem) !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-card {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__bubble {
+  position: relative !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 1rem 1rem 1rem 0.28rem !important;
+  background: #ffffff !important;
+  padding: 0.75rem 0.85rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card--deletable .post-comment-card__meta {
+  padding-right: 2.35rem !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__meta {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  flex-wrap: nowrap !important;
+  gap: 0.6rem !important;
+  margin-bottom: 0.28rem !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__meta-main {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.38rem !important;
+  flex-wrap: wrap !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__name {
+  color: #1e293b !important;
+  font-size: 0.83rem !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__faculty {
+  color: #ffffff !important;
+  font-size: 0.56rem !important;
+  font-weight: 800 !important;
+  padding: 0.16rem 0.4rem !important;
+  border-radius: 999px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__time {
+  flex: 0 0 auto !important;
+  color: #94a3b8 !important;
+  font-size: 0.68rem !important;
+  line-height: 1 !important;
+  margin-top: 0.18rem !important;
+  white-space: nowrap !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__text {
+  margin: 0 !important;
+  color: #334155 !important;
+  font-size: 0.84rem !important;
+  line-height: 1.5 !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.5rem !important;
+  padding: 0 0.3rem !important;
+  margin-top: 0.05rem !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  flex-wrap: wrap !important;
+  min-width: 0 !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-bar {
+  margin: 0 !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-trigger {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.25rem !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #64748b !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-summary {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.25rem !important;
+  border-radius: 999px !important;
+  background: #f1f5f9 !important;
+  padding: 0.15rem 0.38rem !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-count {
+  color: #1e293b !important;
+  font-size: 0.64rem !important;
+  font-weight: 700 !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__report {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.2rem !important;
+  margin-left: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #94a3b8 !important;
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__delete {
+  position: absolute;
+  top: 0.48rem;
+  right: 0.52rem;
+  display: inline-flex;
+  width: 1.85rem;
+  height: 1.85rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 38, 38, 0.16);
+  background: rgba(254, 242, 242, 0.72);
+  color: #dc2626;
+  opacity: 0.82;
+  transition: opacity 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__delete:hover {
+  background: #fee2e2;
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+/* Admin publication modal parity: keep it visually identical to feed/group/profile modals. */
+body #admin-comments-modal .post-comments-body {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  background: #ffffff !important;
+}
+
+body #admin-comments-modal .post-comments-scroll {
+  min-height: 0 !important;
+  background: #ffffff !important;
+}
+
+body #admin-comments-modal .post-comments-preview {
+  padding: 0 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+}
+
+body #admin-comments-modal .post-modal-preview-head {
+  padding: 1rem 1rem 0.8rem !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 0.75rem !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author--button {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  text-align: left !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author-copy {
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author-main {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.4rem !important;
+  flex-wrap: wrap !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author-name {
+  display: block !important;
+  font-size: 0.9rem !important;
+  font-weight: 700 !important;
+  line-height: 1.5 !important;
+  color: #1e293b !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author-faculty {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0.18rem 0.42rem !important;
+  border-radius: 999px !important;
+  color: #ffffff !important;
+  font-size: 0.58rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author-meta {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 0.28rem !important;
+  margin-top: 0.18rem !important;
+  font-size: 0.72rem !important;
+  line-height: 1.5 !important;
+  color: #64748b !important;
+}
+
+body #admin-comments-modal .post-modal-preview-author-dot {
+  color: #94a3b8 !important;
+}
+
+body #admin-comments-modal .post-modal-preview-menu {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  border-radius: 999px !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #64748b !important;
+  pointer-events: none !important;
+}
+
+body #admin-comments-modal .post-modal-preview-audience {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  margin-top: 0.7rem !important;
+  padding: 0.28rem 0.65rem !important;
+  border-radius: 999px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #f8fafc !important;
+  color: #64748b !important;
+  font-size: 0.73rem !important;
+  font-weight: 600 !important;
+  line-height: 1.5 !important;
+}
+
+body #admin-comments-modal .post-modal-preview-copy {
+  margin-top: 0.9rem !important;
+  color: #1f2937 !important;
+  font-size: 0.9rem !important;
+  line-height: 1.6 !important;
+}
+
+body #admin-comments-modal .post-modal-preview-media {
+  padding: 0 1rem 0.95rem !important;
+  background: #ffffff !important;
+}
+
+body #admin-comments-modal .post-modal-preview-media-button {
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border-radius: 0.85rem !important;
+  overflow: hidden !important;
+  cursor: zoom-in !important;
+}
+
+body #admin-comments-modal .post-modal-preview-media img {
+  width: 100% !important;
+  max-height: 300px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.85rem !important;
+  object-fit: cover !important;
+}
+
+body #admin-comments-modal .post-modal-preview-media-hint {
+  display: none !important;
+}
+
+body #admin-comments-modal .post-modal-preview-stats {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.9rem !important;
+  padding: 0.75rem 1rem !important;
+  border-top: 1px solid #e2e8f0 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+  font-size: 0.77rem !important;
+}
+
+body #admin-comments-modal .post-modal-preview-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.8rem !important;
+  padding: 0.75rem 1rem 0.9rem !important;
+}
+
+body #admin-comments-modal .post-modal-preview-actions .social-reaction-trigger {
+  height: 2.3rem !important;
+  padding: 0 0.9rem !important;
+  border-radius: 999px !important;
+  border: 1px solid #dbe3ef !important;
+  background: #ffffff !important;
+  color: #475569 !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+body #admin-comments-modal .post-modal-preview-actions .social-reaction-trigger.is-active {
+  color: #0e66c2 !important;
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+}
+
+body #admin-comments-modal .post-modal-preview-report {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.3rem !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #94a3b8 !important;
+  font-size: 0.76rem !important;
+  font-weight: 500 !important;
+  padding: 0 !important;
+}
+
+body #admin-comments-modal .post-modal-preview-stat {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+}
+
+body #admin-comments-modal .post-modal-preview-stat-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+  border-radius: 999px !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+body #admin-comments-modal .post-comments-section-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.8rem !important;
+  padding: 0.95rem 1rem 0.8rem !important;
+  background: #ffffff !important;
+  border: 0 !important;
+}
+
+body #admin-comments-modal .post-comments-section-title {
+  color: #1e293b !important;
+  font-size: 0.9rem !important;
+  font-weight: 700 !important;
+  line-height: 1.5 !important;
+}
+
+body #admin-comments-modal .post-comments-sort-pills {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.15rem !important;
+  padding: 0.15rem !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 999px !important;
+  background: #f8fafc !important;
+}
+
+body #admin-comments-modal .post-comments-sort-pill {
+  display: block !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: #64748b !important;
+  padding: 0.3rem 0.7rem !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  line-height: 1.5 !important;
+  transition: all 0.2s ease !important;
+}
+
+body #admin-comments-modal .post-comments-sort-pill.is-active {
+  background: #1e293b !important;
+  color: #ffffff !important;
+}
+
+body #admin-comments-modal .post-comments-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1rem !important;
+  padding: 0 1rem 1rem !important;
+}
+
+body #admin-comments-modal .post-comment-card {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+body #admin-comments-modal .post-comment-card__inner {
+  display: flex !important;
+  align-items: flex-start !important;
+}
+
+body #admin-comments-modal .post-comment-card__thread {
+  display: flex !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  flex-direction: column !important;
+  gap: 0.28rem !important;
+}
+
+body #admin-comments-modal .post-comments-compose {
+  padding: 0.9rem 0.85rem !important;
+  border-top: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body #admin-comments-modal .post-comments-compose-row {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+body #admin-comments-modal .post-comments-compose-input {
+  width: 100% !important;
+  min-height: 2.85rem !important;
+  max-height: 6rem !important;
+  border-radius: 999px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  color: #1e293b !important;
+  font-size: 0.84rem !important;
+  padding: 0.82rem 3rem 0.82rem 0.95rem !important;
+  line-height: 1.35 !important;
+  resize: none !important;
+}
+
+body #admin-comments-modal .post-comments-compose-send {
+  position: absolute !important;
+  right: 0.45rem !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  border-radius: 999px !important;
+  border: 0 !important;
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+}
+
+body #admin-comments-modal .post-comments-compose-send .material-symbols-outlined {
+  transform: rotate(-20deg) !important;
 }

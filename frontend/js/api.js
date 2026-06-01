@@ -391,6 +391,7 @@ const PostsAPI = {
   getLivestreamEvents: (id, after = 0) => apiFetch(`/api/livestreams/${id}/events?after=${after}`),
 
   deletePost: (id) => apiFetch(`${API.posts}/${id}`, { method: 'DELETE' }),
+  listAdminPosts: () => apiFetch(`${API.posts}/admin/all`),
   adminDeletePost: (id) => apiFetch(`${API.posts}/${id}/admin`, { method: 'DELETE' }),
   likePost: (id) => apiFetch(`${API.posts}/${id}/like`, { method: 'POST' }),
   reactPost: (id, reactionType = 'me_gusta') => apiFetch(`${API.posts}/${id}/reaction`, {

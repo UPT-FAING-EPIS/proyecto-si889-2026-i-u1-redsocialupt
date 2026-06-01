@@ -76,8 +76,13 @@ class GroupController extends BaseController
     public function show(Request $request, int $id): JsonResponse
     {
         try {
+            $jwt = $request->bearerToken() ?? '';
+            $role = $request->auth->role ?? '';
+            if (empty($role)) {
+                $role = $this->groupService->decodeJwtRole($jwt);
+            }
             return response()->json(
-                $this->groupService->findDetailed($request->bearerToken() ?? '', $id, (int) $request->auth->sub),
+                $this->groupService->findDetailed($jwt, $id, (int) $request->auth->sub, $role),
                 200
             );
         } catch (\Exception $e) {
@@ -127,8 +132,13 @@ class GroupController extends BaseController
         }
 
         try {
+            $jwt = $request->bearerToken() ?? '';
+            $role = $request->auth->role ?? '';
+            if (empty($role)) {
+                $role = $this->groupService->decodeJwtRole($jwt);
+            }
             return response()->json(
-                $this->groupService->update($request->bearerToken() ?? '', (int) $request->auth->sub, $id, $payload),
+                $this->groupService->update($jwt, (int) $request->auth->sub, $id, $payload, $role),
                 200
             );
         } catch (\Exception $e) {
@@ -151,8 +161,13 @@ class GroupController extends BaseController
     public function pending(Request $request, int $id): JsonResponse
     {
         try {
+            $jwt = $request->bearerToken() ?? '';
+            $role = $request->auth->role ?? '';
+            if (empty($role)) {
+                $role = $this->groupService->decodeJwtRole($jwt);
+            }
             return response()->json(
-                $this->groupService->pendingRequests($request->bearerToken() ?? '', $id, (int) $request->auth->sub),
+                $this->groupService->pendingRequests($jwt, $id, (int) $request->auth->sub, $role),
                 200
             );
         } catch (\Exception $e) {
@@ -163,7 +178,12 @@ class GroupController extends BaseController
     public function approve(Request $request, int $id, int $membershipId): JsonResponse
     {
         try {
-            $this->groupService->approveRequest((int) $request->auth->sub, $id, $membershipId);
+            $jwt = $request->bearerToken() ?? '';
+            $role = $request->auth->role ?? '';
+            if (empty($role)) {
+                $role = $this->groupService->decodeJwtRole($jwt);
+            }
+            $this->groupService->approveRequest((int) $request->auth->sub, $id, $membershipId, $role);
             return response()->json(['message' => 'Solicitud aprobada'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
@@ -173,7 +193,12 @@ class GroupController extends BaseController
     public function reject(Request $request, int $id, int $membershipId): JsonResponse
     {
         try {
-            $this->groupService->rejectRequest((int) $request->auth->sub, $id, $membershipId);
+            $jwt = $request->bearerToken() ?? '';
+            $role = $request->auth->role ?? '';
+            if (empty($role)) {
+                $role = $this->groupService->decodeJwtRole($jwt);
+            }
+            $this->groupService->rejectRequest((int) $request->auth->sub, $id, $membershipId, $role);
             return response()->json(['message' => 'Solicitud rechazada'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
@@ -187,7 +212,12 @@ class GroupController extends BaseController
         ]);
 
         try {
-            $this->groupService->updateMemberRole((int) $request->auth->sub, $id, $memberUserId, (string) $request->input('role'));
+            $jwt = $request->bearerToken() ?? '';
+            $roleSys = $request->auth->role ?? '';
+            if (empty($roleSys)) {
+                $roleSys = $this->groupService->decodeJwtRole($jwt);
+            }
+            $this->groupService->updateMemberRole((int) $request->auth->sub, $id, $memberUserId, (string) $request->input('role'), $roleSys);
             return response()->json(['message' => 'Rol actualizado'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
@@ -197,7 +227,12 @@ class GroupController extends BaseController
     public function removeMember(Request $request, int $id, int $memberUserId): JsonResponse
     {
         try {
-            $this->groupService->removeMember((int) $request->auth->sub, $id, $memberUserId);
+            $jwt = $request->bearerToken() ?? '';
+            $role = $request->auth->role ?? '';
+            if (empty($role)) {
+                $role = $this->groupService->decodeJwtRole($jwt);
+            }
+            $this->groupService->removeMember((int) $request->auth->sub, $id, $memberUserId, $role);
             return response()->json(['message' => 'Miembro expulsado'], 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
@@ -207,7 +242,12 @@ class GroupController extends BaseController
     public function access(Request $request, int $id): JsonResponse
     {
         try {
-            return response()->json($this->groupService->accessContext((int) $request->auth->sub, $id), 200);
+            $jwt = $request->bearerToken() ?? '';
+            $role = $request->auth->role ?? '';
+            if (empty($role)) {
+                $role = $this->groupService->decodeJwtRole($jwt);
+            }
+            return response()->json($this->groupService->accessContext((int) $request->auth->sub, $id, $jwt, $role), 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
         }

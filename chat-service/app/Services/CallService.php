@@ -52,6 +52,7 @@ class CallService
         $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
         $query = CallSession::where('receiver_id', $userId)
             ->where('status', 'ringing')
+            ->where('created_at', '>=', \Carbon\Carbon::now()->subSeconds(45))
             ->orderBy('created_at', 'desc');
 
         if ($hiddenIds) {

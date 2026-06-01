@@ -289,6 +289,20 @@
   }
 
   function buildHash(route, params = {}) {
+    const shortHashParam = getShortHashRouteParam(route, params);
+    if (shortHashParam) {
+      const restParams = { ...params };
+      delete restParams[shortHashParam.key];
+      const searchParams = new URLSearchParams();
+      Object.entries(restParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          searchParams.set(key, value);
+        }
+      });
+      const query = searchParams.toString();
+      return `#${route}/${encodeResourceHash(shortHashParam.value)}${query ? `?${query}` : ''}`;
+    }
+
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
@@ -303,9 +317,41 @@
     const rawHash = window.location.hash.replace(/^#/, '');
     const [rawRoute, queryString = ''] = (rawHash || 'feed').split('?');
     const normalized = (rawRoute || 'feed').replace(/^\/+|\/+$/g, '');
-    const route = ROUTE_ALIASES[normalized] || normalized || 'feed';
+    const [routePart, hashPart = ''] = normalized.split('/');
+    const route = ROUTE_ALIASES[routePart] || routePart || 'feed';
     const params = Object.fromEntries(new URLSearchParams(queryString));
+    const hashParamKey = getShortHashParamKey(route);
+    if (hashParamKey && hashPart && !params[hashParamKey]) {
+      const decodedId = decodeResourceHash(hashPart);
+      if (decodedId) params[hashParamKey] = String(decodedId);
+    }
     return { route, params };
+  }
+
+  function getShortHashParamKey(route) {
+    if (route === 'profile' || route === 'group') return 'id';
+    if (route === 'messages') return 'user';
+    return '';
+  }
+
+  function getShortHashRouteParam(route, params = {}) {
+    const key = getShortHashParamKey(route);
+    if (!key || params[key] === undefined || params[key] === null || params[key] === '') return null;
+    return { key, value: params[key] };
+  }
+
+  function encodeResourceHash(value) {
+    const id = Number(value);
+    if (!Number.isFinite(id) || id <= 0) return encodeURIComponent(String(value || ''));
+    const mixed = Math.trunc(id) * 7919 + 104729;
+    return mixed.toString(36);
+  }
+
+  function decodeResourceHash(hash) {
+    const mixed = Number.parseInt(String(hash || ''), 36);
+    if (!Number.isFinite(mixed)) return null;
+    const id = (mixed - 104729) / 7919;
+    return Number.isInteger(id) && id > 0 ? id : null;
   }
 
   function setDocumentTitle(title) {

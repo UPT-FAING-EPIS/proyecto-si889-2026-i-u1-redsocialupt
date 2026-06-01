@@ -39,6 +39,25 @@
     .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
     .toast { padding: 12px 20px; border-radius: 8px; background: #1a1c1c; color: #fff; font-size: 14px; animation: slideIn .3s ease; }
     .toast.error { background: #ba1a1a; }
+    .onboarding-select { background-image: none !important; }
+    .onboarding-field-locked select,
+    .onboarding-field-locked input,
+    .onboarding-select:disabled {
+        background-color: #f8fafc;
+        color: #64748b;
+        border-color: #e2e8f0;
+        cursor: not-allowed;
+    }
+    .onboarding-lock-icon { display: none; }
+    .onboarding-field-locked .onboarding-lock-icon { display: inline-flex; }
+    .onboarding-field-locked .onboarding-select-icon { display: none; }
+    .onboarding-help {
+        display: none;
+        color: #94a3b8;
+        font-size: 0.75rem;
+        line-height: 1rem;
+    }
+    .onboarding-help.is-visible { display: block; }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 </style>
 </head>
@@ -66,22 +85,24 @@
 <label class="text-sm font-semibold text-gray-900" for="fullName">Nombre Completo <span class="text-error">*</span></label>
 <input class="w-full bg-white border border-outline-variant rounded-xl p-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors" id="fullName" placeholder="Ej. Juan Perez" required type="text"/>
 </div>
-<div class="flex flex-col gap-1.5 w-full">
+<div class="flex flex-col gap-1.5 w-full" id="user-type-field">
 <label class="text-sm font-semibold text-gray-900" for="userType">Tipo de Usuario <span class="text-error">*</span></label>
 <div class="relative">
-<select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="userType" required>
+<select class="onboarding-select w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="userType" required>
 <option disabled selected value="">Selecciona tu tipo de usuario</option>
 <option value="student">Estudiante</option>
 <option value="teacher">Docente</option>
 <option value="administrativo">Administrativo</option>
 </select>
-<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">expand_more</span>
+<span class="material-symbols-outlined onboarding-select-icon absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">expand_more</span>
+<span class="material-symbols-outlined onboarding-lock-icon absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[20px]">lock</span>
 </div>
+<p id="user-type-locked-help" class="onboarding-help">Asignado automaticamente por tu correo institucional.</p>
 </div>
 <div class="flex flex-col gap-1.5 w-full">
 <label id="faculty-label" class="text-sm font-semibold text-gray-900" for="faculty">Facultad <span class="text-error">*</span></label>
 <div class="relative">
-<select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="faculty" required>
+<select class="onboarding-select w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="faculty" required>
 <option disabled selected value="">Selecciona tu facultad</option>
 <option value="FAING">Facultad de Ingeniería (FAING)</option>
 <option value="FACEM">Facultad de Ciencias Empresariales (FACEM)</option>
@@ -96,11 +117,12 @@
 <div class="flex flex-col gap-1.5 w-full" id="school-container">
 <label class="text-sm font-semibold text-gray-900" for="school">Escuela Profesional <span class="text-error">*</span></label>
 <div class="relative">
-<select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="school" required disabled>
+<select class="onboarding-select w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="school" required disabled>
 <option disabled selected value="">Primero selecciona tu facultad</option>
 </select>
 <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">expand_more</span>
 </div>
+<p id="school-help" class="onboarding-help is-visible">Primero selecciona tu facultad.</p>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
   <div class="flex flex-col gap-1.5 w-full hidden" id="area-container">
@@ -115,21 +137,13 @@
 <div class="flex flex-col gap-1.5 w-full" id="cycle-container">
 <label class="text-sm font-semibold text-gray-900" for="cycle">Ciclo Académico <span class="text-error">*</span></label>
 <div class="relative">
-<select class="w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="cycle" required>
-<option disabled selected value="">Selecciona tu ciclo actual</option>
-<option value="1">I Ciclo</option>
-<option value="2">II Ciclo</option>
-<option value="3">III Ciclo</option>
-<option value="4">IV Ciclo</option>
-<option value="5">V Ciclo</option>
-<option value="6">VI Ciclo</option>
-<option value="7">VII Ciclo</option>
-<option value="8">VIII Ciclo</option>
-<option value="9">IX Ciclo</option>
-<option value="10">X Ciclo</option>
+<select class="onboarding-select w-full bg-white border border-outline-variant rounded-xl p-3 appearance-none text-sm text-gray-900 focus:outline-none focus:border-upt-blue focus:ring-1 focus:ring-upt-blue transition-colors pr-10" id="cycle" required disabled>
+<option disabled selected value="">Primero selecciona tu escuela</option>
+<!-- Cycles will be populated dynamically via updateCycles() -->
 </select>
 <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">expand_more</span>
 </div>
+<p id="cycle-help" class="onboarding-help is-visible">Primero selecciona tu escuela profesional.</p>
 </div>
 <div class="flex flex-col gap-1.5 w-full" id="code-container">
 <label class="text-sm font-semibold text-gray-900" for="studentCode">Código de Estudiante <span class="text-error">*</span></label>
@@ -190,6 +204,7 @@
   function updateSchools() {
     const faculty = document.getElementById('faculty').value;
     const schoolSel = document.getElementById('school');
+    const schoolHelp = document.getElementById('school-help');
     schoolSel.innerHTML = '<option disabled selected value="">Selecciona tu escuela</option>';
     const schools = FACULTY_SCHOOLS[faculty] || [];
     schools.forEach((school) => {
@@ -199,6 +214,38 @@
       schoolSel.appendChild(option);
     });
     schoolSel.disabled = schools.length === 0;
+    schoolHelp.classList.toggle('is-visible', schoolSel.disabled);
+    updateCycles();
+  }
+
+  function updateCycles() {
+    const school = document.getElementById('school').value;
+    const cycleSel = document.getElementById('cycle');
+    const cycleHelp = document.getElementById('cycle-help');
+    let maxCycles = 10;
+    if (school === 'Derecho') maxCycles = 12;
+    if (school === 'Medicina Humana') maxCycles = 14;
+
+    const currentVal = cycleSel.value;
+    const hasSchool = Boolean(school);
+    cycleSel.disabled = !hasSchool;
+    cycleHelp.classList.toggle('is-visible', !hasSchool);
+    cycleSel.innerHTML = hasSchool
+      ? '<option disabled selected value="">Selecciona tu ciclo actual</option>'
+      : '<option disabled selected value="">Primero selecciona tu escuela</option>';
+    if (!hasSchool) return;
+
+    const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV'];
+    for (let i = 1; i <= maxCycles; i++) {
+      const option = document.createElement('option');
+      option.value = i;
+      option.textContent = romanNumerals[i-1] + ' Ciclo';
+      cycleSel.appendChild(option);
+    }
+
+    if (currentVal && currentVal <= maxCycles) {
+      cycleSel.value = currentVal;
+    }
   }
 
   function toggleStudentFields() {
@@ -210,11 +257,21 @@
 
     document.getElementById('school-container').style.display = isStudent ? 'flex' : 'none';
     document.getElementById('school').required = isStudent;
-    if (!isStudent) document.getElementById('school').value = '';
+    if (!isStudent) {
+      document.getElementById('school').value = '';
+      document.getElementById('school').disabled = true;
+      document.getElementById('school-help').classList.add('is-visible');
+    }
 
     document.getElementById('cycle-container').style.display = isStudent ? 'flex' : 'none';
     document.getElementById('cycle').required = isStudent;
-    if (!isStudent) document.getElementById('cycle').value = '';
+    if (!isStudent) {
+      document.getElementById('cycle').value = '';
+      document.getElementById('cycle').disabled = true;
+      document.getElementById('cycle-help').classList.add('is-visible');
+    } else {
+      updateCycles();
+    }
 
     document.getElementById('code-container').style.display = isStudent ? 'flex' : 'none';
     document.getElementById('studentCode').required = isStudent;
@@ -230,14 +287,58 @@
     }
   }
 
+  function normalizeInitial(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .match(/[a-z]/)?.[0] || '';
+  }
+
+  function detectStudentIdentity(email, fullName) {
+    const match = String(email || '').match(/^([a-zA-Z]{2})(\d+)@virtual\.upt\.pe$/);
+    if (!match) return null;
+
+    const tokens = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+    if (tokens.length < 2) return null;
+
+    const surnameIndex = tokens.length >= 3 ? tokens.length - 2 : 1;
+    const expectedPrefix = normalizeInitial(tokens[0]) + normalizeInitial(tokens[surnameIndex]);
+    if (match[1].toLowerCase() !== expectedPrefix) return null;
+
+    return { studentCode: match[2] };
+  }
+
   requireAuth();
   const user = getUser();
   if (user) {
-    document.getElementById('email').value = user.email || '';
-    document.getElementById('fullName').value = user.full_name || user.name || '';
+    const emailField = document.getElementById('email');
+    const nameField = document.getElementById('fullName');
+    const typeField = document.getElementById('userType');
+    const codeField = document.getElementById('studentCode');
+
+    emailField.value = user.email || '';
+    nameField.value = user.full_name || user.name || '';
+
+    if (user.email) {
+      const studentIdentity = detectStudentIdentity(user.email, nameField.value);
+      if (studentIdentity) {
+        typeField.value = 'student';
+        typeField.disabled = true;
+        document.getElementById('user-type-field').classList.add('onboarding-field-locked');
+        document.getElementById('user-type-locked-help').classList.add('is-visible');
+        codeField.value = studentIdentity.studentCode;
+        codeField.readOnly = true;
+        nameField.readOnly = true;
+      } else {
+        const studentOption = typeField.querySelector('option[value="student"]');
+        if (studentOption) studentOption.remove();
+      }
+    }
   }
 
   document.getElementById('faculty').addEventListener('change', updateSchools);
+  document.getElementById('school').addEventListener('change', updateCycles);
   document.getElementById('userType').addEventListener('change', toggleStudentFields);
   document.getElementById('studentCode').addEventListener('input', (event) => {
     event.target.value = event.target.value.replace(/\D+/g, '').slice(0, 10);

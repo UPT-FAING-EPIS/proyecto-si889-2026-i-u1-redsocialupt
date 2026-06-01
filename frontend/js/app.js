@@ -92,6 +92,13 @@
     me_sorprende: '/assets/reactions/me-sorprende.webp',
     me_enoja: '/assets/reactions/me-enoja.webp',
   };
+  const APP_ASSET_VERSION = (() => {
+    try {
+      return new URL(document.currentScript?.src || window.location.href).searchParams.get('v') || 'dev';
+    } catch {
+      return 'dev';
+    }
+  })();
   const preloadedReactionAssets = new Set();
   const viewTemplateCache = new Map();
 
@@ -175,7 +182,13 @@
       return viewTemplateCache.get(templatePath);
     }
 
-    const pendingTemplate = fetch(templatePath, { credentials: 'same-origin' }).then(async (response) => {
+    const templateUrl = new URL(templatePath, window.location.origin);
+    templateUrl.searchParams.set('v', APP_ASSET_VERSION);
+
+    const pendingTemplate = fetch(`${templateUrl.pathname}${templateUrl.search}`, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    }).then(async (response) => {
       if (!response.ok) {
         throw new Error(`No se pudo cargar la plantilla ${templatePath} (${response.status})`);
       }
@@ -844,7 +857,9 @@
   function renderCommentCard(comment, options = {}) {
     const interactive = options.interactive !== false;
     const compact = options.compact !== false;
-    const footerActions = options.footerActions || '';
+    const deleteAction = options.deleteAction || '';
+    const deleteId = options.deleteId || comment.id;
+    const deleteLabel = options.deleteLabel || 'Eliminar comentario';
     const author = resolveProfileData({
       id: comment.user_id,
       user_name: comment.user_name,
@@ -853,11 +868,23 @@
     });
 
     return `
-      <article class="post-comment-card ${compact ? 'post-comment-card--compact' : ''}">
+      <article class="post-comment-card ${compact ? 'post-comment-card--compact' : ''} ${deleteAction ? 'post-comment-card--deletable' : ''}">
         <div class="post-comment-card__inner ${compact ? 'gap-2.5' : 'gap-3'}">
           ${renderAvatar(author, { sizeClass: compact ? 'w-8 h-8 md:w-9 md:h-9' : 'w-10 h-10', textClass: 'text-white font-bold text-sm' })}
           <div class="post-comment-card__thread min-w-0 flex-1">
             <div class="post-comment-card__bubble">
+              ${deleteAction ? `
+                <button
+                  type="button"
+                  data-action="${escapeHtml(deleteAction)}"
+                  data-comment-id="${escapeHtml(deleteId)}"
+                  class="post-comment-card__delete"
+                  aria-label="${escapeHtml(deleteLabel)}"
+                  title="${escapeHtml(deleteLabel)}"
+                >
+                  <span class="material-symbols-outlined text-[16px]">delete</span>
+                </button>
+              ` : ''}
               <div class="post-comment-card__meta">
                 <div class="post-comment-card__meta-main">
                   <span class="post-comment-card__name">${escapeHtml(displayName(author))}</span>
@@ -885,7 +912,6 @@
                 </button>
               ` : ''}
             </div>
-            ${footerActions ? `<div class="mt-2 flex items-center justify-end gap-2">${footerActions}</div>` : ''}
           </div>
         </div>
       </article>
@@ -1033,6 +1059,20 @@
   }
 
   function buildHash(route, params = {}) {
+    const shortHashParam = getShortHashRouteParam(route, params);
+    if (shortHashParam) {
+      const restParams = { ...params };
+      delete restParams[shortHashParam.key];
+      const searchParams = new URLSearchParams();
+      Object.entries(restParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          searchParams.set(key, value);
+        }
+      });
+      const query = searchParams.toString();
+      return `#${route}/${encodeResourceHash(shortHashParam.value)}${query ? `?${query}` : ''}`;
+    }
+
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
@@ -1047,9 +1087,41 @@
     const rawHash = window.location.hash.replace(/^#/, '');
     const [rawRoute, queryString = ''] = (rawHash || 'feed').split('?');
     const normalized = (rawRoute || 'feed').replace(/^\/+|\/+$/g, '');
-    const route = ROUTE_ALIASES[normalized] || normalized || 'feed';
+    const [routePart, hashPart = ''] = normalized.split('/');
+    const route = ROUTE_ALIASES[routePart] || routePart || 'feed';
     const params = Object.fromEntries(new URLSearchParams(queryString));
+    const hashParamKey = getShortHashParamKey(route);
+    if (hashParamKey && hashPart && !params[hashParamKey]) {
+      const decodedId = decodeResourceHash(hashPart);
+      if (decodedId) params[hashParamKey] = String(decodedId);
+    }
     return { route, params };
+  }
+
+  function getShortHashParamKey(route) {
+    if (route === 'profile' || route === 'group') return 'id';
+    if (route === 'messages') return 'user';
+    return '';
+  }
+
+  function getShortHashRouteParam(route, params = {}) {
+    const key = getShortHashParamKey(route);
+    if (!key || params[key] === undefined || params[key] === null || params[key] === '') return null;
+    return { key, value: params[key] };
+  }
+
+  function encodeResourceHash(value) {
+    const id = Number(value);
+    if (!Number.isFinite(id) || id <= 0) return encodeURIComponent(String(value || ''));
+    const mixed = Math.trunc(id) * 7919 + 104729;
+    return mixed.toString(36);
+  }
+
+  function decodeResourceHash(hash) {
+    const mixed = Number.parseInt(String(hash || ''), 36);
+    if (!Number.isFinite(mixed)) return null;
+    const id = (mixed - 104729) / 7919;
+    return Number.isInteger(id) && id > 0 ? id : null;
   }
 
   function setDocumentTitle(title) {
@@ -1747,6 +1819,7 @@
     let callSessionTimer = null;
     let callSignalTimer = null;
     let callMeterFrame = null;
+    let ringToneRetryTimer = null;
     let callSessionPollInFlight = false;
     let callSignalPollInFlight = false;
     const callRuntimeId = `call-runtime-${Math.random().toString(36).slice(2)}`;
@@ -1863,6 +1936,10 @@
     }
 
     function stopRingTone() {
+      if (ringToneRetryTimer) {
+        window.clearInterval(ringToneRetryTimer);
+        ringToneRetryTimer = null;
+      }
       if (!callState.ringAudio) return;
       try {
         callState.ringAudio.pause();
@@ -1880,11 +1957,49 @@
       }
 
       try {
-        callState.ringAudio.currentTime = 0;
+        if (!callState.ringAudio.paused && !callState.ringAudio.ended) {
+          return;
+        }
+        const duration = Number(callState.ringAudio.duration || 0);
+        if (callState.ringAudio.ended || (duration && callState.ringAudio.currentTime >= duration - 0.25)) {
+          callState.ringAudio.currentTime = 0;
+        }
         await callState.ringAudio.play();
       } catch (error) {
         console.warn('No se pudo reproducir el tono:', error);
       }
+    }
+
+    function keepRingTonePlaying() {
+      playRingTone();
+      if (ringToneRetryTimer) return;
+      ringToneRetryTimer = window.setInterval(() => {
+        if (callState.session?.status !== 'ringing') {
+          stopRingTone();
+          return;
+        }
+        playRingTone();
+      }, 1200);
+    }
+
+    function primeRingToneFromGesture() {
+      if (!callState.ringAudio) {
+        callState.ringAudio = new Audio('/sonidos/phone-ringing.mp3');
+        callState.ringAudio.loop = true;
+        callState.ringAudio.preload = 'auto';
+      }
+
+      const previousMuted = callState.ringAudio.muted;
+      callState.ringAudio.muted = true;
+      callState.ringAudio.play()
+        .then(() => {
+          callState.ringAudio.pause();
+          callState.ringAudio.currentTime = 0;
+          callState.ringAudio.muted = previousMuted;
+        })
+        .catch(() => {
+          callState.ringAudio.muted = previousMuted;
+        });
     }
 
     function stopAudioMeter() {
@@ -2431,7 +2546,7 @@
       localVideo.classList.toggle('hidden', !(callState.localVideoEnabled && callState.localStream));
       remoteLabel.textContent = hasRemoteVideo ? '' : describeCallPlaceholderLabel(session.status, isVideoMode);
       if (session.status === 'ringing') {
-        playRingTone();
+        keepRingTonePlaying();
       } else {
         stopRingTone();
       }
@@ -2879,6 +2994,7 @@
       callState.minimized = false;
       resetCallNegotiationState();
       updateCallWindow();
+      keepRingTonePlaying();
       startActiveCallPolling();
       return true;
     }
@@ -2987,6 +3103,7 @@
 
     async function acceptIncomingCall() {
       if (!callState.session) return;
+      stopRingTone();
       try {
         await ensureLocalStream(callState.mode);
       } catch (error) {
@@ -3057,6 +3174,7 @@
       if (!callState.session && !callState.isFinalizing) {
         return;
       }
+      stopRingTone();
       cleanupPeerConnection();
       stopCallTimers();
 
@@ -3815,6 +3933,8 @@
     window.addEventListener('presence:updated', handlePresenceUpdated);
     window.addEventListener('resize', handleMessagesViewportResize);
     document.addEventListener('visibilitychange', handleMessagesVisibilityChange);
+    document.addEventListener('pointerdown', primeRingToneFromGesture, { once: true, passive: true });
+    document.addEventListener('keydown', primeRingToneFromGesture, { once: true });
     if (ownsCallLifecycle) {
       window.addEventListener('hashchange', handleCallRouteChange);
       window.addEventListener('pagehide', handleCallPageLeave);
@@ -3836,6 +3956,8 @@
       window.removeEventListener('presence:updated', handlePresenceUpdated);
       window.removeEventListener('resize', handleMessagesViewportResize);
       document.removeEventListener('visibilitychange', handleMessagesVisibilityChange);
+      document.removeEventListener('pointerdown', primeRingToneFromGesture);
+      document.removeEventListener('keydown', primeRingToneFromGesture);
       if (ownsCallLifecycle && !callState.session) {
         detachCallRouteLifecycle();
       }
@@ -3960,6 +4082,10 @@
           setTimeout(() => commentInput.focus(), 60);
         }
 
+        function canDeleteFeedComment(comment) {
+          return Number(comment.user_id) === Number(user.id) || user?.role === 'admin' || appState.user?.role === 'admin';
+        }
+
         function closeCommentModal() {
           pendingCommentId = null;
           if (commentPollTimer) {
@@ -4026,7 +4152,9 @@
           }
 
           const previousScroll = commentList.scrollTop;
-          commentList.innerHTML = comments.map((comment) => renderCommentCard(comment)).join('');
+          commentList.innerHTML = comments.map((comment) => renderCommentCard(comment, {
+            deleteAction: canDeleteFeedComment(comment) ? 'delete-comment' : '',
+          })).join('');
           if (preserveScroll) {
             commentList.scrollTop = previousScroll;
           }
@@ -4463,6 +4591,27 @@
 
           if (button.dataset.action === 'report-comment') {
             await reportContent('comentario', Number(button.dataset.commentId));
+            return;
+          }
+
+          if (button.dataset.action === 'delete-comment') {
+            const confirmed = await confirmAction({
+              title: 'Eliminar comentario',
+              copy: 'El comentario se eliminara y no podra recuperarse.',
+              acceptLabel: 'Eliminar',
+              tone: 'danger',
+            });
+            if (!confirmed) return;
+
+            const result = await PostsAPI.deleteComment(null, button.dataset.commentId);
+            if (result?.ok) {
+              showToast('Comentario eliminado', 'success');
+              await loadFeed({ force: true });
+              await loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true });
+              return;
+            }
+
+            showToast(result?.data?.error || 'No se pudo eliminar el comentario', 'error');
           }
         });
 
@@ -4620,6 +4769,41 @@
           container.innerHTML = '<section class="rounded-3xl border border-slate-200 bg-white p-8 text-center text-slate-700">Directo no disponible.</section>';
           return () => { };
         }
+
+        const liveStatusMetaCleanup = (() => {
+          if (isDesktopClient()) {
+            return () => { };
+          }
+
+          const metaSpecs = [
+            { name: 'theme-color', content: '#000000' },
+            { name: 'apple-mobile-web-app-capable', content: 'yes' },
+            { name: 'apple-mobile-web-app-status-bar-style', content: 'black' },
+          ];
+          const previous = metaSpecs.map((spec) => {
+            let element = document.head.querySelector(`meta[name="${spec.name}"]`);
+            const existed = Boolean(element);
+            const content = element?.getAttribute('content') ?? null;
+            if (!element) {
+              element = document.createElement('meta');
+              element.setAttribute('name', spec.name);
+              document.head.appendChild(element);
+            }
+            element.setAttribute('content', spec.content);
+            return { element, existed, content };
+          });
+
+          return () => {
+            previous.forEach(({ element, existed, content }) => {
+              if (!element) return;
+              if (!existed) {
+                element.remove();
+              } else if (content !== null) {
+                element.setAttribute('content', content);
+              }
+            });
+          };
+        })();
 
         const liveShell = container.querySelector('#live-shell');
         function syncLiveDeviceClasses() {
@@ -7039,6 +7223,7 @@
             const result = await PostsAPI.getLivestreamEvents(liveId, lastEventId);
             const events = getList(result);
             if (!result?.ok) return;
+
             if (!events.length) {
               reactionEventsCursorReady = true;
               return;
@@ -7826,6 +8011,7 @@
             liveVideoWrap.removeEventListener('click', guardViewerPlayerTap, true);
           }
           document.removeEventListener('fullscreenchange', handleFullscreenChange);
+          liveStatusMetaCleanup();
           // Clean up immersive mode
           document.body.classList.remove('live-immersive-active');
           if (liveShell) {
@@ -8047,7 +8233,8 @@
         const grid = container.querySelector('#groups-grid');
         const emptyState = container.querySelector('#groups-empty-state');
         const searchInput = container.querySelector('#groups-search');
-        const membershipFilter = container.querySelector('#groups-membership-filter');
+        const hideMineCheckbox = container.querySelector('#groups-hide-mine-checkbox');
+        const privacyFilter = container.querySelector('#groups-privacy-filter');
         const discoverToolbar = container.querySelector('#groups-discover-toolbar');
         const listSection = container.querySelector('#groups-list-section');
         const createSection = container.querySelector('#groups-create-section');
@@ -8329,7 +8516,11 @@
             return;
           }
 
-          const discoverableGroups = getList(result).filter((group) => membershipFilter.value !== 'without-mine' || !group.is_member);
+          const discoverableGroups = getList(result).filter((group) => {
+            const passMine = !hideMineCheckbox.checked || !group.is_member;
+            const passPrivacy = privacyFilter.value === 'all' || group.privacy === privacyFilter.value;
+            return passMine && passPrivacy;
+          });
           renderList(discoverableGroups, 'No se encontraron grupos con esos criterios.');
         }
 
@@ -8362,7 +8553,12 @@
             loadDiscover();
           }, 280);
         });
-        membershipFilter.addEventListener('change', () => {
+        hideMineCheckbox.addEventListener('change', () => {
+          if (activeTab !== 'discover') return;
+          loadDiscover();
+        });
+
+        privacyFilter.addEventListener('change', () => {
           if (activeTab !== 'discover') return;
           loadDiscover();
         });
@@ -8559,6 +8755,7 @@
         let currentTab = 'info';
         let selectedImageFile = null;
         let selectedEditCoverFile = null;
+        let selectedEditCoverPreviewUrl = '';
         let pendingCommentPostId = null;
         let currentCommentSort = 'newest';
         const editCropState = {
@@ -8604,14 +8801,22 @@
           return !!groupData?.is_admin;
         }
 
+        function isSystemAdmin() {
+          return appState.user?.role === 'admin' || user?.role === 'admin';
+        }
+
         function updateEditCoverPreview(file = null) {
+          if (selectedEditCoverPreviewUrl) {
+            URL.revokeObjectURL(selectedEditCoverPreviewUrl);
+            selectedEditCoverPreviewUrl = '';
+          }
+
           if (file) {
-            const previewUrl = URL.createObjectURL(file);
-            editCoverPreview.style.backgroundImage = `url('${safeUrl(previewUrl)}')`;
+            selectedEditCoverPreviewUrl = URL.createObjectURL(file);
+            editCoverPreview.style.backgroundImage = `url('${safeUrl(selectedEditCoverPreviewUrl)}')`;
             editCoverPreview.style.backgroundSize = 'cover';
             editCoverPreview.style.backgroundPosition = 'center';
             clearEditCoverButton.classList.remove('hidden');
-            setTimeout(() => URL.revokeObjectURL(previewUrl), 0);
             return;
           }
 
@@ -8773,6 +8978,10 @@
           editModal.classList.add('hidden');
           editModal.classList.remove('flex');
           selectedEditCoverFile = null;
+          if (selectedEditCoverPreviewUrl) {
+            URL.revokeObjectURL(selectedEditCoverPreviewUrl);
+            selectedEditCoverPreviewUrl = '';
+          }
           editCoverInput.value = '';
           updateEditCoverPreview(null);
         }
@@ -8923,14 +9132,9 @@
           }
 
           commentList.innerHTML = comments.map((comment) => {
-            const canDelete = Number(comment.user_id) === Number(user.id) || groupCanManage();
+            const canDelete = Number(comment.user_id) === Number(user.id) || groupCanManage() || isSystemAdmin();
             return renderCommentCard(comment, {
-              footerActions: canDelete ? `
-                <button type="button" data-group-delete-comment="${comment.id}" class="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-50">
-                  <span class="material-symbols-outlined text-[15px]">delete</span>
-                  Eliminar
-                </button>
-              ` : '',
+              deleteAction: canDelete ? 'group-delete-comment' : '',
             });
           }).join('');
         }
@@ -9147,7 +9351,7 @@
                 ${members.map((member) => {
             const isSelf = Number(member.user_id) === Number(user.id);
             const canManageMember = groupCanManage() && member.role !== 'creator' && !isSelf;
-            const canChangeRole = groupData.current_role === 'creator' && member.role !== 'creator' && !isSelf;
+            const canChangeRole = (groupData.current_role === 'creator' || isSystemAdmin()) && member.role !== 'creator' && !isSelf;
             return `
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4">
                       <div class="flex items-center gap-3">
@@ -9520,9 +9724,9 @@
         });
 
         commentList.addEventListener('click', async (event) => {
-          const deleteButton = event.target.closest('[data-group-delete-comment]');
+          const deleteButton = event.target.closest('[data-action="group-delete-comment"]');
           if (deleteButton) {
-            const result = await PostsAPI.deleteComment(null, deleteButton.dataset.groupDeleteComment);
+            const result = await PostsAPI.deleteComment(null, deleteButton.dataset.commentId);
             if (result?.ok) {
               showToast('Comentario eliminado', 'success');
               await loadComments(pendingCommentPostId, currentCommentSort);
@@ -9646,6 +9850,16 @@
         let currentProfileCommentSort = 'newest';
         let profileRelationshipPollTimer = null;
         let profileLoadToken = 0;
+        const sentFriendRequestStorageKey = `upt.sentFriendRequests.${appState.user?.id || user?.id || 'local'}`;
+        const sentFriendRequestProfileIds = new Set((() => {
+          try {
+            return JSON.parse(sessionStorage.getItem(sentFriendRequestStorageKey) || '[]')
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value));
+          } catch {
+            return [];
+          }
+        })());
         const PROFILE_RELATIONSHIP_POLL_INTERVAL_MS = 2000;
         const cropConfigs = {
           avatar: {
@@ -10092,7 +10306,9 @@
             return;
           }
 
-          profileCommentList.innerHTML = comments.map((comment) => renderCommentCard(comment)).join('');
+          profileCommentList.innerHTML = comments.map((comment) => renderCommentCard(comment, {
+            deleteAction: (Number(comment.user_id) === Number(user.id) || user?.role === 'admin' || appState.user?.role === 'admin') ? 'profile-delete-comment' : '',
+          })).join('');
         }
 
         async function confirmProfileComment() {
@@ -10201,7 +10417,7 @@
 
           const [friendsResult, pendingResult, blockContextResult] = isOwnProfile
             ? [null, null, null]
-            : await Promise.all([SocialAPI.getFriends(), SocialAPI.getPendingRequests(), SocialAPI.getBlockContext()]);
+            : await Promise.all([SocialAPI.getFriends(true), SocialAPI.getPendingRequests(), SocialAPI.getBlockContext()]);
 
           const friends = friendsResult ? normalizeFriendEntries(getList(friendsResult)) : [];
           const pending = pendingResult ? getList(pendingResult) : [];
@@ -10216,6 +10432,10 @@
           const isBlockedByOther = hiddenIds.includes(Number(profileData.id)) && !isBlockedByMe;
           const incoming = findIncomingRequest(pending, profileData.id);
           if (incoming) incomingRequestId = incoming.id;
+          const outgoingRequestPending = sentFriendRequestProfileIds.has(Number(profileData.id));
+          if (isFriend) {
+            forgetSentFriendRequest(profileData.id);
+          }
 
           const color = userColor(profileData);
           setBackgroundMedia(bannerView, profileData.banner_url, color);
@@ -10302,6 +10522,17 @@
                   Bloquear
                 </button>
               `;
+          } else if (outgoingRequestPending) {
+            profileActions.innerHTML = `
+                <button type="button" data-profile-action="request-sent" disabled class="bg-[#D4A017] text-black/80 font-semibold text-sm px-6 py-2.5 rounded-lg shadow-sm flex items-center gap-2 cursor-not-allowed opacity-80">
+                  <span class="material-symbols-outlined text-[20px]">hourglass_empty</span>
+                  Solicitud enviada
+                </button>
+                <button type="button" data-profile-action="block-user" class="bg-white border border-red-200 text-red-600 font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2 hover:bg-red-50">
+                  <span class="material-symbols-outlined text-[20px]">block</span>
+                  Bloquear
+                </button>
+              `;
           } else {
             profileActions.innerHTML = `
                 <button type="button" data-profile-action="send-request" class="bg-[#D4A017] hover:bg-[#C19015] text-black font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
@@ -10322,6 +10553,35 @@
 
         function handleProfileFriendshipChanged() {
           loadProfile({ skipPosts: true, silent: true }).catch(() => { });
+        }
+
+        function persistSentFriendRequests() {
+          try {
+            sessionStorage.setItem(sentFriendRequestStorageKey, JSON.stringify([...sentFriendRequestProfileIds]));
+          } catch {
+            // Storage may be unavailable; the in-memory set still prevents duplicate clicks.
+          }
+        }
+
+        function rememberSentFriendRequest(profileId) {
+          const id = Number(profileId);
+          if (!Number.isFinite(id)) return;
+          sentFriendRequestProfileIds.add(id);
+          persistSentFriendRequests();
+        }
+
+        function forgetSentFriendRequest(profileId) {
+          const id = Number(profileId);
+          if (!Number.isFinite(id)) return;
+          sentFriendRequestProfileIds.delete(id);
+          persistSentFriendRequests();
+        }
+
+        function setFriendRequestSentButton(button) {
+          button.disabled = true;
+          button.dataset.profileAction = 'request-sent';
+          button.className = 'bg-[#D4A017] text-black/80 font-semibold text-sm px-6 py-2.5 rounded-lg shadow-sm flex items-center gap-2 cursor-not-allowed opacity-80';
+          button.innerHTML = '<span class="material-symbols-outlined text-[20px]">hourglass_empty</span>Solicitud enviada';
         }
 
         function handleProfileVisibilityChange() {
@@ -10377,15 +10637,29 @@
           }
 
           if (button.dataset.profileAction === 'send-request') {
+            const originalClassName = button.className;
+            const originalHtml = button.innerHTML;
+            setFriendRequestSentButton(button);
+            rememberSentFriendRequest(profileData.id);
+
             const result = await SocialAPI.sendRequest(profileData.id);
             if (result?.ok) {
               showToast('Solicitud enviada', 'success');
               window.dispatchEvent(new CustomEvent('friendship:changed'));
-              button.disabled = true;
-              button.className = 'bg-[#D4A017] text-black/80 font-semibold text-sm px-6 py-2.5 rounded-lg shadow-sm flex items-center gap-2 cursor-not-allowed opacity-80';
-              button.innerHTML = '<span class="material-symbols-outlined text-[20px]">hourglass_empty</span>Solicitud enviada';
               return;
             }
+
+            const errorText = result?.data?.error || '';
+            if (/pendiente|existe/i.test(errorText)) {
+              showToast('Solicitud enviada', 'success');
+              return;
+            }
+
+            forgetSentFriendRequest(profileData.id);
+            button.disabled = false;
+            button.dataset.profileAction = 'send-request';
+            button.className = originalClassName;
+            button.innerHTML = originalHtml;
             showToast(result?.data?.error || 'No se pudo enviar la solicitud', 'error');
             return;
           }
@@ -10471,6 +10745,27 @@
 
           if (button.dataset.action === 'report-comment') {
             await reportContent('comentario', Number(button.dataset.commentId));
+            return;
+          }
+
+          if (button.dataset.action === 'profile-delete-comment') {
+            const confirmed = await confirmAction({
+              title: 'Eliminar comentario',
+              copy: 'El comentario se eliminara y no podra recuperarse.',
+              acceptLabel: 'Eliminar',
+              tone: 'danger',
+            });
+            if (!confirmed) return;
+
+            const result = await PostsAPI.deleteComment(null, button.dataset.commentId);
+            if (result?.ok) {
+              showToast('Comentario eliminado', 'success');
+              await loadPosts(profileData.id);
+              await loadProfileComments(pendingProfileCommentId, currentProfileCommentSort);
+              return;
+            }
+
+            showToast(result?.data?.error || 'No se pudo eliminar el comentario', 'error');
           }
         });
 
@@ -10749,7 +11044,7 @@
 
         function renderStats(users) {
           const total = users.length;
-          const active = users.filter((item) => item.is_active !== false).length;
+          const active = users.filter((item) => item.is_active !== false && isUserOnline(item)).length;
           const admins = users.filter((item) => item.role === 'admin').length;
           const completed = users.filter((item) => item.is_profile_complete).length;
 
@@ -10833,12 +11128,60 @@
           }
         }
 
+        const sortFilter = container.querySelector('#admin-user-sort-filter');
+        const editFaculty = container.querySelector('#edit-user-faculty');
+        const editCareer = container.querySelector('#edit-user-career');
+        const editCycle = container.querySelector('#edit-user-cycle');
+        const editCode = container.querySelector('#edit-user-code');
+
+        function updateEditUserCareers() {
+          const faculty = editFaculty.value;
+          const currentVal = editCareer.value;
+          const careers = getFacultyCareerOptions(faculty).filter(c => c !== 'Todos');
+          editCareer.innerHTML = '<option disabled selected value="">Selecciona tu carrera</option>';
+          careers.forEach((career) => {
+            const option = document.createElement('option');
+            option.value = career;
+            option.textContent = career;
+            editCareer.appendChild(option);
+          });
+          editCareer.disabled = careers.length === 0;
+          if (currentVal && careers.includes(currentVal)) {
+            editCareer.value = currentVal;
+          }
+          updateEditUserCycles();
+        }
+
+        function updateEditUserCycles() {
+          const school = editCareer.value;
+          let maxCycles = 10;
+          if (school === 'Derecho') maxCycles = 12;
+          if (school === 'Medicina Humana') maxCycles = 14;
+
+          const currentVal = editCycle.value;
+          editCycle.innerHTML = '<option disabled selected value="">Selecciona tu ciclo actual</option>';
+
+          const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV'];
+          for (let i = 1; i <= maxCycles; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = romanNumerals[i-1] + ' Ciclo';
+            editCycle.appendChild(option);
+          }
+
+          if (currentVal && currentVal <= maxCycles) {
+            editCycle.value = currentVal;
+          }
+        }
+
         function applyAdminUserFilters() {
           const query = searchInput.value.trim().toLowerCase();
           const faculty = facultyFilter.value;
           const career = careerFilter.value;
           const role = roleFilter.value;
-          const filtered = allUsers.filter((listedUser) => {
+          const sortOrder = sortFilter ? sortFilter.value : 'desc';
+
+          let filtered = allUsers.filter((listedUser) => {
             const name = displayName(listedUser).toLowerCase();
             const email = String(listedUser.email || '').toLowerCase();
             const matchesQuery = !query || name.includes(query) || email.includes(query);
@@ -10848,6 +11191,13 @@
               || (role === 'admin' ? String(listedUser.role || 'user') === 'admin' : String(listedUser.user_type || 'student') === role);
             return matchesQuery && matchesFaculty && matchesCareer && matchesRole;
           });
+
+          filtered.sort((a, b) => {
+            const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+          });
+
           renderUsers(filtered);
         }
 
@@ -10883,7 +11233,9 @@
             container.querySelector('#edit-user-name').value = displayName(listedUser);
             container.querySelector('#edit-user-type').value = listedUser.user_type || 'student';
             container.querySelector('#edit-user-faculty').value = listedUser.faculty || 'FAING';
+            updateEditUserCareers();
             container.querySelector('#edit-user-career').value = careerLabel(listedUser);
+            updateEditUserCycles();
             container.querySelector('#edit-user-cycle').value = listedUser.academic_cycle || '';
             container.querySelector('#edit-user-code').value = listedUser.student_code || '';
             container.querySelector('#edit-user-area').value = listedUser.area || '';
@@ -10933,6 +11285,16 @@
         container.querySelector('#block-user-duration').addEventListener('change', (event) => {
           toggleCustomBlockFields(event.target.value);
         });
+        editFaculty.addEventListener('change', updateEditUserCareers);
+        editCareer.addEventListener('change', updateEditUserCycles);
+        editCode.addEventListener('input', (event) => {
+          event.target.value = event.target.value.replace(/\D+/g, '').slice(0, 10);
+        });
+
+        if (sortFilter) {
+          sortFilter.addEventListener('change', applyAdminUserFilters);
+        }
+
         container.querySelector('#edit-user-type').addEventListener('change', (event) => {
           syncAdminEditFields(event.target.value);
         });
@@ -11368,6 +11730,12 @@
         const commentPostPreview = container.querySelector('#admin-comment-post-preview');
         const commentsList = container.querySelector('#admin-comments-list');
         const commentsSort = container.querySelector('#admin-comments-sort');
+        const commentsInput = container.querySelector('#admin-comment-input');
+        const confirmCommentButton = container.querySelector('#admin-confirm-comment-btn');
+        const syncCommentsSortChips = bindCommentSortChips(commentsModal, commentsSort, (value) => {
+          if (!currentCommentsPostId) return;
+          showComments(currentCommentsPostId, value);
+        });
 
         let allPosts = [];
         let currentCommentsPostId = null;
@@ -11442,6 +11810,7 @@
                       <p class="content-break text-sm text-slate-700 mb-1.5">${escapeHtml(((post.post_type || 'standard') === 'livestream' ? (post.live_title || 'Directo UPT') : ((post.content || '').slice(0, 140))) || 'Sin contenido')}</p>
                       <div class="flex flex-wrap gap-2">
                         <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${(post.post_type || 'standard') === 'livestream' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-sky-50 text-sky-700 border-sky-200'}"><span class="material-symbols-outlined text-[13px]">${(post.post_type || 'standard') === 'livestream' ? 'live_tv' : 'article'}</span>${(post.post_type || 'standard') === 'livestream' ? 'Stream' : 'Publicacion'}</span>
+                        ${post.group_id ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] font-medium border border-amber-200"><span class="material-symbols-outlined text-[12px]">groups</span>${escapeHtml(post.group_name || `Grupo #${post.group_id}`)}</span>` : ''}
                         ${post.image_url ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-[#EEF2FF] text-[#4F46E5] rounded text-[10px] font-medium border border-[#E0E7FF]"><span class="material-symbols-outlined text-[12px]">image</span>Con imagen</span>' : ''}
                       </div>
                     </div>
@@ -11482,7 +11851,7 @@
 
         async function loadPosts() {
           await ensurePublicUsersLoaded();
-          const result = await PostsAPI.getFeed();
+          const result = await PostsAPI.listAdminPosts();
           if (!result?.ok) {
             tbody.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-slate-400">No se pudieron cargar las publicaciones.</td></tr>';
             return;
@@ -11496,6 +11865,7 @@
         async function showComments(postId, sort = commentsSort.value || 'newest') {
           currentCommentsPostId = Number(postId);
           commentsSort.value = sort;
+          syncCommentsSortChips(sort);
           openCommentsModal();
           const selectedPost = allPosts.find((post) => Number(post.id) === currentCommentsPostId);
           commentPostPreview.innerHTML = renderPostModalPreview(selectedPost, appState.user?.id);
@@ -11516,18 +11886,28 @@
           }
 
           commentsList.innerHTML = comments.map((comment) => renderCommentCard(comment, {
-            interactive: false,
-            footerActions: `
-              <button
-                type="button"
-                data-delete-admin-comment="${comment.id}"
-                class="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-50"
-              >
-                <span class="material-symbols-outlined text-[15px]">delete</span>
-                Eliminar comentario
-              </button>
-            `,
+            deleteAction: 'delete-admin-comment',
           })).join('');
+        }
+
+        async function confirmAdminComment() {
+          const content = commentsInput.value.trim();
+          if (!currentCommentsPostId || !content) return;
+
+          confirmCommentButton.disabled = true;
+          const result = await PostsAPI.addComment(currentCommentsPostId, content);
+          confirmCommentButton.disabled = false;
+
+          if (result?.ok) {
+            showToast('Comentario anadido', 'success');
+            commentsInput.value = '';
+            commentsInput.style.height = '';
+            await loadPosts();
+            await showComments(currentCommentsPostId, commentsSort.value);
+            return;
+          }
+
+          showToast(result?.data?.error || 'Error al comentar', 'error');
         }
 
         container.querySelector('#go-admin-users-btn').addEventListener('click', () => router.navigate('admin'));
@@ -11535,7 +11915,17 @@
         typeFilter.addEventListener('change', applyAdminPostFilters);
         orderFilter.addEventListener('change', applyAdminPostFilters);
         container.querySelector('#close-comments-modal-btn').addEventListener('click', closeCommentsModal);
-        container.querySelector('#close-comments-modal-footer-btn').addEventListener('click', closeCommentsModal);
+        confirmCommentButton.addEventListener('click', confirmAdminComment);
+        commentsInput.addEventListener('keydown', async (event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            await confirmAdminComment();
+          }
+        });
+        commentsInput.addEventListener('input', () => {
+          commentsInput.style.height = 'auto';
+          commentsInput.style.height = `${Math.min(commentsInput.scrollHeight, 96)}px`;
+        });
         commentsSort.addEventListener('change', () => {
           if (!currentCommentsPostId) return;
           showComments(currentCommentsPostId, commentsSort.value);
@@ -11571,10 +11961,41 @@
         });
 
         commentsList.addEventListener('click', async (event) => {
-          const deleteCommentButton = event.target.closest('[data-delete-admin-comment]');
-          if (!deleteCommentButton || !currentCommentsPostId) return;
+          const button = event.target.closest('[data-action]');
+          if (!button || !currentCommentsPostId) return;
 
-          const result = await PostsAPI.adminDeleteComment(deleteCommentButton.dataset.deleteAdminComment);
+          if (button.dataset.action === 'open-reaction-picker') {
+            openReactionPicker(button, {
+              targetType: 'comment',
+              targetId: Number(button.dataset.targetId),
+              currentReaction: button.dataset.currentReaction || '',
+              onSelect: async (reaction) => {
+                button.dataset.currentReaction = reaction;
+                button.classList.add('is-active');
+                button.innerHTML = `${renderReactionAsset(reaction)}<span>${escapeHtml(REACTION_META[reaction]?.label || 'Reaccionar')}</span>`;
+                closeReactionPicker();
+
+                const result = await PostsAPI.reactComment(Number(button.dataset.targetId), reaction);
+                if (!result?.ok) {
+                  showToast(result?.data?.error || 'No se pudo reaccionar al comentario', 'error');
+                  await showComments(currentCommentsPostId, commentsSort.value);
+                  return;
+                }
+                showComments(currentCommentsPostId, commentsSort.value).catch(() => { });
+              },
+            });
+            return;
+          }
+
+          if (button.dataset.action === 'report-comment') {
+            await reportContent('comentario', Number(button.dataset.commentId));
+            return;
+          }
+
+          const deleteCommentButton = button.dataset.action === 'delete-admin-comment' ? button : null;
+          if (!deleteCommentButton) return;
+
+          const result = await PostsAPI.adminDeleteComment(deleteCommentButton.dataset.commentId);
           if (result?.ok) {
             showToast('Comentario eliminado', 'success');
             await loadPosts();
@@ -11583,6 +12004,77 @@
           }
 
           showToast(result?.data?.error || 'No se pudo eliminar el comentario', 'error');
+        });
+
+        commentsList.addEventListener('mouseover', (event) => {
+          const trigger = event.target.closest('[data-action="open-reaction-picker"]');
+          if (!trigger || !isDesktopClient() || !currentCommentsPostId) return;
+          if (pointerWithinReactionZone(event.relatedTarget, trigger)) return;
+          clearReactionPickerCloseTimer();
+          openReactionPicker(trigger, {
+            targetType: 'comment',
+            targetId: Number(trigger.dataset.targetId),
+            currentReaction: trigger.dataset.currentReaction || '',
+            onSelect: async (reaction) => {
+              trigger.dataset.currentReaction = reaction;
+              trigger.classList.add('is-active');
+              trigger.innerHTML = `${renderReactionAsset(reaction)}<span>${escapeHtml(REACTION_META[reaction]?.label || 'Reaccionar')}</span>`;
+              closeReactionPicker();
+
+              const result = await PostsAPI.reactComment(Number(trigger.dataset.targetId), reaction);
+              if (!result?.ok) {
+                showToast(result?.data?.error || 'No se pudo reaccionar al comentario', 'error');
+                await showComments(currentCommentsPostId, commentsSort.value);
+                return;
+              }
+              showComments(currentCommentsPostId, commentsSort.value).catch(() => { });
+            },
+          });
+        });
+
+        commentsList.addEventListener('mouseout', (event) => {
+          const trigger = event.target.closest('[data-action="open-reaction-picker"]');
+          if (!trigger || !isDesktopClient()) return;
+          if (pointerWithinReactionZone(event.relatedTarget, trigger)) return;
+          scheduleReactionPickerClose();
+        });
+
+        commentPostPreview.addEventListener('click', async (event) => {
+          const actionTarget = event.target.closest('[data-action]');
+          if (!actionTarget || !currentCommentsPostId) return;
+
+          if (actionTarget.dataset.action === 'open-profile') {
+            router.navigate('profile', { id: actionTarget.dataset.userId });
+            return;
+          }
+
+          if (actionTarget.dataset.action === 'open-post-image') {
+            openPostImageLightbox(actionTarget.dataset.imageUrl, actionTarget.dataset.imageAlt || 'Imagen ampliada de la publicacion');
+            return;
+          }
+
+          if (actionTarget.dataset.action === 'report-post') {
+            await reportContent('publicacion', Number(actionTarget.dataset.postId));
+            return;
+          }
+
+          if (actionTarget.dataset.action === 'open-reaction-picker') {
+            openReactionPicker(actionTarget, {
+              targetType: 'post',
+              targetId: Number(actionTarget.dataset.targetId),
+              currentReaction: actionTarget.dataset.currentReaction || '',
+              onSelect: async (reaction) => {
+                const result = await PostsAPI.reactPost(Number(actionTarget.dataset.targetId), reaction);
+                if (result?.ok) {
+                  await loadPosts();
+                  const selectedPost = allPosts.find((post) => Number(post.id) === currentCommentsPostId);
+                  commentPostPreview.innerHTML = renderPostModalPreview(selectedPost, appState.user?.id);
+                  return;
+                }
+                showToast(result?.data?.error || 'No se pudo reaccionar a la publicacion', 'error');
+              },
+            });
+          }
         });
 
         loadPosts();

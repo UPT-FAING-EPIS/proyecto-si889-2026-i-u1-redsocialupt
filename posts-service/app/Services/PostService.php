@@ -102,6 +102,17 @@ class PostService
             ->values();
     }
 
+    public function adminListAll(): \Illuminate\Support\Collection
+    {
+        return Post::query()
+            ->withCount([
+                'comments',
+                'reactions as reactions_total',
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
     public function createGroupPost(int $userId, int $groupId, array $data, string $jwt): Post
     {
         $access = $this->socialBlockService->getGroupAccess($jwt, $groupId);

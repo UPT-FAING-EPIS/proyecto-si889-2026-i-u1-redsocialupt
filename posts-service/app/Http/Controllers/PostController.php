@@ -116,6 +116,18 @@ class PostController extends BaseController
         return response()->json($posts, 200);
     }
 
+    public function adminIndex(Request $request): JsonResponse
+    {
+        if ($request->auth->role !== 'admin') {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $posts = $this->postService->adminListAll();
+        $this->hydratePosts($posts, (int) $request->auth->sub);
+
+        return response()->json($posts, 200);
+    }
+
     public function groupIndex(Request $request, int $groupId): JsonResponse
     {
         try {

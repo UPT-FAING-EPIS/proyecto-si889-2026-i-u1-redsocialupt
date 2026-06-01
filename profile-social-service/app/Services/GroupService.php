@@ -27,7 +27,7 @@ class GroupService
             })->values();
         }
 
-        return $groups->map(fn (Group $group) => $this->formatGroup($group, $userId, $jwt))->values()->all();
+        return $groups->map(fn (Group $group) => $this->formatGroup($group, $userId, $jwt, $this->decodeJwtRole($jwt)))->values()->all();
     }
 
     public function myGroups(string $jwt, int $userId): array
@@ -46,7 +46,7 @@ class GroupService
         return Group::whereIn('id', $groupIds)
             ->orderBy('created_at', 'desc')
             ->get()
-            ->map(fn (Group $group) => $this->formatGroup($group, $userId, $jwt))
+            ->map(fn (Group $group) => $this->formatGroup($group, $userId, $jwt, $this->decodeJwtRole($jwt)))
             ->values()
             ->all();
     }
@@ -70,13 +70,13 @@ class GroupService
             'reviewed_at' => Carbon::now(),
         ]);
 
-        return $this->formatGroup($group->fresh(), $userId, $jwt);
+        return $this->formatGroup($group->fresh(), $userId, $jwt, $this->decodeJwtRole($jwt));
     }
 
-    public function findDetailed(string $jwt, int $groupId, int $userId): array
+    public function findDetailed(string $jwt, int $groupId, int $userId, string $role = ''): array
     {
         $group = $this->findOrFail($groupId);
-        return $this->formatGroup($group, $userId, $jwt);
+        return $this->formatGroup($group, $userId, $jwt, $role);
     }
 
     public function join(int $userId, int $groupId): array
@@ -130,10 +130,10 @@ class GroupService
         $membership->delete();
     }
 
-    public function update(string $jwt, int $actorId, int $groupId, array $data): array
+    public function update(string $jwt, int $actorId, int $groupId, array $data, string $sysRole = ''): array
     {
         $group = $this->findOrFail($groupId);
-        if (!$this->isAdmin($actorId, $groupId)) {
+        if (!$this->isAdmin($actorId, $groupId, $sysRole)) {
             throw new \RuntimeException('No tienes permisos para editar este grupo', 403);
         }
 
@@ -174,9 +174,9 @@ class GroupService
         })->values()->all();
     }
 
-    public function pendingRequests(string $jwt, int $groupId, int $actorId): array
+    public function pendingRequests(string $jwt, int $groupId, int $actorId, string $sysRole = ''): array
     {
-        if (!$this->isAdmin($actorId, $groupId)) {
+        if (!$this->isAdmin($actorId, $groupId, $sysRole)) {
             throw new \RuntimeException('No tienes permisos para revisar solicitudes', 403);
         }
 
@@ -198,9 +198,9 @@ class GroupService
         })->values()->all();
     }
 
-    public function approveRequest(int $actorId, int $groupId, int $membershipId): void
+    public function approveRequest(int $actorId, int $groupId, int $membershipId, string $sysRole = ''): void
     {
-        if (!$this->isAdmin($actorId, $groupId)) {
+        if (!$this->isAdmin($actorId, $groupId, $sysRole)) {
             throw new \RuntimeException('No tienes permisos para aprobar solicitudes', 403);
         }
 
@@ -216,9 +216,9 @@ class GroupService
         ]);
     }
 
-    public function rejectRequest(int $actorId, int $groupId, int $membershipId): void
+    public function rejectRequest(int $actorId, int $groupId, int $membershipId, string $sysRole = ''): void
     {
-        if (!$this->isAdmin($actorId, $groupId)) {
+        if (!$this->isAdmin($actorId, $groupId, $sysRole)) {
             throw new \RuntimeException('No tienes permisos para rechazar solicitudes', 403);
         }
 
@@ -234,14 +234,15 @@ class GroupService
         ]);
     }
 
-    public function updateMemberRole(int $actorId, int $groupId, int $targetUserId, string $role): void
+    public function updateMemberRole(int $actorId, int $groupId, int $targetUserId, string $role, string $sysRole = ''): void
     {
         if (!in_array($role, ['admin', 'member'], true)) {
             throw new \RuntimeException('Rol invalido', 422);
         }
 
+        $isSuperAdmin = trim($sysRole) === 'admin';
         $actorMembership = $this->getMembership($groupId, $actorId);
-        if (!$actorMembership || $actorMembership->role !== 'creator') {
+        if (!$isSuperAdmin && (!$actorMembership || $actorMembership->role !== 'creator')) {
             throw new \RuntimeException('Solo el creador puede cambiar roles', 403);
         }
 
@@ -256,10 +257,11 @@ class GroupService
         $membership->update(['role' => $role]);
     }
 
-    public function removeMember(int $actorId, int $groupId, int $targetUserId): void
+    public function removeMember(int $actorId, int $groupId, int $targetUserId, string $sysRole = ''): void
     {
+        $isSuperAdmin = trim($sysRole) === 'admin';
         $actorMembership = $this->getMembership($groupId, $actorId);
-        if (!$actorMembership || $actorMembership->status !== 'approved' || !in_array($actorMembership->role, ['creator', 'admin'], true)) {
+        if (!$isSuperAdmin && (!$actorMembership || $actorMembership->status !== 'approved' || !in_array($actorMembership->role, ['creator', 'admin'], true))) {
             throw new \RuntimeException('No tienes permisos para expulsar miembros', 403);
         }
 
@@ -270,19 +272,21 @@ class GroupService
         if ($membership->role === 'creator') {
             throw new \RuntimeException('No puedes expulsar al creador', 422);
         }
-        if ($actorMembership->role === 'admin' && $membership->role === 'admin') {
+        if (!$isSuperAdmin && $actorMembership?->role === 'admin' && $membership->role === 'admin') {
             throw new \RuntimeException('Solo el creador puede expulsar a otro admin', 403);
         }
 
         $membership->delete();
     }
 
-    public function accessContext(int $userId, int $groupId): array
+    public function accessContext(int $userId, int $groupId, string $jwt = '', string $role = ''): array
     {
         $group = $this->findOrFail($groupId);
         $membership = $this->getMembership($groupId, $userId);
         $isApproved = $membership && $membership->status === 'approved';
         $isAdmin = $isApproved && in_array($membership->role, ['creator', 'admin'], true);
+
+        $isSuperAdmin = trim($role) === 'admin';
 
         return [
             'group_id' => (int) $group->id,
@@ -291,9 +295,9 @@ class GroupService
             'is_admin' => $isAdmin,
             'membership_status' => $membership?->status,
             'membership_role' => $membership?->role,
-            'can_view_conversation' => $isApproved,
-            'can_post' => $isApproved,
-            'can_manage' => $isAdmin,
+            'can_view_conversation' => $isApproved || $isSuperAdmin,
+            'can_post' => $isApproved || $isSuperAdmin,
+            'can_manage' => $isAdmin || $isSuperAdmin,
             'group_name' => $group->name,
         ];
     }
@@ -306,8 +310,11 @@ class GroupService
             ->exists();
     }
 
-    public function isAdmin(int $userId, int $groupId): bool
+    public function isAdmin(int $userId, int $groupId, string $sysRole = ''): bool
     {
+        if (trim($sysRole) === 'admin') {
+            return true;
+        }
         return GroupMembership::where('group_id', $groupId)
             ->where('user_id', $userId)
             ->where('status', 'approved')
@@ -315,7 +322,7 @@ class GroupService
             ->exists();
     }
 
-    private function formatGroup(Group $group, int $userId, string $jwt): array
+    private function formatGroup(Group $group, int $userId, string $jwt, string $role = ''): array
     {
         $membership = $this->getMembership($group->id, $userId);
         $approvedMembership = $membership && $membership->status === 'approved';
@@ -323,6 +330,8 @@ class GroupService
             ->where('status', 'approved')
             ->count();
         $creatorUser = $this->indexUsersById($jwt, [$group->creator_id])[(int) $group->creator_id] ?? null;
+
+        $isSuperAdmin = trim($role) === 'admin';
 
         return [
             'id' => (int) $group->id,
@@ -337,9 +346,9 @@ class GroupService
             'current_membership_status' => $membership?->status,
             'current_role' => $membership?->role,
             'is_member' => $approvedMembership,
-            'is_admin' => $approvedMembership && in_array($membership->role, ['creator', 'admin'], true),
-            'can_view_conversation' => $approvedMembership,
-            'can_post' => $approvedMembership,
+            'is_admin' => ($approvedMembership && in_array($membership->role, ['creator', 'admin'], true)) || $isSuperAdmin,
+            'can_view_conversation' => $approvedMembership || $isSuperAdmin,
+            'can_post' => $approvedMembership || $isSuperAdmin,
         ];
     }
 
@@ -373,5 +382,27 @@ class GroupService
         }
 
         return $indexed;
+    }
+
+    private function decodeJwtPayload(string $jwt): array
+    {
+        $parts = explode('.', $jwt);
+        if (count($parts) !== 3) {
+            return [];
+        }
+        // JWT uses base64url encoding (no padding, - instead of +, _ instead of /)
+        $segment = strtr($parts[1], '-_', '+/');
+        $segment = base64_decode(str_pad($segment, strlen($segment) + (4 - strlen($segment) % 4) % 4, '='));
+        $payload = json_decode($segment, true);
+        return is_array($payload) ? $payload : [];
+    }
+
+    /**
+     * Convenience helper: extract the role claim from a JWT string without full validation.
+     * Used only for informational purposes (UI hints). Always falls back to empty string.
+     */
+    public function decodeJwtRole(string $jwt): string
+    {
+        return (string) ($this->decodeJwtPayload($jwt)['role'] ?? '');
     }
 }

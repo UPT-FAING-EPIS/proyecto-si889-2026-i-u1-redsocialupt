@@ -63,6 +63,7 @@
           <div id="admin-comments-modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 hidden px-3 py-4">
             <div class="post-comments-modal bg-white rounded-[28px] shadow-xl w-full overflow-hidden flex flex-col">
               <div class="post-comments-topbar">
+                <span class="post-comments-topbar-spacer" aria-hidden="true"></span>
                 <h3 class="post-comments-topbar-title">Publicacion</h3>
                 <button id="close-comments-modal-btn" type="button" class="post-comments-topbar-close" aria-label="Cerrar modal de publicacion">
                   <span class="material-symbols-outlined text-[20px]">close</span>
@@ -74,7 +75,11 @@
                   <div class="post-comments-side">
                     <div class="post-comments-section-head">
                       <span class="post-comments-section-title">Comentarios</span>
-                      <select id="admin-comments-sort" class="post-comments-sort">
+                      <div class="post-comments-sort-pills" role="tablist" aria-label="Orden de comentarios administrados">
+                        <button type="button" class="post-comments-sort-pill is-active" data-comment-sort-option="newest" aria-pressed="true">Mas recientes</button>
+                        <button type="button" class="post-comments-sort-pill" data-comment-sort-option="oldest" aria-pressed="false">Relevantes</button>
+                      </div>
+                      <select id="admin-comments-sort" class="hidden" aria-hidden="true" tabindex="-1">
                         <option value="newest">Mas recientes</option>
                         <option value="oldest">Mas antiguos</option>
                       </select>
@@ -85,8 +90,11 @@
                   </div>
                 </div>
                 <div class="post-comments-compose">
-                  <div class="flex justify-end">
-                    <button id="close-comments-modal-footer-btn" type="button" class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cerrar</button>
+                  <div class="post-comments-compose-row">
+                    <textarea id="admin-comment-input" enterkeyhint="send" class="post-comments-compose-input" rows="1" placeholder="Escribe un comentario..."></textarea>
+                    <button id="admin-confirm-comment-btn" type="button" class="post-comments-compose-send" aria-label="Enviar comentario">
+                      <span class="material-symbols-outlined text-[18px]">send</span>
+                    </button>
                   </div>
                 </div>
               </div>

@@ -33,13 +33,20 @@
         </div>
         <div id="groups-discover-toolbar" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <p class="text-sm text-slate-500">Explora grupos y detecta de inmediato si ya formas parte de ellos.</p>
-          <label class="flex items-center gap-2 text-sm font-medium text-slate-600">
-            <span>Mostrar</span>
-            <select id="groups-membership-filter" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-              <option value="all">Todos</option>
-              <option value="without-mine">Sin mis grupos</option>
-            </select>
-          </label>
+          <div class="flex items-center gap-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="groups-hide-mine-checkbox" class="w-4 h-4 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]" />
+              <span class="text-sm font-medium text-slate-600">Ocultar mis grupos</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm font-medium text-slate-600">
+              <span>Privacidad</span>
+              <select id="groups-privacy-filter" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                <option value="all">Todos</option>
+                <option value="public">Publicos</option>
+                <option value="private">Privados</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div id="groups-list-section">
           <div id="groups-empty-state" class="hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-400"></div>

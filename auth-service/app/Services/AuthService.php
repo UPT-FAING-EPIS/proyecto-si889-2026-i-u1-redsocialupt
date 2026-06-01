@@ -140,7 +140,16 @@ class AuthService
     public function completeProfile(int $userId, array $data): array
     {
         $user = $this->findOrFail($userId);
+        $studentIdentity = $this->detectStudentIdentity($user->email, $user->name ?: ($data['full_name'] ?? ''));
         $userType = $data['user_type'] ?? 'student';
+
+        if ($studentIdentity !== null) {
+            $userType = 'student';
+            $data['full_name'] = $user->name ?: ($data['full_name'] ?? '');
+            $data['student_code'] = $studentIdentity['student_code'];
+        } elseif ($userType === 'student') {
+            throw new AuthServiceException('El correo institucional no corresponde al patron de estudiante', 422);
+        }
 
         if (empty(trim((string) ($data['faculty'] ?? '')))) {
             throw new AuthServiceException('La facultad o dependencia es obligatoria', 422);
@@ -182,6 +191,37 @@ class AuthService
         $user = $this->markPresence($user);
 
         return ['user' => $this->formatUser($user), 'token' => $this->generateJwt($user)];
+    }
+
+    private function detectStudentIdentity(?string $email, ?string $fullName): ?array
+    {
+        if (!preg_match('/^([a-zA-Z]{2})(\d+)@virtual\.upt\.pe$/', (string) $email, $matches)) {
+            return null;
+        }
+
+        $tokens = preg_split('/\s+/', trim((string) $fullName)) ?: [];
+        $tokens = array_values(array_filter($tokens, fn ($token) => $token !== ''));
+        if (count($tokens) < 2) {
+            return null;
+        }
+
+        $firstNameInitial = $this->normalizeInitial($tokens[0]);
+        $surnameIndex = count($tokens) >= 3 ? count($tokens) - 2 : 1;
+        $surnameInitial = $this->normalizeInitial($tokens[$surnameIndex] ?? '');
+        $expectedPrefix = $firstNameInitial . $surnameInitial;
+
+        if ($expectedPrefix === '' || strtolower($matches[1]) !== $expectedPrefix) {
+            return null;
+        }
+
+        return ['student_code' => $matches[2]];
+    }
+
+    private function normalizeInitial(string $value): string
+    {
+        $normalized = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        $normalized = strtolower((string) $normalized);
+        return preg_match('/[a-z]/', $normalized, $match) ? $match[0] : '';
     }
 
     /**

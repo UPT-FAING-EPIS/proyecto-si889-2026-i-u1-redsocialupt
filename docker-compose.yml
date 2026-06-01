@@ -88,6 +88,8 @@ services:
     build: ./profile-social-service
     ports:
       - "8003:8000"
+    volumes:
+      - ./profile-social-service/public/group-covers:/app/public/group-covers
     environment:
       APP_KEY: base64:randomkey
       DB_CONNECTION: mysql
