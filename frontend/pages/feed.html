@@ -26,10 +26,14 @@
                   </div>
                 </div>
                 <input type="file" id="file-input" accept="image/*" class="hidden"/>
+                <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden"/>
                 <div class="feed-composer-footer">
                   <div class="feed-composer-tools">
                     <button id="pick-image-btn" type="button" class="feed-composer-tool">
                       <span class="material-symbols-outlined text-[19px]">image</span>
+                    </button>
+                    <button id="pick-camera-btn" type="button" class="feed-composer-tool" title="Tomar foto">
+                      <span class="material-symbols-outlined text-[19px]">photo_camera</span>
                     </button>
                     <button id="open-live-modal-btn" type="button" class="feed-composer-tool" title="Iniciar directo">
                       <span class="material-symbols-outlined text-[19px]">broadcast_on_personal</span>

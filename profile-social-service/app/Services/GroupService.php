@@ -142,6 +142,7 @@ class GroupService
             'description' => array_key_exists('description', $data) ? trim((string) ($data['description'] ?? '')) : null,
             'cover_url' => $data['cover_url'] ?? null,
             'privacy' => $data['privacy'] ?? null,
+            'posts_locked' => array_key_exists('posts_locked', $data) ? (bool) $data['posts_locked'] : null,
         ], fn ($value) => $value !== null));
         $group->save();
 
@@ -288,6 +289,8 @@ class GroupService
 
         $isSuperAdmin = trim($role) === 'admin';
 
+        $postsLocked = (bool) ($group->posts_locked ?? false);
+
         return [
             'group_id' => (int) $group->id,
             'privacy' => $group->privacy,
@@ -296,8 +299,9 @@ class GroupService
             'membership_status' => $membership?->status,
             'membership_role' => $membership?->role,
             'can_view_conversation' => $isApproved || $isSuperAdmin,
-            'can_post' => $isApproved || $isSuperAdmin,
+            'can_post' => (!$postsLocked && $isApproved) || $isAdmin || $isSuperAdmin,
             'can_manage' => $isAdmin || $isSuperAdmin,
+            'posts_locked' => $postsLocked,
             'group_name' => $group->name,
         ];
     }
@@ -333,6 +337,8 @@ class GroupService
 
         $isSuperAdmin = trim($role) === 'admin';
 
+        $postsLocked = (bool) ($group->posts_locked ?? false);
+
         return [
             'id' => (int) $group->id,
             'creator_id' => (int) $group->creator_id,
@@ -341,6 +347,7 @@ class GroupService
             'description' => $group->description,
             'cover_url' => $group->cover_url,
             'privacy' => $group->privacy,
+            'posts_locked' => $postsLocked,
             'member_count' => $memberCount,
             'created_at' => optional($group->created_at)->toIso8601String(),
             'current_membership_status' => $membership?->status,
@@ -348,7 +355,7 @@ class GroupService
             'is_member' => $approvedMembership,
             'is_admin' => ($approvedMembership && in_array($membership->role, ['creator', 'admin'], true)) || $isSuperAdmin,
             'can_view_conversation' => $approvedMembership || $isSuperAdmin,
-            'can_post' => $approvedMembership || $isSuperAdmin,
+            'can_post' => (!$postsLocked && $approvedMembership) || ($approvedMembership && in_array($membership?->role, ['creator', 'admin'], true)) || $isSuperAdmin,
         ];
     }
 

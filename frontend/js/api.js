@@ -479,12 +479,13 @@ const SocialAPI = {
   getGroup: (groupId) => apiFetch(`/api/groups/${groupId}`),
   joinGroup: (groupId) => apiFetch(`/api/groups/${groupId}/join`, { method: 'POST' }),
   leaveGroup: (groupId) => apiFetch(`/api/groups/${groupId}/leave`, { method: 'POST' }),
-  updateGroup: (groupId, { name, description, privacy, coverFile = null }) => {
+  updateGroup: (groupId, { name, description, privacy, postsLocked, coverFile = null }) => {
     if (coverFile) {
       const fd = new FormData();
       if (name !== undefined) fd.append('name', name);
       if (description !== undefined) fd.append('description', description);
       if (privacy !== undefined) fd.append('privacy', privacy);
+      if (postsLocked !== undefined) fd.append('posts_locked', postsLocked ? '1' : '0');
       fd.append('_method', 'PUT');
       fd.append('cover', coverFile);
       return apiFetchForm(`/api/groups/${groupId}`, fd, { method: 'POST' });
@@ -492,7 +493,7 @@ const SocialAPI = {
 
     return apiFetch(`/api/groups/${groupId}`, {
       method: 'PUT',
-      body: JSON.stringify({ name, description, privacy }),
+      body: JSON.stringify({ name, description, privacy, posts_locked: postsLocked }),
     });
   },
   getGroupMembers: (groupId) => apiFetch(`/api/groups/${groupId}/members`),

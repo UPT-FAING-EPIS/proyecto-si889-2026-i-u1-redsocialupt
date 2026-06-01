@@ -4424,10 +4424,10 @@ body {
 
 .live-is-desktop.live-cam-stream .live-video-wrap {
   aspect-ratio: var(--live-stream-aspect, 9 / 16);
-  width: auto;
+  width: min(100%, var(--live-desktop-portrait-width, clamp(280px, 42vh, 560px)));
   max-width: 100%;
-  height: 100%;
-  max-height: 100%;
+  height: var(--live-desktop-portrait-height, auto);
+  max-height: min(78vh, 860px);
   min-height: 0;
   flex: 0 1 auto;
 }
@@ -4492,9 +4492,16 @@ body {
 .live-video-wrap:fullscreen #live-viewer-player video,
 .live-is-desktop.live-cam-stream .live-video-wrap:fullscreen #live-viewer-player video,
 .live-root.live-is-desktop.live-cam-stream .live-video-wrap:fullscreen #live-viewer-player video {
-  width: 100% !important;
+  width: auto !important;
   height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
   object-fit: contain !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
 }
 
 .live-video-wrap:fullscreen [data-live-overlay] {
@@ -6493,7 +6500,7 @@ body #profile-comment-modal .post-comments-compose-send .material-symbols-outlin
 
 /* ===== Stitched call widget fidelity pass ===== */
 .call-window {
-  width: min(calc(100vw - 1rem), 25rem) !important;
+  width: var(--call-window-width, min(calc(100vw - 1rem), 25rem)) !important;
   border-radius: 2rem !important;
   border: 1px solid rgba(42, 46, 61, 0.95) !important;
   background: linear-gradient(180deg, #1a1c23 0%, #171922 100%) !important;
@@ -6502,6 +6509,9 @@ body #profile-comment-modal .post-comments-compose-send .material-symbols-outlin
 
 .call-window.call-window--video {
   min-height: 34rem !important;
+  min-width: min(calc(100vw - 1rem), 25rem) !important;
+  max-width: calc(100vw - 1rem) !important;
+  resize: horizontal !important;
 }
 
 .call-window:not(.call-window--video) {
@@ -7188,10 +7198,34 @@ body #profile-comment-modal .post-comments-compose-send .material-symbols-outlin
   margin-top: 0 !important;
 }
 
+.call-window__resize-handle {
+  position: absolute;
+  right: 0.4rem;
+  bottom: 0.4rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 9999px;
+  background:
+    linear-gradient(135deg, transparent 0 36%, rgba(255, 255, 255, 0.22) 36% 48%, transparent 48% 58%, rgba(255, 255, 255, 0.32) 58% 70%, transparent 70%);
+  opacity: 0.8;
+  cursor: nwse-resize;
+  touch-action: none;
+  z-index: 12;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.call-window__resize-handle.hidden {
+  display: none !important;
+}
+
 @media (max-width: 639px) {
   .call-window.call-window--video {
     min-height: 0 !important;
     height: auto !important;
+    resize: none !important;
   }
 
   .call-window.call-window--video .call-window__video-frame {

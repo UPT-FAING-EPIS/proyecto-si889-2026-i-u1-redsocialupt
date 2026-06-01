@@ -115,10 +115,11 @@ class GroupController extends BaseController
             'name' => 'nullable|string|max:150',
             'description' => 'nullable|string|max:5000',
             'privacy' => 'nullable|in:public,private',
+            'posts_locked' => 'nullable|boolean',
             'cover' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
         ]);
 
-        $payload = $request->only(['name', 'description', 'privacy']);
+        $payload = $request->only(['name', 'description', 'privacy', 'posts_locked']);
         if ($request->hasFile('cover') && $request->file('cover')->isValid()) {
             $uploadDir = $this->publicUploadsPath('group-covers');
             if (!is_dir($uploadDir)) {

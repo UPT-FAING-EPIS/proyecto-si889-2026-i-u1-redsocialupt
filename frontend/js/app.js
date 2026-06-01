@@ -1903,7 +1903,9 @@
       remoteVolume: 1,
       adjustingVolume: false,
       remoteVideoAspect: null,
+      windowWidth: null,
       minimized: false,
+      resizing: null,
       outgoingOfferSent: false,
       isFinalizing: false,
       awaitingAnswer: false,
@@ -2271,6 +2273,7 @@
               </button>
             </div>
           </div>
+          <div id="call-resize-handle" class="call-window__resize-handle hidden" aria-hidden="true"></div>
         `;
         document.body.appendChild(root);
       }
@@ -2302,6 +2305,22 @@
 
       const cleanups = [];
       const handle = root.querySelector('[data-call-drag-handle="true"]');
+      const resizeHandle = root.querySelector('#call-resize-handle');
+      const getMinimumCallWindowWidth = () => Math.min(window.innerWidth - 16, 400);
+      const applyCallWindowWidth = (nextWidth) => {
+        const safeWidth = Math.round(nextWidth);
+        callState.windowWidth = safeWidth;
+        root.style.setProperty('--call-window-width', `${safeWidth}px`);
+        root.style.setProperty('width', `${safeWidth}px`, 'important');
+        root.style.setProperty('max-width', 'calc(100vw - 1rem)', 'important');
+        root.style.setProperty('flex-basis', `${safeWidth}px`, 'important');
+      };
+      const clearCallWindowWidth = () => {
+        root.style.removeProperty('--call-window-width');
+        root.style.removeProperty('width');
+        root.style.removeProperty('max-width');
+        root.style.removeProperty('flex-basis');
+      };
       handle.style.touchAction = 'none';
       const onPointerDown = (event) => {
         if (event.target.closest('button')) return;
@@ -2342,6 +2361,88 @@
       cleanups.push(() => window.removeEventListener('pointermove', onPointerMove));
       cleanups.push(() => window.removeEventListener('pointerup', onPointerUp));
       cleanups.push(() => window.removeEventListener('pointercancel', onPointerUp));
+
+      if (resizeHandle) {
+        resizeHandle.style.touchAction = 'none';
+        const beginResize = (pointerId, clientX, clientY) => {
+          const rect = root.getBoundingClientRect();
+          callState.resizing = {
+            pointerId,
+            startWidth: rect.width,
+            startHeight: rect.height,
+            startX: clientX,
+            startY: clientY,
+            startLeft: rect.left,
+            startTop: rect.top,
+          };
+        };
+        const onResizePointerDown = (event) => {
+          if (event.pointerType === 'mouse' && event.button !== 0) return;
+          beginResize(event.pointerId, event.clientX, event.clientY);
+          if (typeof resizeHandle.setPointerCapture === 'function') {
+            try { resizeHandle.setPointerCapture(event.pointerId); } catch (error) { }
+          }
+          document.body.classList.add('select-none');
+          event.preventDefault();
+          event.stopPropagation();
+        };
+        const onResizePointerMove = (event) => {
+          if (!callState.resizing || callState.resizing.pointerId !== event.pointerId) return;
+          const deltaX = event.clientX - callState.resizing.startX;
+          const nextWidth = Math.min(
+            Math.max(getMinimumCallWindowWidth(), callState.resizing.startWidth + deltaX),
+            Math.max(getMinimumCallWindowWidth(), window.innerWidth - 16),
+          );
+          applyCallWindowWidth(nextWidth);
+          clampCallWindow(root);
+          event.preventDefault();
+        };
+        const onResizePointerUp = (event) => {
+          if (!callState.resizing || callState.resizing.pointerId !== event.pointerId) return;
+          if (typeof resizeHandle.releasePointerCapture === 'function') {
+            try { resizeHandle.releasePointerCapture(event.pointerId); } catch (error) { }
+          }
+          callState.resizing = null;
+          document.body.classList.remove('select-none');
+        };
+        const onResizeMouseDown = (event) => {
+          if (event.button !== 0) return;
+          beginResize('mouse', event.clientX, event.clientY);
+          document.body.classList.add('select-none');
+          event.preventDefault();
+          event.stopPropagation();
+        };
+        const onResizeMouseMove = (event) => {
+          if (!callState.resizing || callState.resizing.pointerId !== 'mouse') return;
+          const deltaX = event.clientX - callState.resizing.startX;
+          const nextWidth = Math.min(
+            Math.max(getMinimumCallWindowWidth(), callState.resizing.startWidth + deltaX),
+            Math.max(getMinimumCallWindowWidth(), window.innerWidth - 16),
+          );
+          applyCallWindowWidth(nextWidth);
+          clampCallWindow(root);
+          event.preventDefault();
+        };
+        const onResizeMouseUp = () => {
+          if (!callState.resizing || callState.resizing.pointerId !== 'mouse') return;
+          callState.resizing = null;
+          document.body.classList.remove('select-none');
+        };
+        resizeHandle.addEventListener('pointerdown', onResizePointerDown);
+        resizeHandle.addEventListener('mousedown', onResizeMouseDown);
+        window.addEventListener('pointermove', onResizePointerMove);
+        window.addEventListener('pointerup', onResizePointerUp);
+        window.addEventListener('pointercancel', onResizePointerUp);
+        window.addEventListener('mousemove', onResizeMouseMove);
+        window.addEventListener('mouseup', onResizeMouseUp);
+        cleanups.push(() => resizeHandle.removeEventListener('pointerdown', onResizePointerDown));
+        cleanups.push(() => resizeHandle.removeEventListener('mousedown', onResizeMouseDown));
+        cleanups.push(() => window.removeEventListener('pointermove', onResizePointerMove));
+        cleanups.push(() => window.removeEventListener('pointerup', onResizePointerUp));
+        cleanups.push(() => window.removeEventListener('pointercancel', onResizePointerUp));
+        cleanups.push(() => window.removeEventListener('mousemove', onResizeMouseMove));
+        cleanups.push(() => window.removeEventListener('mouseup', onResizeMouseUp));
+      }
 
       const minimizeButton = root.querySelector('#call-minimize-btn');
       const onMinimize = () => {
@@ -2401,6 +2502,20 @@
       window.addEventListener('resize', onResize);
       cleanups.push(() => window.removeEventListener('resize', onResize));
 
+      if (typeof ResizeObserver === 'function') {
+        const resizeObserver = new ResizeObserver((entries) => {
+          const entry = entries?.[0];
+          if (!entry || callState.minimized || root.classList.contains('hidden')) return;
+          if (!root.classList.contains('call-window--video')) return;
+          const nextWidth = Math.round(root.getBoundingClientRect().width || root.offsetWidth || 0);
+          if (nextWidth >= getMinimumCallWindowWidth()) {
+            callState.windowWidth = nextWidth;
+          }
+        });
+        resizeObserver.observe(root);
+        cleanups.push(() => resizeObserver.disconnect());
+      }
+
       root.__callCleanup = () => {
         cleanups.forEach((cleanup) => {
           try { cleanup(); } catch (error) { }
@@ -2456,12 +2571,22 @@
         root.style.setProperty('min-height', '0', 'important');
         root.style.setProperty('height', 'auto', 'important');
         root.style.setProperty('max-height', 'none', 'important');
+        root.style.removeProperty('--call-window-width');
+        root.style.removeProperty('width');
+        root.style.removeProperty('max-width');
+        root.style.removeProperty('flex-basis');
       } else {
         stage?.style.removeProperty('display');
         actions?.style.removeProperty('display');
         root.style.removeProperty('min-height');
         root.style.removeProperty('height');
         root.style.removeProperty('max-height');
+        if (callState.windowWidth) {
+          root.style.setProperty('--call-window-width', `${callState.windowWidth}px`);
+          root.style.setProperty('width', `${callState.windowWidth}px`, 'important');
+          root.style.setProperty('max-width', 'calc(100vw - 1rem)', 'important');
+          root.style.setProperty('flex-basis', `${callState.windowWidth}px`, 'important');
+        }
       }
     }
 
@@ -2580,6 +2705,7 @@
       const localPreviewPlaceholder = root.querySelector('#call-local-preview-placeholder');
       const modeBadge = root.querySelector('#call-mode-badge');
       const volumePill = root.querySelector('#call-volume-pill');
+      const resizeHandle = root.querySelector('#call-resize-handle');
 
       root.classList.toggle('hidden', !session);
       if (!session) {
@@ -2599,6 +2725,17 @@
       root.classList.toggle('call-window--accepted', session.status === 'accepted');
       root.classList.toggle('call-window--incoming', isIncomingRinging);
       root.classList.toggle('call-window--outgoing', isOutgoingRinging);
+      if (callState.windowWidth && !callState.minimized) {
+        root.style.setProperty('--call-window-width', `${callState.windowWidth}px`);
+        root.style.setProperty('width', `${callState.windowWidth}px`, 'important');
+        root.style.setProperty('max-width', 'calc(100vw - 1rem)', 'important');
+        root.style.setProperty('flex-basis', `${callState.windowWidth}px`, 'important');
+      } else if (!callState.minimized) {
+        root.style.removeProperty('--call-window-width');
+        root.style.removeProperty('width');
+        root.style.removeProperty('max-width');
+        root.style.removeProperty('flex-basis');
+      }
       syncMinimizedCallWindowLayout(root);
       root.querySelector('#call-window-name').textContent = displayName(otherUser);
       root.querySelector('#call-window-status').textContent = describeCallStatus(session.status);
@@ -2635,6 +2772,10 @@
       if (localBadge) localBadge.classList.toggle('hidden', !isVideoMode);
       if (localPreviewPlaceholder) {
         localPreviewPlaceholder.classList.toggle('hidden', Boolean(callState.localVideoEnabled && callState.localStream));
+      }
+      if (resizeHandle) {
+        const canResize = isVideoMode && !callState.minimized;
+        resizeHandle.classList.toggle('hidden', !canResize);
       }
 
       remoteVideo.classList.toggle('hidden', !hasRemoteVideo);
@@ -3092,6 +3233,7 @@
       callState.mode = incoming.mode || 'audio';
       callState.initialMode = incoming.mode || 'audio';
       callState.status = incoming.status || 'ringing';
+      callState.windowWidth = null;
       callState.minimized = false;
       resetCallNegotiationState();
       updateCallWindow();
@@ -3190,6 +3332,7 @@
       callState.otherUser = resolveProfileData(activeUser);
       callState.mode = mode === 'video' ? 'video' : 'audio';
       callState.initialMode = callState.mode;
+      callState.windowWidth = null;
       callState.minimized = false;
       resetCallNegotiationState();
       tryPlayRemoteMedia();
@@ -3302,6 +3445,7 @@
       callState.lastSignalId = 0;
       callState.drag = null;
       callState.minimized = false;
+      callState.windowWidth = null;
       callState.isFinalizing = false;
       callState.remoteVideoAspect = null;
       callState.videoSender = null;
@@ -4096,6 +4240,7 @@
         const applyNewPostsButton = container.querySelector('#feed-apply-new-posts-btn');
         const onlineFriends = container.querySelector('#online-friends');
         const fileInput = container.querySelector('#file-input');
+        const cameraInput = container.querySelector('#camera-input');
         const previewWrap = container.querySelector('#img-preview-wrap');
         const previewImage = container.querySelector('#img-preview');
         const postContent = container.querySelector('#post-content');
@@ -4131,8 +4276,20 @@
         function clearImage() {
           selectedImageFile = null;
           fileInput.value = '';
+          if (cameraInput) cameraInput.value = '';
           previewWrap.style.display = 'none';
           previewImage.src = '';
+        }
+
+        function handleComposerImageFile(file) {
+          if (!file) return;
+          selectedImageFile = file;
+          const reader = new FileReader();
+          reader.onload = (loadEvent) => {
+            previewImage.src = loadEvent.target.result;
+            previewWrap.style.display = 'block';
+          };
+          reader.readAsDataURL(file);
         }
 
         function setPostVisibility(value = 'all') {
@@ -4515,6 +4672,7 @@
         };
 
         container.querySelector('#pick-image-btn').addEventListener('click', () => fileInput.click());
+        container.querySelector('#pick-camera-btn')?.addEventListener('click', () => cameraInput?.click());
         container.querySelector('#clear-image-btn').addEventListener('click', clearImage);
         postVisibilityTrigger?.addEventListener('click', toggleVisibilityMenu);
         container.querySelector('#cancel-delete-btn').addEventListener('click', closeDeleteModal);
@@ -4536,14 +4694,11 @@
 
         fileInput.addEventListener('change', (event) => {
           const [file] = event.target.files || [];
-          if (!file) return;
-          selectedImageFile = file;
-          const reader = new FileReader();
-          reader.onload = (loadEvent) => {
-            previewImage.src = loadEvent.target.result;
-            previewWrap.style.display = 'block';
-          };
-          reader.readAsDataURL(file);
+          handleComposerImageFile(file);
+        });
+        cameraInput?.addEventListener('change', (event) => {
+          const [file] = event.target.files || [];
+          handleComposerImageFile(file);
         });
 
         postVisibilityMenu?.addEventListener('click', (event) => {
@@ -5940,7 +6095,41 @@
           if (viewerVideo && (!viewerVideo.videoWidth || !viewerVideo.videoHeight)) {
             viewerVideo.style.objectFit = 'contain';
           }
+          syncDesktopPortraitLiveSizing();
           updateMobilePlayerControls();
+        }
+
+        function syncDesktopPortraitLiveSizing() {
+          if (!liveShell || !liveVideoWrap || isHostRoute || !isDesktopClient()) {
+            return;
+          }
+
+          if (!liveShell.classList.contains('live-cam-stream')) {
+            liveShell.style.removeProperty('--live-desktop-portrait-width');
+            liveShell.style.removeProperty('--live-desktop-portrait-height');
+            return;
+          }
+
+          const video = viewerVideo;
+          const width = Number(video?.videoWidth || 0);
+          const height = Number(video?.videoHeight || 0);
+          const ratio = width > 0 && height > 0
+            ? width / height
+            : 9 / 16;
+          const columnRect = liveVideoWrap.parentElement?.getBoundingClientRect?.();
+          if (!columnRect) {
+            return;
+          }
+
+          const horizontalPadding = 32;
+          const verticalPadding = 32;
+          const availableWidth = Math.max(220, columnRect.width - horizontalPadding);
+          const availableHeight = Math.max(260, columnRect.height - verticalPadding);
+          const targetWidth = Math.min(availableWidth, availableHeight * ratio);
+          const targetHeight = Math.min(availableHeight, targetWidth / Math.max(ratio, 0.01));
+
+          liveShell.style.setProperty('--live-desktop-portrait-width', `${Math.round(targetWidth)}px`);
+          liveShell.style.setProperty('--live-desktop-portrait-height', `${Math.round(targetHeight)}px`);
         }
 
         function updateStreamLayout() {
@@ -5959,6 +6148,7 @@
             liveShell.classList.toggle('live-cam-stream', isPortraitCameraStream);
           }
           video.style.objectFit = (!isDesktopClient() && isPortraitCameraStream) ? 'cover' : 'contain';
+          syncDesktopPortraitLiveSizing();
           updateMobilePlayerControls();
         }
 
@@ -8066,6 +8256,7 @@
           syncLiveDeviceClasses();
           refreshHostAudioButtons();
           refreshMobileCommentsOverflowState();
+          syncDesktopPortraitLiveSizing();
           scheduleLiveMobileViewportSync();
           scheduleLiveMobileViewportSync(140);
         };
@@ -9149,6 +9340,10 @@
           editNameInput.value = groupData.name || '';
           editPrivacyInput.value = groupData.privacy || 'public';
           editDescriptionInput.value = groupData.description || '';
+          const editPostsLockedInput = container.querySelector('#edit-group-posts-locked');
+          if (editPostsLockedInput) {
+            editPostsLockedInput.checked = !!groupData.posts_locked;
+          }
           updateEditCoverPreview(null);
           editModal.classList.remove('hidden');
           editModal.classList.add('flex');
@@ -9231,6 +9426,7 @@
                 <div class="space-y-3 text-sm text-slate-600">
                   <p>Rol actual: <span class="font-semibold text-slate-800">${escapeHtml(groupData.current_role || 'Visitante')}</span></p>
                   <p>Acceso a conversacion: <span class="font-semibold text-slate-800">${groupData.can_view_conversation ? 'Si' : 'No'}</span></p>
+                  <p>Nuevas publicaciones: <span class="font-semibold ${groupData.posts_locked ? 'text-amber-700' : 'text-emerald-700'}">${groupData.posts_locked ? 'Bloqueadas temporalmente' : 'Disponibles'}</span></p>
                 </div>
               </div>
             </div>
@@ -9247,7 +9443,7 @@
             return;
           }
 
-          conversationTab.innerHTML = `
+          const composerMarkup = groupData.can_post ? `
             <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
               <div class="flex items-start gap-4">
                 <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 bg-cover bg-center" id="group-composer-avatar" style="background:#1B2A6B">U</div>
@@ -9260,14 +9456,37 @@
                 </div>
               </div>
               <input type="file" id="group-file-input" accept="image/*" class="hidden"/>
+              <input type="file" id="group-camera-input" accept="image/*" capture="environment" class="hidden"/>
               <div class="mt-4 flex flex-wrap justify-between gap-3">
-                <button id="group-pick-image-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                  <span class="material-symbols-outlined text-[18px]">image</span>
-                  Agregar imagen
-                </button>
+                <div class="flex flex-wrap gap-3">
+                  <button id="group-pick-image-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                    <span class="material-symbols-outlined text-[18px]">image</span>
+                    Agregar imagen
+                  </button>
+                  <button id="group-pick-camera-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                    <span class="material-symbols-outlined text-[18px]">photo_camera</span>
+                    Tomar foto
+                  </button>
+                </div>
                 <button id="group-publish-btn" type="button" class="px-5 py-2 rounded-xl bg-[#E5D59A] text-[#5A4A1A] text-sm font-bold hover:bg-[#d8c686] transition-colors">Publicar</button>
               </div>
             </div>
+          ` : `
+            <div class="bg-white rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm">
+              <div class="flex items-start gap-3">
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                  <span class="material-symbols-outlined text-[22px]">lock</span>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-amber-900">Publicaciones nuevas bloqueadas temporalmente</p>
+                  <p class="mt-1 text-sm text-amber-700">Solo los administradores del grupo pueden publicar mientras este bloqueo este activo.</p>
+                </div>
+              </div>
+            </div>
+          `;
+
+          conversationTab.innerHTML = `
+            ${composerMarkup}
             <div id="group-posts-list" class="space-y-4">
               <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Cargando publicaciones...</div>
             </div>
@@ -9325,19 +9544,34 @@
 
           const composerAvatar = conversationTab.querySelector('#group-composer-avatar');
           const fileInput = conversationTab.querySelector('#group-file-input');
+          const cameraInput = conversationTab.querySelector('#group-camera-input');
           const previewWrap = conversationTab.querySelector('#group-image-preview-wrap');
           const previewImage = conversationTab.querySelector('#group-image-preview');
           const contentInput = conversationTab.querySelector('#group-post-content');
           const publishButton = conversationTab.querySelector('#group-publish-btn');
           const postsList = conversationTab.querySelector('#group-posts-list');
 
-          setAvatarElement(composerAvatar, user);
+          if (composerAvatar) {
+            setAvatarElement(composerAvatar, user);
+          }
 
           function clearImage() {
             selectedImageFile = null;
-            fileInput.value = '';
-            previewWrap.classList.add('hidden');
-            previewImage.src = '';
+            if (fileInput) fileInput.value = '';
+            if (cameraInput) cameraInput.value = '';
+            if (previewWrap) previewWrap.classList.add('hidden');
+            if (previewImage) previewImage.src = '';
+          }
+
+          function setComposerImage(file) {
+            if (!file) {
+              clearImage();
+              return;
+            }
+
+            selectedImageFile = file;
+            previewImage.src = URL.createObjectURL(file);
+            previewWrap.classList.remove('hidden');
           }
 
           function renderPosts() {
@@ -9366,43 +9600,43 @@
             }
           }
 
-          conversationTab.querySelector('#group-pick-image-btn').addEventListener('click', () => fileInput.click());
-          conversationTab.querySelector('#group-clear-image-btn').addEventListener('click', clearImage);
-          fileInput.addEventListener('change', (event) => {
-            const [file] = event.target.files || [];
-            if (!file) {
-              clearImage();
-              return;
-            }
+          if (groupData.can_post && fileInput && previewWrap && previewImage && contentInput && publishButton) {
+            conversationTab.querySelector('#group-pick-image-btn').addEventListener('click', () => fileInput.click());
+            conversationTab.querySelector('#group-pick-camera-btn')?.addEventListener('click', () => cameraInput?.click());
+            conversationTab.querySelector('#group-clear-image-btn').addEventListener('click', clearImage);
+            fileInput.addEventListener('change', (event) => {
+              const [file] = event.target.files || [];
+              setComposerImage(file);
+            });
+            cameraInput?.addEventListener('change', (event) => {
+              const [file] = event.target.files || [];
+              setComposerImage(file);
+            });
 
-            selectedImageFile = file;
-            previewImage.src = URL.createObjectURL(file);
-            previewWrap.classList.remove('hidden');
-          });
+            publishButton.addEventListener('click', async () => {
+              const content = contentInput.value.trim();
+              if (!content && !selectedImageFile) {
+                showToast('Escribe algo o adjunta una imagen', 'error');
+                return;
+              }
 
-          publishButton.addEventListener('click', async () => {
-            const content = contentInput.value.trim();
-            if (!content && !selectedImageFile) {
-              showToast('Escribe algo o adjunta una imagen', 'error');
-              return;
-            }
+              publishButton.disabled = true;
+              publishButton.textContent = 'Publicando...';
+              const result = await PostsAPI.createGroupPost(groupId, { content, imageFile: selectedImageFile });
+              publishButton.disabled = false;
+              publishButton.textContent = 'Publicar';
 
-            publishButton.disabled = true;
-            publishButton.textContent = 'Publicando...';
-            const result = await PostsAPI.createGroupPost(groupId, { content, imageFile: selectedImageFile });
-            publishButton.disabled = false;
-            publishButton.textContent = 'Publicar';
+              if (result?.ok) {
+                contentInput.value = '';
+                clearImage();
+                showToast('Publicacion creada', 'success');
+                await reloadPosts();
+                return;
+              }
 
-            if (result?.ok) {
-              contentInput.value = '';
-              clearImage();
-              showToast('Publicacion creada', 'success');
-              await reloadPosts();
-              return;
-            }
-
-            showToast(result?.data?.error || 'No se pudo publicar en el grupo', 'error');
-          });
+              showToast(result?.data?.error || 'No se pudo publicar en el grupo', 'error');
+            });
+          }
 
           postsList.addEventListener('click', async (event) => {
             const profileButton = event.target.closest('[data-action="open-profile"]');
@@ -9822,12 +10056,14 @@
         cancelEditModalButton.addEventListener('click', closeEditModal);
         editForm.addEventListener('submit', async (submitEvent) => {
           submitEvent.preventDefault();
+          const editPostsLockedInput = container.querySelector('#edit-group-posts-locked');
           saveEditModalButton.disabled = true;
           saveEditModalButton.textContent = 'Guardando...';
           const result = await SocialAPI.updateGroup(groupId, {
             name: editNameInput.value.trim(),
             description: editDescriptionInput.value.trim(),
             privacy: editPrivacyInput.value,
+            postsLocked: !!editPostsLockedInput?.checked,
             coverFile: selectedEditCoverFile,
           });
           saveEditModalButton.disabled = false;

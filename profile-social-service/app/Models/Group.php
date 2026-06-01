@@ -14,6 +14,7 @@ class Group extends Model
         'description',
         'cover_url',
         'privacy',
+        'posts_locked',
     ];
 
     public function memberships()
