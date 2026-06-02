@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\GroupService;
+use App\Support\ImageOptimizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Laravel\Lumen\Routing\Controller as BaseController;
@@ -43,19 +44,13 @@ class GroupController extends BaseController
             'name' => 'required|string|max:150',
             'description' => 'nullable|string|max:5000',
             'privacy' => 'required|in:public,private',
-            'cover' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
+            'cover' => 'nullable|file|mimes:jpg,jpeg,png,webp,gif|max:5120',
         ]);
 
         $coverUrl = null;
         if ($request->hasFile('cover') && $request->file('cover')->isValid()) {
             $uploadDir = $this->publicUploadsPath('group-covers');
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0775, true);
-            }
-
-            $file = $request->file('cover');
-            $filename = time() . '_group_cover_' . uniqid() . '.' . $file->getClientOriginalExtension();
-            $file->move($uploadDir, $filename);
+            $filename = ImageOptimizer::store($request->file('cover'), $uploadDir, 'group_cover', 1600, 900, 82);
             $coverUrl = '/group-covers/' . $filename;
         }
 
@@ -116,19 +111,13 @@ class GroupController extends BaseController
             'description' => 'nullable|string|max:5000',
             'privacy' => 'nullable|in:public,private',
             'posts_locked' => 'nullable|boolean',
-            'cover' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
+            'cover' => 'nullable|file|mimes:jpg,jpeg,png,webp,gif|max:5120',
         ]);
 
         $payload = $request->only(['name', 'description', 'privacy', 'posts_locked']);
         if ($request->hasFile('cover') && $request->file('cover')->isValid()) {
             $uploadDir = $this->publicUploadsPath('group-covers');
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0775, true);
-            }
-
-            $file = $request->file('cover');
-            $filename = time() . '_group_cover_' . uniqid() . '.' . $file->getClientOriginalExtension();
-            $file->move($uploadDir, $filename);
+            $filename = ImageOptimizer::store($request->file('cover'), $uploadDir, 'group_cover', 1600, 900, 82);
             $payload['cover_url'] = '/group-covers/' . $filename;
         }
 

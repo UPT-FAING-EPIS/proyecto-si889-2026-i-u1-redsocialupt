@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\LikeService;
 use App\Services\LivestreamService;
 use App\Services\PostService;
+use App\Support\ImageOptimizer;
 use App\Models\Like;
 use App\Models\LivestreamViewer;
 use Carbon\Carbon;
@@ -284,15 +285,8 @@ class PostController extends BaseController
             return null;
         }
 
-        $file = $request->file('image');
-        $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
         $uploadDir = $this->publicUploadsPath('uploads');
-
-        if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0775, true);
-        }
-
-        $file->move($uploadDir, $filename);
+        $filename = ImageOptimizer::store($request->file('image'), $uploadDir, 'post', 1600, 1600, 82);
         return '/uploads/' . $filename;
     }
 }

@@ -6,9 +6,13 @@ RUN apk update && apk upgrade --no-cache && apk add --no-cache \
     unzip \
     curl \
     libpng-dev \
+    libjpeg-turbo-dev \
+    libwebp-dev \
+    freetype-dev \
     oniguruma-dev \
     $PHPIZE_DEPS \
-    && docker-php-ext-install pdo pdo_mysql zip mbstring
+    && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
+    && docker-php-ext-install pdo pdo_mysql zip mbstring gd exif
 
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 

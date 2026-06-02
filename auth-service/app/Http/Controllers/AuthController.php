@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AuthService;
+use App\Support\ImageOptimizer;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Laravel\Lumen\Routing\Controller as BaseController;
@@ -119,8 +120,8 @@ class AuthController extends BaseController
     public function updateProfile(Request $request): JsonResponse
     {
         $this->validate($request, [
-            'avatar'         => 'nullable|image|max:5120',
-            'banner'         => 'nullable|image|max:5120',
+            'avatar'         => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
+            'banner'         => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
             'avatar_url'     => 'nullable|string|max:500',
             'banner_url'     => 'nullable|string|max:500',
             'bio'            => 'nullable|string',
@@ -130,21 +131,14 @@ class AuthController extends BaseController
         $data = $request->only(['bio', 'avatar_url', 'banner_url', 'academic_cycle']);
 
         $uploadDir = $this->publicUploadsPath('auth-uploads');
-        if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0775, true);
-        }
 
         if ($request->hasFile('avatar') && $request->file('avatar')->isValid()) {
-            $file = $request->file('avatar');
-            $filename = time() . '_avatar_' . uniqid() . '.' . $file->getClientOriginalExtension();
-            $file->move($uploadDir, $filename);
+            $filename = ImageOptimizer::store($request->file('avatar'), $uploadDir, 'avatar', 512, 512, 84);
             $data['avatar_url'] = '/auth-uploads/' . $filename;
         }
 
         if ($request->hasFile('banner') && $request->file('banner')->isValid()) {
-            $file = $request->file('banner');
-            $filename = time() . '_banner_' . uniqid() . '.' . $file->getClientOriginalExtension();
-            $file->move($uploadDir, $filename);
+            $filename = ImageOptimizer::store($request->file('banner'), $uploadDir, 'banner', 1600, 900, 82);
             $data['banner_url'] = '/auth-uploads/' . $filename;
         }
 

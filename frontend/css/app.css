@@ -584,9 +584,39 @@ body {
 }
 
 .feed-composer-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
   border-radius: 1rem;
   max-width: 320px;
+  min-height: 5.75rem;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.feed-composer-preview.upload-preview-unavailable,
+#group-image-preview-wrap.upload-preview-unavailable,
+#group-cover-preview.upload-preview-unavailable,
+#edit-group-cover-preview.upload-preview-unavailable {
+  min-height: 7rem;
+  border: 1px dashed #cbd5e1;
+  background: linear-gradient(135deg, #f8fafc, #eef2ff);
+}
+
+.feed-composer-preview.upload-preview-unavailable::before,
+#group-image-preview-wrap.upload-preview-unavailable::before,
+#group-cover-preview.upload-preview-unavailable::before,
+#edit-group-cover-preview.upload-preview-unavailable::before {
+  content: attr(data-preview-unavailable);
+  display: block;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: #475569;
 }
 
 .feed-composer-footer {
@@ -7334,6 +7364,61 @@ body #admin-comments-modal .post-comments-modal {
   border: 1px solid #e2e8f0 !important;
   background: #fff !important;
   box-shadow: 0 20px 44px rgba(15, 23, 42, 0.18) !important;
+}
+
+@media (max-width: 767px) {
+  body :is(
+    #edit-user-modal,
+    #block-user-modal,
+    #review-report-modal,
+    #sanction-report-modal,
+    #edit-profile-modal,
+    #livestream-modal,
+    #group-create-crop-modal,
+    #group-edit-crop-modal,
+    #media-crop-modal
+  ) > div {
+    width: min(100%, calc(100vw - 0.85rem)) !important;
+    max-width: min(100%, calc(100vw - 0.85rem)) !important;
+    max-height: calc(100dvh - 0.85rem) !important;
+    margin: 0 !important;
+    border-radius: 1.15rem !important;
+    overflow-y: auto !important;
+  }
+
+  body :is(#edit-user-modal, #block-user-modal, #review-report-modal, #sanction-report-modal, #edit-profile-modal) form,
+  body :is(#review-report-modal, #sanction-report-modal) > div > div:last-child,
+  body :is(#edit-user-modal, #block-user-modal, #edit-profile-modal) > div > div:last-child {
+    padding: 1rem !important;
+  }
+
+  body :is(#group-create-crop-modal, #group-edit-crop-modal) > div > div:nth-child(2) {
+    gap: 1rem !important;
+    padding: 1rem !important;
+  }
+
+  body :is(#group-create-crop-modal, #group-edit-crop-modal) > div > div:first-child,
+  body #media-crop-modal > div > div:first-child {
+    padding: 0.95rem 1rem !important;
+  }
+
+  .media-crop-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .media-crop-workbench,
+  .media-crop-sidebar {
+    padding: 0.85rem !important;
+  }
+
+  .media-crop-stage.is-avatar {
+    max-width: min(78vw, 300px) !important;
+  }
+
+  .media-crop-stage.is-banner {
+    max-width: 100% !important;
+    border-radius: 1rem !important;
+  }
 }
 
 body #admin-comments-modal .post-comments-topbar {

@@ -111,6 +111,14 @@
     FACSA: ['Todos', 'Medicina Humana', 'Odontología', 'Tecnología Médica: Laboratorio Clínico y Anatomía Patológica', 'Tecnología Médica: Terapia Física y Rehabilitación'],
     FAU: ['Todos', 'Arquitectura'],
   };
+  const SUPPORTED_UPLOAD_IMAGE_MIME_TYPES = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+  ]);
+  const SUPPORTED_UPLOAD_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+  const IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 
   let confirmModalPromiseResolver = null;
   let reactionPickerState = null;
@@ -379,6 +387,56 @@
 
   function getFacultyCareerOptions(faculty = 'Todos') {
     return FACULTY_CAREERS[faculty] || FACULTY_CAREERS.Todos;
+  }
+
+  function getFileExtension(fileName = '') {
+    const normalized = String(fileName || '').trim().toLowerCase();
+    const lastDot = normalized.lastIndexOf('.');
+    return lastDot >= 0 ? normalized.slice(lastDot + 1) : '';
+  }
+
+  function validateSupportedImageFile(file, label = 'imagen') {
+    if (!file) {
+      return { ok: false, error: `Selecciona una ${label} valida.` };
+    }
+
+    const mimeType = String(file.type || '').trim().toLowerCase();
+    const extension = getFileExtension(file.name);
+    const looksLikeImage = mimeType.startsWith('image/') || SUPPORTED_UPLOAD_IMAGE_EXTENSIONS.has(extension);
+
+    if (!looksLikeImage) {
+      return { ok: false, error: `Selecciona una ${label} valida.` };
+    }
+
+    const isSupportedType = SUPPORTED_UPLOAD_IMAGE_MIME_TYPES.has(mimeType) || SUPPORTED_UPLOAD_IMAGE_EXTENSIONS.has(extension);
+    if (!isSupportedType) {
+      return { ok: false, error: `La ${label} debe estar en JPG, PNG, GIF o WEBP.` };
+    }
+
+    if (Number(file.size || 0) > IMAGE_UPLOAD_MAX_BYTES) {
+      return { ok: false, error: `La ${label} no debe superar los 5 MB.` };
+    }
+
+    return { ok: true };
+  }
+
+  function markPreviewUnavailable(previewWrap, previewImage, message) {
+    if (!previewWrap) return;
+    previewWrap.classList.add('upload-preview-unavailable');
+    previewWrap.dataset.previewUnavailable = message || 'Vista previa no disponible';
+    if (previewImage) {
+      previewImage.classList.add('hidden');
+      previewImage.removeAttribute('src');
+    }
+  }
+
+  function clearPreviewUnavailable(previewWrap, previewImage) {
+    if (!previewWrap) return;
+    previewWrap.classList.remove('upload-preview-unavailable');
+    delete previewWrap.dataset.previewUnavailable;
+    if (previewImage) {
+      previewImage.classList.remove('hidden');
+    }
   }
 
   ensureReactionAssetsPreloaded();
@@ -1563,7 +1621,7 @@
             ` : ''}
           </div>
           <div class="text-sm text-slate-800 mb-4"><p class="content-break">${nl2br(post.content || '')}</p></div>
-          ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" onerror="this.parentElement.style.display='none'"/></div>` : ''}
+          ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.parentElement.style.display='none'"/></div>` : ''}
         ${interactive ? `
           <div class="pt-3 border-t border-slate-100 space-y-3 text-slate-500">
             <div class="flex items-center justify-between gap-3 flex-wrap">
@@ -1656,7 +1714,7 @@
         ${post.image_url ? `
           <div class="post-modal-preview-media">
             <button type="button" class="post-modal-preview-media-button" data-action="open-post-image" data-image-url="${safeUrl(post.image_url)}" data-image-alt="${escapeHtml(imageAlt)}">
-              <img src="${safeUrl(post.image_url)}" alt="${escapeHtml(imageAlt)}" onerror="this.closest('.post-modal-preview-media').style.display='none'"/>
+              <img src="${safeUrl(post.image_url)}" alt="${escapeHtml(imageAlt)}" decoding="async" onerror="this.closest('.post-modal-preview-media').style.display='none'"/>
             </button>
           </div>
         ` : ''}
@@ -3837,7 +3895,7 @@
             <div class="max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}">
               <div class="rounded-2xl ${isMine ? 'rounded-br-sm' : 'rounded-bl-sm'} shadow-sm ${bubbleClass}">
                 ${hasImage ? `
-                  <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
+                  <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" loading="lazy" decoding="async" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
                 ` : ''}
                 ${hasContent ? `
                   <div class="${hasImage ? 'px-4 py-3 text-sm leading-6 text-slate-800' : 'text-sm leading-6'}">
@@ -3877,7 +3935,7 @@
           <div class="max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}">
             <div class="rounded-2xl ${isMine ? 'rounded-br-sm' : 'rounded-bl-sm'} shadow-sm ${bubbleClass}">
               ${hasImage ? `
-                <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
+                <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" loading="lazy" decoding="async" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
               ` : ''}
               ${hasContent ? `
                 <div class="${hasImage ? 'px-4 py-3 text-sm leading-6 text-slate-800' : 'text-sm leading-6'}">
@@ -4350,6 +4408,7 @@
       },
       mount({ container, user, router }) {
         let selectedImageFile = null;
+        let selectedImagePreviewUrl = '';
         let pendingDeleteId = null;
         let pendingCommentId = null;
         let currentCommentSort = 'newest';
@@ -4363,6 +4422,8 @@
         let feedObserver = null;
         let feedPagination = getClientPaginationMeta(0, 1, 20);
         let lastFeedLoadFinishedAt = 0;
+        let latestAppliedFeedSignature = '';
+        let latestPendingFeedSignature = '';
         const FEED_PER_PAGE = 20;
 
         const composerAvatar = container.querySelector('#composer-avatar');
@@ -4410,19 +4471,40 @@
           selectedImageFile = null;
           fileInput.value = '';
           if (cameraInput) cameraInput.value = '';
+          if (selectedImagePreviewUrl) {
+            URL.revokeObjectURL(selectedImagePreviewUrl);
+            selectedImagePreviewUrl = '';
+          }
+          clearPreviewUnavailable(previewWrap, previewImage);
+          previewImage.onerror = null;
           previewWrap.style.display = 'none';
           previewImage.src = '';
         }
 
         function handleComposerImageFile(file) {
           if (!file) return;
+          const validation = validateSupportedImageFile(file, 'imagen');
+          if (!validation.ok) {
+            clearImage();
+            showToast(validation.error, 'error');
+            return;
+          }
           selectedImageFile = file;
-          const reader = new FileReader();
-          reader.onload = (loadEvent) => {
-            previewImage.src = loadEvent.target.result;
-            previewWrap.style.display = 'block';
+          if (selectedImagePreviewUrl) {
+            URL.revokeObjectURL(selectedImagePreviewUrl);
+          }
+          selectedImagePreviewUrl = URL.createObjectURL(file);
+          clearPreviewUnavailable(previewWrap, previewImage);
+          previewImage.onerror = () => {
+            markPreviewUnavailable(
+              previewWrap,
+              previewImage,
+              'Vista previa no disponible para este formato.'
+            );
+            showToast('No se pudo mostrar la vista previa, pero puedes intentar publicar igualmente.', 'error');
           };
-          reader.readAsDataURL(file);
+          previewImage.src = selectedImagePreviewUrl;
+          previewWrap.style.display = 'block';
         }
 
         function setPostVisibility(value = 'all') {
@@ -4601,6 +4683,13 @@
           });
         }
 
+        function buildFeedPageSignature(posts = []) {
+          return posts
+            .slice(0, FEED_PER_PAGE)
+            .map((post) => buildFeedPostSnapshot(post))
+            .join('|');
+        }
+
         async function loadFeed({ passive = false, force = false } = {}) {
           if (!force && feedPosts.length && lastFeedLoadFinishedAt && (Date.now() - lastFeedLoadFinishedAt) < 1200) {
             return;
@@ -4626,14 +4715,18 @@
             if (!passive || !feedPosts.length) {
               pendingFeedPosts = [];
               pendingFeedMeta = null;
+              latestPendingFeedSignature = '';
               newPostsBanner?.classList.add('hidden');
               feedPagination = meta;
-              applyFeedPosts(feedPosts.length ? mergeFeedPages(posts) : posts);
+              const nextPosts = feedPosts.length ? mergeFeedPages(posts) : posts;
+              latestAppliedFeedSignature = buildFeedPageSignature(nextPosts);
+              applyFeedPosts(nextPosts);
               return;
             }
 
             const currentFirstPage = feedPosts.slice(0, FEED_PER_PAGE);
             const currentIds = new Set(currentFirstPage.map((post) => Number(post.id)));
+            const nextSignature = buildFeedPageSignature(posts);
             const hasNewPosts = posts.some((post) => !currentIds.has(Number(post.id)));
             const hasStructuralChanges = posts.length !== currentFirstPage.length
               || posts.some((post, index) => Number(post.id) !== Number(currentFirstPage[index]?.id))
@@ -4641,13 +4734,19 @@
 
             if (!hasNewPosts && hasStructuralChanges) {
               feedPagination = meta;
-              applyFeedPosts(mergeFeedPages(posts));
+              const nextPosts = mergeFeedPages(posts);
+              latestAppliedFeedSignature = buildFeedPageSignature(nextPosts);
+              applyFeedPosts(nextPosts);
               return;
             }
 
             if (!hasNewPosts) return;
+            if (nextSignature && (nextSignature === latestAppliedFeedSignature || nextSignature === latestPendingFeedSignature)) {
+              return;
+            }
             pendingFeedPosts = posts;
             pendingFeedMeta = meta;
+            latestPendingFeedSignature = nextSignature;
             newPostsBanner?.classList.remove('hidden');
           })();
 
@@ -4680,7 +4779,9 @@
             const existingIds = new Set(feedPosts.map((post) => Number(post.id)));
             const nextPosts = posts.filter((post) => !existingIds.has(Number(post.id)));
             feedPagination = meta;
-            applyFeedPosts([...feedPosts, ...nextPosts]);
+            const mergedPosts = [...feedPosts, ...nextPosts];
+            latestAppliedFeedSignature = buildFeedPageSignature(mergedPosts);
+            applyFeedPosts(mergedPosts);
           })();
 
           try {
@@ -5153,9 +5254,13 @@
           if (!pendingFeedPosts.length) return;
           newPostsBanner?.classList.add('hidden');
           feedPagination = pendingFeedMeta || feedPagination;
-          applyFeedPosts(mergeFeedPages(pendingFeedPosts));
+          const nextPosts = mergeFeedPages(pendingFeedPosts);
+          latestAppliedFeedSignature = buildFeedPageSignature(nextPosts);
+          applyFeedPosts(nextPosts);
           pendingFeedPosts = [];
           pendingFeedMeta = null;
+          latestPendingFeedSignature = '';
+          lastFeedLoadFinishedAt = Date.now();
           window.scrollTo({ top: 0, behavior: 'smooth' });
         };
 
@@ -9008,8 +9113,9 @@
         }
 
         async function openCreateCropModal(file) {
-          if (!file || !String(file.type || '').startsWith('image/')) {
-            showToast('Selecciona un archivo de imagen valido', 'error');
+          const validation = validateSupportedImageFile(file, 'portada');
+          if (!validation.ok) {
+            showToast(validation.error, 'error');
             coverInput.value = '';
             return;
           }
@@ -9019,7 +9125,7 @@
           cropState.image = await new Promise((resolve, reject) => {
             const image = new Image();
             image.onload = () => resolve(image);
-            image.onerror = () => reject(new Error('No se pudo cargar la imagen seleccionada.'));
+            image.onerror = () => reject(new Error('No se pudo cargar la imagen seleccionada. Usa JPG, PNG, GIF o WEBP.'));
             image.src = cropState.objectUrl;
           });
           cropState.naturalWidth = cropState.image.naturalWidth;
@@ -9037,6 +9143,7 @@
         function updateCreateCoverPreview(file = null) {
           if (file) {
             releaseCreateCoverPreviewUrl();
+            clearPreviewUnavailable(coverPreview);
             selectedCoverPreviewUrl = URL.createObjectURL(file);
             coverPreview.style.backgroundImage = `url('${safeUrl(selectedCoverPreviewUrl)}')`;
             coverPreview.style.backgroundSize = 'cover';
@@ -9045,6 +9152,7 @@
             return;
           }
           releaseCreateCoverPreviewUrl();
+          clearPreviewUnavailable(coverPreview);
           coverPreview.style.backgroundImage = '';
           coverPreview.style.background = 'linear-gradient(135deg,#1B2A6B 0%,#3C4D91 100%)';
           clearCoverButton.classList.add('hidden');
@@ -9464,6 +9572,7 @@
           }
 
           if (file) {
+            clearPreviewUnavailable(editCoverPreview);
             selectedEditCoverPreviewUrl = URL.createObjectURL(file);
             editCoverPreview.style.backgroundImage = `url('${safeUrl(selectedEditCoverPreviewUrl)}')`;
             editCoverPreview.style.backgroundSize = 'cover';
@@ -9472,6 +9581,7 @@
             return;
           }
 
+          clearPreviewUnavailable(editCoverPreview);
           if (groupData?.cover_url) {
             editCoverPreview.style.backgroundImage = `url('${safeUrl(groupData.cover_url)}')`;
             editCoverPreview.style.backgroundSize = 'cover';
@@ -9588,8 +9698,9 @@
         }
 
         async function openEditCropModal(file) {
-          if (!file || !String(file.type || '').startsWith('image/')) {
-            showToast('Selecciona un archivo de imagen valido', 'error');
+          const validation = validateSupportedImageFile(file, 'portada');
+          if (!validation.ok) {
+            showToast(validation.error, 'error');
             editCoverInput.value = '';
             return;
           }
@@ -9599,7 +9710,7 @@
           editCropState.image = await new Promise((resolve, reject) => {
             const image = new Image();
             image.onload = () => resolve(image);
-            image.onerror = () => reject(new Error('No se pudo cargar la imagen seleccionada.'));
+            image.onerror = () => reject(new Error('No se pudo cargar la imagen seleccionada. Usa JPG, PNG, GIF o WEBP.'));
             image.src = editCropState.objectUrl;
           });
           editCropState.naturalWidth = editCropState.image.naturalWidth;
@@ -9736,8 +9847,8 @@
                   </div>
                 </div>
               </div>
-              <input type="file" id="group-file-input" accept="image/*" class="hidden"/>
-              <input type="file" id="group-camera-input" accept="image/*" capture="environment" class="hidden"/>
+              <input type="file" id="group-file-input" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" class="hidden"/>
+              <input type="file" id="group-camera-input" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" capture="environment" class="hidden"/>
               <div class="mt-4 flex flex-wrap justify-between gap-3">
                 <div class="flex flex-wrap gap-3">
                   <button id="group-pick-image-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
@@ -9823,6 +9934,7 @@
           renderConversationTabSkeleton();
           if (!groupData?.can_view_conversation) return;
 
+          let selectedGroupImagePreviewUrl = '';
           const composerAvatar = conversationTab.querySelector('#group-composer-avatar');
           const fileInput = conversationTab.querySelector('#group-file-input');
           const cameraInput = conversationTab.querySelector('#group-camera-input');
@@ -9840,8 +9952,16 @@
             selectedImageFile = null;
             if (fileInput) fileInput.value = '';
             if (cameraInput) cameraInput.value = '';
+            if (selectedGroupImagePreviewUrl) {
+              URL.revokeObjectURL(selectedGroupImagePreviewUrl);
+              selectedGroupImagePreviewUrl = '';
+            }
             if (previewWrap) previewWrap.classList.add('hidden');
-            if (previewImage) previewImage.src = '';
+            if (previewImage) {
+              clearPreviewUnavailable(previewWrap, previewImage);
+              previewImage.onerror = null;
+              previewImage.src = '';
+            }
           }
 
           function setComposerImage(file) {
@@ -9850,8 +9970,28 @@
               return;
             }
 
+            const validation = validateSupportedImageFile(file, 'imagen');
+            if (!validation.ok) {
+              clearImage();
+              showToast(validation.error, 'error');
+              return;
+            }
+
             selectedImageFile = file;
-            previewImage.src = URL.createObjectURL(file);
+            if (selectedGroupImagePreviewUrl) {
+              URL.revokeObjectURL(selectedGroupImagePreviewUrl);
+            }
+            selectedGroupImagePreviewUrl = URL.createObjectURL(file);
+            clearPreviewUnavailable(previewWrap, previewImage);
+            previewImage.onerror = () => {
+              markPreviewUnavailable(
+                previewWrap,
+                previewImage,
+                'Vista previa no disponible para este formato.'
+              );
+              showToast('No se pudo mostrar la vista previa, pero puedes intentar publicar igualmente.', 'error');
+            };
+            previewImage.src = selectedGroupImagePreviewUrl;
             previewWrap.classList.remove('hidden');
           }
 
@@ -10159,7 +10299,7 @@
               ${posts.map((post) => `
                 <article class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div class="h-52 bg-slate-100">
-                    <img src="${safeUrl(post.image_url)}" alt="Imagen publicada en el grupo" class="w-full h-full object-cover"/>
+                    <img src="${safeUrl(post.image_url)}" alt="Imagen publicada en el grupo" loading="lazy" decoding="async" class="w-full h-full object-cover"/>
                   </div>
                   <div class="p-4">
                     <p class="font-semibold text-slate-900 text-sm">${escapeHtml(displayName(resolveProfileData({
@@ -10845,8 +10985,9 @@
             return;
           }
           if (!file) return;
-          if (!String(file.type || '').startsWith('image/')) {
-            showToast('Selecciona un archivo de imagen valido', 'error');
+          const validation = validateSupportedImageFile(file, mode === 'avatar' ? 'foto de perfil' : 'portada');
+          if (!validation.ok) {
+            showToast(validation.error, 'error');
             clearCropInput(mode);
             return;
           }
@@ -10864,7 +11005,7 @@
             cropState.image = await loadImageForCrop();
           } catch (error) {
             releaseCropObjectUrl();
-            showToast(error.message || 'No se pudo preparar la imagen', 'error');
+            showToast(error.message || 'No se pudo preparar la imagen. Usa JPG, PNG, GIF o WEBP.', 'error');
             clearCropInput(mode);
             return;
           }
@@ -12597,7 +12738,7 @@
                 </td>
                 <td class="py-4 px-5">
                   <div class="flex gap-3 items-start">
-                      ${post.image_url ? `<img alt="Miniatura" class="w-12 h-12 rounded-lg object-cover" src="${safeUrl(post.image_url)}" onerror="this.style.display='none'"/>` : ''}
+                      ${post.image_url ? `<img alt="Miniatura" class="w-12 h-12 rounded-lg object-cover" src="${safeUrl(post.image_url)}" loading="lazy" decoding="async" onerror="this.style.display='none'"/>` : ''}
                     <div class="min-w-0">
                       <p class="content-break text-sm text-slate-700 mb-1.5">${escapeHtml(((post.post_type || 'standard') === 'livestream' ? (post.live_title || 'Directo UPT') : ((post.content || '').slice(0, 140))) || 'Sin contenido')}</p>
                       <div class="flex flex-wrap gap-2">
