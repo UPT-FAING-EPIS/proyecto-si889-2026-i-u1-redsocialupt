@@ -1774,8 +1774,8 @@
     async function runSearch(query) {
       const normalized = String(query || '').trim();
 
-      if (normalized.length < 2) {
-        renderSearchMessage('Escribe al menos 2 letras para buscar.');
+      if (normalized.length < 1) {
+        renderSearchMessage('Escribe al menos 1 letra para buscar.');
         closeDropdown();
         return;
       }

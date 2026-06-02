@@ -40,7 +40,7 @@ class UserDirectoryController extends BaseController
     public function search(Request $request): JsonResponse
     {
         $this->validate($request, [
-            'q' => 'required|string|min:2',
+            'q' => 'required|string|min:1',
         ]);
 
         $jwt   = $request->bearerToken();

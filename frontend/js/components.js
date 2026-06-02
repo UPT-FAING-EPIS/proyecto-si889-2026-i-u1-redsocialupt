@@ -18,7 +18,7 @@ class AppHeader extends HTMLElement {
             <input id="header-search-input" class="w-full bg-slate-100 border-none rounded-full py-2.5 pl-10 pr-4 text-sm focus:ring-1 focus:ring-[#1B2A6B] outline-none" placeholder="Buscar estudiantes..." type="text" autocomplete="off"/>
             <div id="header-search-dropdown" class="absolute left-0 right-0 mt-2 bg-white rounded-2xl shadow-lg border border-slate-200 hidden z-50 overflow-hidden">
               <div id="header-search-results" class="max-h-80 overflow-y-auto custom-scrollbar">
-                <div class="px-4 py-4 text-sm text-slate-500 text-center">Escribe al menos 2 letras para buscar.</div>
+                <div class="px-4 py-4 text-sm text-slate-500 text-center">Escribe al menos 1 letra para buscar.</div>
               </div>
             </div>
           </div>
