@@ -103,13 +103,25 @@ class PostController extends BaseController
     {
         $friendIds = json_decode($request->header('X-Friend-Ids', '[]'), true) ?? [];
         $userFaculty = $request->header('X-User-Faculty');
+        $perPage = (int) $request->query('per_page', 0);
+        $page = max(1, (int) $request->query('page', 1));
 
         $posts = $this->postService->getFeed(
             (int) $request->auth->sub,
             $friendIds,
             $userFaculty ?: null,
-            $request->bearerToken() ?? ''
+            $request->bearerToken() ?? '',
+            $perPage > 0 ? min($perPage, 50) : null,
+            $page
         );
+
+        if ($posts instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator) {
+            $items = collect($posts->items());
+            $this->hydratePosts($items, (int) $request->auth->sub);
+            $payload = $posts->toArray();
+            $payload['data'] = $items->values()->all();
+            return response()->json($payload, 200);
+        }
 
         $this->hydratePosts($posts, (int) $request->auth->sub);
 

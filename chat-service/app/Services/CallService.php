@@ -8,6 +8,8 @@ use App\Models\CallSignal;
 
 class CallService
 {
+    private const RING_TIMEOUT_SECONDS = 45;
+
     private ?array $friendIdsCache = null;
     private SocialBlockService $socialBlockService;
 
@@ -49,10 +51,11 @@ class CallService
 
     public function getPendingCalls(int $userId, string $jwt): array
     {
+        $this->expireStaleIncomingCalls($userId);
+
         $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
         $query = CallSession::where('receiver_id', $userId)
             ->where('status', 'ringing')
-            ->where('created_at', '>=', \Carbon\Carbon::now()->subSeconds(45))
             ->orderBy('created_at', 'desc');
 
         if ($hiddenIds) {
@@ -60,6 +63,26 @@ class CallService
         }
 
         return $query->get()
+            ->map(fn (CallSession $call) => $call->toArray())
+            ->values()
+            ->all();
+    }
+
+    public function getMissedCalls(int $userId, string $jwt): array
+    {
+        $this->expireStaleIncomingCalls($userId);
+
+        $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
+        $query = CallSession::where('receiver_id', $userId)
+            ->where('status', 'missed')
+            ->orderBy('updated_at', 'desc');
+
+        if ($hiddenIds) {
+            $query->whereNotIn('caller_id', $hiddenIds);
+        }
+
+        return $query->limit(30)
+            ->get()
             ->map(fn (CallSession $call) => $call->toArray())
             ->values()
             ->all();
@@ -76,7 +99,9 @@ class CallService
             throw new MessageServiceException('No tienes acceso a esta llamada', 403);
         }
 
-        return $session;
+        $session = $this->expireSessionIfMissed($session);
+
+        return $session->fresh() ?? $session;
     }
 
     public function acceptCall(int $userId, int $sessionId): CallSession
@@ -127,7 +152,7 @@ class CallService
             return $session;
         }
 
-        $session->status = 'ended';
+        $session->status = $session->status === 'ringing' ? 'missed' : 'ended';
         if ($durationSeconds !== null && $durationSeconds >= 0) {
             $session->duration_seconds = $durationSeconds;
         }
@@ -191,6 +216,28 @@ class CallService
     private function normalizeMode(string $mode): string
     {
         return in_array($mode, ['audio', 'video'], true) ? $mode : 'audio';
+    }
+
+    private function expireStaleIncomingCalls(int $userId): void
+    {
+        CallSession::where('receiver_id', $userId)
+            ->where('status', 'ringing')
+            ->where('created_at', '<', now()->subSeconds(self::RING_TIMEOUT_SECONDS))
+            ->update(['status' => 'missed']);
+    }
+
+    private function expireSessionIfMissed(CallSession $session): CallSession
+    {
+        if (
+            $session->status === 'ringing'
+            && $session->created_at
+            && $session->created_at->lt(now()->subSeconds(self::RING_TIMEOUT_SECONDS))
+        ) {
+            $session->status = 'missed';
+            $session->save();
+        }
+
+        return $session;
     }
 
     private function assertFriendship(int $otherUserId, string $jwt): void

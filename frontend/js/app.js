@@ -104,11 +104,11 @@
 
   const FACULTY_CAREERS = {
     Todos: ['Todos'],
-    FAING: ['Todos', 'Ingenieria de Sistemas', 'Ingenieria Civil', 'Ingenieria Electronica', 'Ingenieria Industrial', 'Ingenieria Mecanica'],
-    FACEM: ['Todos', 'Medicina Humana', 'Odontologia'],
-    FAEDCOH: ['Todos', 'Educacion', 'Ciencias de la Comunicacion', 'Humanidades'],
-    FADE: ['Todos', 'Administracion', 'Contabilidad', 'Derecho'],
-    FACSA: ['Todos', 'Enfermeria', 'Psicologia'],
+    FAING: ['Todos', 'Ingeniería Civil', 'Ingeniería de Sistemas', 'Ingeniería Electrónica', 'Ingeniería Agroindustrial', 'Ingeniería Ambiental', 'Ingeniería Industrial'],
+    FACEM: ['Todos', 'Ciencias Contables y Financieras', 'Ingeniería Comercial', 'Administración de Negocios Internacionales', 'Administración Turística y Hotelera', 'Economía y Microfinanzas'],
+    FAEDCOH: ['Todos', 'Educación', 'Ciencias de la Comunicación', 'Psicología', 'Humanidades'],
+    FADE: ['Todos', 'Derecho'],
+    FACSA: ['Todos', 'Medicina Humana', 'Odontología', 'Tecnología Médica: Laboratorio Clínico y Anatomía Patológica', 'Tecnología Médica: Terapia Física y Rehabilitación'],
     FAU: ['Todos', 'Arquitectura'],
   };
 
@@ -145,6 +145,116 @@
       .replace(/[\u0300-\u036f]/g, '')
       .trim()
       .toLowerCase();
+  }
+
+  function getResultPaginationMeta(result, fallbackPerPage = 0) {
+    const items = getList(result);
+    const payload = result?.data && typeof result.data === 'object' && !Array.isArray(result.data)
+      ? result.data
+      : null;
+
+    const currentPage = Math.max(1, Number(payload?.current_page || 1) || 1);
+    const lastPage = Math.max(1, Number(payload?.last_page || 1) || 1);
+    const perPage = Math.max(1, Number(payload?.per_page || fallbackPerPage || items.length || 1) || 1);
+    const total = Math.max(items.length, Number(payload?.total || items.length) || items.length);
+    const from = total > 0 ? Number(payload?.from || (((currentPage - 1) * perPage) + 1)) : 0;
+    const to = total > 0 ? Number(payload?.to || Math.min(total, from + items.length - 1)) : 0;
+
+    return {
+      currentPage,
+      lastPage,
+      perPage,
+      total,
+      from,
+      to,
+      hasMore: currentPage < lastPage,
+    };
+  }
+
+  function getClientPaginationMeta(totalItems, currentPage = 1, perPage = 30) {
+    const normalizedPerPage = Math.max(1, Number(perPage) || 1);
+    const total = Math.max(0, Number(totalItems) || 0);
+    const lastPage = Math.max(1, Math.ceil(total / normalizedPerPage) || 1);
+    const safeCurrentPage = Math.min(Math.max(1, Number(currentPage) || 1), lastPage);
+    const from = total ? ((safeCurrentPage - 1) * normalizedPerPage) + 1 : 0;
+    const to = total ? Math.min(total, from + normalizedPerPage - 1) : 0;
+
+    return {
+      currentPage: safeCurrentPage,
+      lastPage,
+      perPage: normalizedPerPage,
+      total,
+      from,
+      to,
+      hasMore: safeCurrentPage < lastPage,
+    };
+  }
+
+  function paginateClientItems(items, currentPage = 1, perPage = 30) {
+    const list = Array.isArray(items) ? items : [];
+    const meta = getClientPaginationMeta(list.length, currentPage, perPage);
+    const start = (meta.currentPage - 1) * meta.perPage;
+    return {
+      items: list.slice(start, start + meta.perPage),
+      meta,
+    };
+  }
+
+  function buildPaginationSequence(currentPage, lastPage) {
+    if (lastPage <= 1) return [1];
+
+    const pages = new Set([1, lastPage]);
+    for (let page = currentPage - 1; page <= currentPage + 1; page += 1) {
+      if (page > 1 && page < lastPage) {
+        pages.add(page);
+      }
+    }
+
+    const sorted = [...pages].sort((a, b) => a - b);
+    const sequence = [];
+    let previous = 0;
+    sorted.forEach((page) => {
+      if (previous && page - previous > 1) {
+        sequence.push('ellipsis');
+      }
+      sequence.push(page);
+      previous = page;
+    });
+    return sequence;
+  }
+
+  function renderPagination(container, meta, options = {}) {
+    if (!container) return;
+
+    const {
+      summaryLabel = 'elementos',
+      standalone = false,
+    } = options;
+
+    if (!meta || meta.lastPage <= 1) {
+      container.innerHTML = '';
+      container.classList.add('hidden');
+      container.classList.toggle('is-standalone', !!standalone);
+      return;
+    }
+
+    const pages = buildPaginationSequence(meta.currentPage, meta.lastPage);
+    container.classList.remove('hidden');
+    container.classList.toggle('is-standalone', !!standalone);
+    container.innerHTML = `
+      <div class="app-pagination-summary">
+        Mostrando ${meta.from}-${meta.to} de ${meta.total} ${escapeHtml(summaryLabel)}
+      </div>
+      <div class="app-pagination-controls">
+        <button type="button" class="app-pagination-btn is-nav" data-page="${meta.currentPage - 1}" ${meta.currentPage <= 1 ? 'disabled' : ''}>Anterior</button>
+        ${pages.map((page) => (
+          page === 'ellipsis'
+            ? '<span class="app-pagination-ellipsis">…</span>'
+            : `<button type="button" class="app-pagination-btn ${page === meta.currentPage ? 'is-active' : ''}" data-page="${page}">${page}</button>`
+        )).join('')}
+        <button type="button" class="app-pagination-btn is-nav" data-page="${meta.currentPage + 1}" ${meta.currentPage >= meta.lastPage ? 'disabled' : ''}>Siguiente</button>
+      </div>
+    `;
   }
 
   function reactionAsset(type) {
@@ -2801,6 +2911,7 @@
         const duration = formatCallDuration();
         return `${callState.localVideoEnabled || hasLiveRemoteVideo() ? 'En llamada' : 'En llamada'}${duration ? ` · ${duration}` : ''}`;
       }
+      if (status === 'missed') return 'Llamada perdida';
       if (status === 'rejected') return 'Llamada rechazada';
       if (status === 'ended') return 'Llamada finalizada';
       return 'Conectando...';
@@ -3196,8 +3307,13 @@
             callState.startedAt = Date.now();
           }
           await beginWebRtcIfNeeded();
-        } else if (['rejected', 'ended'].includes(nextSession.status)) {
-          const message = nextSession.status === 'rejected' ? 'La llamada fue rechazada' : 'La llamada termino';
+        } else if (['rejected', 'ended', 'missed'].includes(nextSession.status)) {
+          const isCaller = Number(nextSession.caller_id) === Number(user.id);
+          const message = nextSession.status === 'rejected'
+            ? 'La llamada fue rechazada'
+            : nextSession.status === 'missed'
+              ? (isCaller ? 'La llamada no fue respondida' : 'Tienes una llamada perdida')
+              : 'La llamada termino';
           await finalizeCall(message);
         }
       } finally {
@@ -3418,6 +3534,13 @@
       if (!callState.session && !callState.isFinalizing) {
         return;
       }
+      const finalSession = callState.session ? { ...callState.session } : null;
+      const shouldRefreshNotifications = Boolean(
+        finalSession
+        && finalSession.status === 'missed'
+        && Number(finalSession.receiver_id) === Number(user.id)
+        && typeof window.loadNotifications === 'function'
+      );
       stopRingTone();
       cleanupPeerConnection();
       stopCallTimers();
@@ -3466,6 +3589,9 @@
 
       if (toastMessage) {
         showToast(toastMessage, 'success');
+      }
+      if (shouldRefreshNotifications) {
+        window.loadNotifications().catch(() => { });
       }
     }
 
@@ -4229,13 +4355,20 @@
         let currentCommentSort = 'newest';
         let feedPosts = [];
         let pendingFeedPosts = [];
+        let pendingFeedMeta = null;
         let feedRefreshTimer = null;
         let commentPollTimer = null;
         let feedLoadPromise = null;
+        let feedLoadMorePromise = null;
+        let feedObserver = null;
+        let feedPagination = getClientPaginationMeta(0, 1, 20);
         let lastFeedLoadFinishedAt = 0;
+        const FEED_PER_PAGE = 20;
 
         const composerAvatar = container.querySelector('#composer-avatar');
         const postsContainer = container.querySelector('#feed-posts');
+        const feedLoadMoreSentinel = container.querySelector('#feed-load-more-sentinel');
+        const feedLoadMoreLabel = container.querySelector('#feed-load-more-label');
         const newPostsBanner = container.querySelector('#feed-new-posts-banner');
         const applyNewPostsButton = container.querySelector('#feed-apply-new-posts-btn');
         const onlineFriends = container.querySelector('#online-friends');
@@ -4425,13 +4558,30 @@
           feedPosts = posts;
           if (!posts.length) {
             postsContainer.innerHTML = '<p class="text-center text-slate-400 py-8">No hay publicaciones todavia. Se el primero.</p>';
+            updateFeedLoadMoreState();
             return;
           }
 
           postsContainer.innerHTML = posts.map((post) => renderPostCard(post, user.id)).join('');
+          updateFeedLoadMoreState();
           if (pendingCommentId) {
             renderCommentModalPost(pendingCommentId);
           }
+        }
+
+        function mergeFeedPages(firstPosts, existingPosts = feedPosts) {
+          const firstPageIds = new Set(firstPosts.map((post) => Number(post.id)));
+          return [
+            ...firstPosts,
+            ...existingPosts.filter((post) => !firstPageIds.has(Number(post.id))),
+          ];
+        }
+
+        function updateFeedLoadMoreState(message = '') {
+          if (!feedLoadMoreSentinel || !feedLoadMoreLabel) return;
+          const shouldShow = feedPagination.hasMore || !!message;
+          feedLoadMoreSentinel.classList.toggle('hidden', !shouldShow);
+          feedLoadMoreLabel.textContent = message || (feedLoadMorePromise ? 'Cargando más publicaciones...' : (feedPagination.hasMore ? 'Desliza hacia abajo para cargar más publicaciones' : ''));
         }
 
         function buildFeedPostSnapshot(post) {
@@ -4461,36 +4611,43 @@
           }
 
           feedLoadPromise = (async () => {
-            const result = await PostsAPI.getFeed();
+            const result = await PostsAPI.getFeed({ page: 1, perPage: FEED_PER_PAGE });
             const posts = getList(result);
+            const meta = getResultPaginationMeta(result, FEED_PER_PAGE);
 
             if (!result?.ok) {
               if (!passive) {
                 postsContainer.innerHTML = '<p class="text-center text-slate-400 py-8">No se pudo cargar el feed.</p>';
+                updateFeedLoadMoreState();
               }
               return;
             }
 
             if (!passive || !feedPosts.length) {
               pendingFeedPosts = [];
+              pendingFeedMeta = null;
               newPostsBanner?.classList.add('hidden');
-              applyFeedPosts(posts);
+              feedPagination = meta;
+              applyFeedPosts(feedPosts.length ? mergeFeedPages(posts) : posts);
               return;
             }
 
-            const currentIds = new Set(feedPosts.map((post) => Number(post.id)));
+            const currentFirstPage = feedPosts.slice(0, FEED_PER_PAGE);
+            const currentIds = new Set(currentFirstPage.map((post) => Number(post.id)));
             const hasNewPosts = posts.some((post) => !currentIds.has(Number(post.id)));
-            const hasStructuralChanges = posts.length !== feedPosts.length
-              || posts.some((post, index) => Number(post.id) !== Number(feedPosts[index]?.id))
-              || posts.some((post, index) => buildFeedPostSnapshot(post) !== buildFeedPostSnapshot(feedPosts[index]));
+            const hasStructuralChanges = posts.length !== currentFirstPage.length
+              || posts.some((post, index) => Number(post.id) !== Number(currentFirstPage[index]?.id))
+              || posts.some((post, index) => buildFeedPostSnapshot(post) !== buildFeedPostSnapshot(currentFirstPage[index]));
 
             if (!hasNewPosts && hasStructuralChanges) {
-              applyFeedPosts(posts);
+              feedPagination = meta;
+              applyFeedPosts(mergeFeedPages(posts));
               return;
             }
 
             if (!hasNewPosts) return;
             pendingFeedPosts = posts;
+            pendingFeedMeta = meta;
             newPostsBanner?.classList.remove('hidden');
           })();
 
@@ -4499,6 +4656,38 @@
           } finally {
             lastFeedLoadFinishedAt = Date.now();
             feedLoadPromise = null;
+          }
+        }
+
+        async function loadMoreFeedPosts() {
+          if (feedLoadMorePromise || !feedPagination.hasMore) {
+            return;
+          }
+
+          const nextPage = feedPagination.currentPage + 1;
+          updateFeedLoadMoreState('Cargando más publicaciones...');
+          feedLoadMorePromise = (async () => {
+            const result = await PostsAPI.getFeed({ page: nextPage, perPage: FEED_PER_PAGE });
+            const posts = getList(result);
+            const meta = getResultPaginationMeta(result, FEED_PER_PAGE);
+
+            if (!result?.ok) {
+              updateFeedLoadMoreState('No se pudieron cargar más publicaciones.');
+              window.setTimeout(() => updateFeedLoadMoreState(), 1800);
+              return;
+            }
+
+            const existingIds = new Set(feedPosts.map((post) => Number(post.id)));
+            const nextPosts = posts.filter((post) => !existingIds.has(Number(post.id)));
+            feedPagination = meta;
+            applyFeedPosts([...feedPosts, ...nextPosts]);
+          })();
+
+          try {
+            await feedLoadMorePromise;
+          } finally {
+            feedLoadMorePromise = null;
+            updateFeedLoadMoreState();
           }
         }
 
@@ -4963,8 +5152,10 @@
         const applyNewFeedToast = () => {
           if (!pendingFeedPosts.length) return;
           newPostsBanner?.classList.add('hidden');
-          applyFeedPosts(pendingFeedPosts);
+          feedPagination = pendingFeedMeta || feedPagination;
+          applyFeedPosts(mergeFeedPages(pendingFeedPosts));
           pendingFeedPosts = [];
+          pendingFeedMeta = null;
           window.scrollTo({ top: 0, behavior: 'smooth' });
         };
 
@@ -4993,6 +5184,17 @@
         window.addEventListener('focus', handleBlocksChanged);
         document.addEventListener('visibilitychange', handleBlocksChanged);
 
+        if (feedLoadMoreSentinel && 'IntersectionObserver' in window) {
+          feedObserver = new IntersectionObserver((entries) => {
+            const shouldLoad = entries.some((entry) => entry.isIntersecting);
+            if (!shouldLoad || document.hidden) return;
+            loadMoreFeedPosts().catch(() => { });
+          }, {
+            rootMargin: '240px 0px',
+          });
+          feedObserver.observe(feedLoadMoreSentinel);
+        }
+
         loadFeed();
         loadFriends();
         feedRefreshTimer = window.setInterval(() => {
@@ -5013,6 +5215,10 @@
           if (commentPollTimer) {
             window.clearInterval(commentPollTimer);
             commentPollTimer = null;
+          }
+          if (feedObserver) {
+            feedObserver.disconnect();
+            feedObserver = null;
           }
           closeReactionPicker();
         };
@@ -8428,12 +8634,18 @@
       templatePath: '/pages/companions.html',
       mount({ container, router, user }) {
         const grid = container.querySelector('#directory-grid');
+        const pagination = container.querySelector('#companions-pagination');
         const filterFaculty = container.querySelector('#filter-faculty');
         const filterCareer = container.querySelector('#filter-career');
         const emptyState = container.querySelector('#companions-empty-state');
         const filtersWrap = container.querySelector('#companions-directory-filters');
         const tabButtons = Array.from(container.querySelectorAll('[data-companions-tab]'));
         let activeTab = 'directory';
+        let directoryUsers = [];
+        let blockedUsers = [];
+        let directoryPage = 1;
+        let blockedPage = 1;
+        const COMPANIONS_PER_PAGE = 12;
 
         function setCompanionsTab(tab) {
           activeTab = tab;
@@ -8492,6 +8704,23 @@
             `).join('');
         }
 
+        function renderCompanionsPage() {
+          const isBlockedTab = activeTab === 'blocked';
+          const sourceUsers = isBlockedTab ? blockedUsers : directoryUsers;
+          const currentPage = isBlockedTab ? blockedPage : directoryPage;
+          const pageSlice = paginateClientItems(sourceUsers, currentPage, COMPANIONS_PER_PAGE);
+          if (isBlockedTab) {
+            blockedPage = pageSlice.meta.currentPage;
+          } else {
+            directoryPage = pageSlice.meta.currentPage;
+          }
+          renderCards(pageSlice.items, {
+            blocked: isBlockedTab,
+            emptyMessage: isBlockedTab ? 'No tienes usuarios bloqueados.' : 'No se encontraron compañeros.',
+          });
+          renderPagination(pagination, pageSlice.meta, { summaryLabel: isBlockedTab ? 'usuarios bloqueados' : 'compañeros', standalone: true });
+        }
+
         async function loadDirectory() {
           const faculty = filterFaculty.value;
           const career = filterCareer.value;
@@ -8506,12 +8735,13 @@
             grid.innerHTML = '';
             emptyState.textContent = 'No se pudieron cargar los companeros.';
             emptyState.classList.remove('hidden');
+            pagination?.classList.add('hidden');
             return;
           }
 
-          renderCards(users, {
-            emptyMessage: 'No se encontraron companeros.',
-          });
+          directoryUsers = users;
+          directoryPage = 1;
+          renderCompanionsPage();
         }
 
         async function loadBlockedUsers() {
@@ -8522,18 +8752,19 @@
             grid.innerHTML = '';
             emptyState.textContent = 'No se pudo cargar la lista de bloqueados.';
             emptyState.classList.remove('hidden');
+            pagination?.classList.add('hidden');
             return;
           }
 
-          renderCards(users, {
-            blocked: true,
-            emptyMessage: 'No tienes usuarios bloqueados.',
-          });
+          blockedUsers = users;
+          blockedPage = 1;
+          renderCompanionsPage();
         }
 
         async function loadActiveTab() {
           grid.innerHTML = '<p class="text-slate-400 text-sm col-span-3 text-center py-8">Cargando...</p>';
           emptyState.classList.add('hidden');
+          pagination?.classList.add('hidden');
 
           if (activeTab === 'blocked') {
             await loadBlockedUsers();
@@ -8581,6 +8812,17 @@
           showToast(result?.data?.error || 'No se pudo desbloquear al usuario', 'error');
         });
 
+        pagination?.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-page]');
+          if (!button) return;
+          if (activeTab === 'blocked') {
+            blockedPage = Number(button.dataset.page) || 1;
+          } else {
+            directoryPage = Number(button.dataset.page) || 1;
+          }
+          renderCompanionsPage();
+        });
+
         setCompanionsTab('directory');
         loadActiveTab();
 
@@ -8602,6 +8844,7 @@
       },
       mount({ container, router }) {
         const grid = container.querySelector('#groups-grid');
+        const pagination = container.querySelector('#groups-pagination');
         const emptyState = container.querySelector('#groups-empty-state');
         const searchInput = container.querySelector('#groups-search');
         const hideMineCheckbox = container.querySelector('#groups-hide-mine-checkbox');
@@ -8629,6 +8872,11 @@
         let searchTimer = null;
         let selectedCoverFile = null;
         let selectedCoverPreviewUrl = '';
+        let discoverGroups = [];
+        let myGroups = [];
+        let discoverPage = 1;
+        let myGroupsPage = 1;
+        const GROUPS_PER_PAGE = 8;
         const cropState = {
           file: null,
           objectUrl: '',
@@ -8819,6 +9067,7 @@
           createSection.classList.toggle('hidden', !showCreate);
           searchInput.closest('div').classList.toggle('hidden', showCreate);
           discoverToolbar.classList.toggle('hidden', showCreate || tab !== 'discover');
+          pagination?.classList.toggle('hidden', showCreate);
         }
 
         function renderGroupCard(group) {
@@ -8878,33 +9127,54 @@
           grid.innerHTML = groups.map(renderGroupCard).join('');
         }
 
+        function renderGroupsPage() {
+          const isMineTab = activeTab === 'mine';
+          const sourceGroups = isMineTab ? myGroups : discoverGroups;
+          const currentPage = isMineTab ? myGroupsPage : discoverPage;
+          const pageSlice = paginateClientItems(sourceGroups, currentPage, GROUPS_PER_PAGE);
+          if (isMineTab) {
+            myGroupsPage = pageSlice.meta.currentPage;
+          } else {
+            discoverPage = pageSlice.meta.currentPage;
+          }
+          renderList(pageSlice.items, isMineTab ? 'Todavia no perteneces a ningun grupo.' : 'No se encontraron grupos con esos criterios.');
+          renderPagination(pagination, pageSlice.meta, { summaryLabel: 'grupos', standalone: true });
+        }
+
         async function loadDiscover() {
           grid.innerHTML = renderListSkeleton(4, { lines: ['72%', '100%', '88%'], media: true, avatar: false });
           emptyState.classList.add('hidden');
+          pagination?.classList.add('hidden');
           const result = await SocialAPI.discoverGroups(searchInput.value.trim());
           if (!result?.ok) {
             renderList([], 'No se pudieron cargar los grupos.');
+            pagination?.classList.add('hidden');
             return;
           }
 
-          const discoverableGroups = getList(result).filter((group) => {
+          discoverGroups = getList(result).filter((group) => {
             const passMine = !hideMineCheckbox.checked || !group.is_member;
             const passPrivacy = privacyFilter.value === 'all' || group.privacy === privacyFilter.value;
             return passMine && passPrivacy;
           });
-          renderList(discoverableGroups, 'No se encontraron grupos con esos criterios.');
+          discoverPage = 1;
+          renderGroupsPage();
         }
 
         async function loadMine() {
           grid.innerHTML = renderListSkeleton(4, { lines: ['72%', '100%', '88%'], media: true, avatar: false });
           emptyState.classList.add('hidden');
+          pagination?.classList.add('hidden');
           const result = await SocialAPI.getMyGroups();
           if (!result?.ok) {
             renderList([], 'No se pudieron cargar tus grupos.');
+            pagination?.classList.add('hidden');
             return;
           }
 
-          renderList(getList(result), 'Todavia no perteneces a ningun grupo.');
+          myGroups = getList(result);
+          myGroupsPage = 1;
+          renderGroupsPage();
         }
 
         async function loadActiveTab() {
@@ -8959,6 +9229,17 @@
           }
 
           showToast(result?.data?.error || 'No se pudo procesar la solicitud', 'error');
+        });
+
+        pagination?.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-page]');
+          if (!button) return;
+          if (activeTab === 'mine') {
+            myGroupsPage = Number(button.dataset.page) || 1;
+          } else {
+            discoverPage = Number(button.dataset.page) || 1;
+          }
+          renderGroupsPage();
         });
 
         form.addEventListener('submit', async (event) => {
@@ -10831,13 +11112,21 @@
           isOwnProfile = Number(profileData.id) === Number(appState.user.id);
           incomingRequestId = null;
 
-          const [friendsResult, pendingResult, blockContextResult] = isOwnProfile
-            ? [null, null, null]
-            : await Promise.all([SocialAPI.getFriends(true), SocialAPI.getPendingRequests(), SocialAPI.getBlockContext()]);
+          const [friendsResult, pendingResult, blockContextResult, friendshipStatusResult] = isOwnProfile
+            ? [null, null, null, null]
+            : await Promise.all([
+              SocialAPI.getFriends(true),
+              SocialAPI.getPendingRequests(),
+              SocialAPI.getBlockContext(),
+              SocialAPI.getFriendshipStatus(profileData.id),
+            ]);
 
           const friends = friendsResult ? normalizeFriendEntries(getList(friendsResult)) : [];
           const pending = pendingResult ? getList(pendingResult) : [];
-          const isFriend = friends.some((friend) => Number(friend.id) === Number(profileData.id));
+          const relationshipStatus = friendshipStatusResult?.ok ? (friendshipStatusResult.data || {}) : null;
+          const isFriend = relationshipStatus
+            ? Boolean(relationshipStatus.is_friend)
+            : friends.some((friend) => Number(friend.id) === Number(profileData.id));
           const blockedIds = blockContextResult?.ok && Array.isArray(blockContextResult.data?.blocked_ids)
             ? blockContextResult.data.blocked_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
             : [];
@@ -10847,9 +11136,17 @@
           const isBlockedByMe = blockedIds.includes(Number(profileData.id));
           const isBlockedByOther = hiddenIds.includes(Number(profileData.id)) && !isBlockedByMe;
           const incoming = findIncomingRequest(pending, profileData.id);
-          if (incoming) incomingRequestId = incoming.id;
-          const outgoingRequestPending = sentFriendRequestProfileIds.has(Number(profileData.id));
+          if (relationshipStatus && Number.isFinite(Number(relationshipStatus.incoming_request_id))) {
+            incomingRequestId = Number(relationshipStatus.incoming_request_id);
+          } else if (incoming) {
+            incomingRequestId = incoming.id;
+          }
+          const outgoingRequestPending = relationshipStatus
+            ? Boolean(relationshipStatus.outgoing_request_pending)
+            : sentFriendRequestProfileIds.has(Number(profileData.id));
           if (isFriend) {
+            forgetSentFriendRequest(profileData.id);
+          } else if (!outgoingRequestPending) {
             forgetSentFriendRequest(profileData.id);
           }
 
@@ -11366,6 +11663,7 @@
       mount({ container, router, user }) {
         const stats = container.querySelector('#admin-user-stats');
         const tbody = container.querySelector('#users-tbody');
+        const pagination = container.querySelector('#admin-users-pagination');
         const searchInput = container.querySelector('#admin-user-search');
         const facultyFilter = container.querySelector('#admin-user-faculty-filter');
         const careerFilter = container.querySelector('#admin-user-career-filter');
@@ -11376,6 +11674,9 @@
         const blockForm = container.querySelector('#block-user-form');
 
         let allUsers = [];
+        let filteredUsers = [];
+        let usersPage = 1;
+        const USERS_PER_PAGE = 30;
 
         function toggleCustomBlockFields(durationValue) {
           const customGroup = container.querySelector('#block-user-custom-group');
@@ -11550,9 +11851,23 @@
         const editCycle = container.querySelector('#edit-user-cycle');
         const editCode = container.querySelector('#edit-user-code');
 
-        function updateEditUserCareers() {
+        function findMatchingCareerOption(careers, desiredCareer) {
+          const normalizedDesired = normalizeSearchText(desiredCareer);
+          if (!normalizedDesired) {
+            return '';
+          }
+
+          const exactMatch = careers.find((career) => career === desiredCareer);
+          if (exactMatch) {
+            return exactMatch;
+          }
+
+          return careers.find((career) => normalizeSearchText(career) === normalizedDesired) || '';
+        }
+
+        function updateEditUserCareers(preferredCareer = '') {
           const faculty = editFaculty.value;
-          const currentVal = editCareer.value;
+          const currentVal = preferredCareer || editCareer.value;
           const careers = getFacultyCareerOptions(faculty).filter(c => c !== 'Todos');
           editCareer.innerHTML = '<option disabled selected value="">Selecciona tu carrera</option>';
           careers.forEach((career) => {
@@ -11562,8 +11877,9 @@
             editCareer.appendChild(option);
           });
           editCareer.disabled = careers.length === 0;
-          if (currentVal && careers.includes(currentVal)) {
-            editCareer.value = currentVal;
+          const matchedCareer = findMatchingCareerOption(careers, currentVal);
+          if (matchedCareer) {
+            editCareer.value = matchedCareer;
           }
           updateEditUserCycles();
         }
@@ -11590,7 +11906,14 @@
           }
         }
 
-        function applyAdminUserFilters() {
+        function renderUsersPage() {
+          const pageSlice = paginateClientItems(filteredUsers, usersPage, USERS_PER_PAGE);
+          usersPage = pageSlice.meta.currentPage;
+          renderUsers(pageSlice.items);
+          renderPagination(pagination, pageSlice.meta, { summaryLabel: 'usuarios' });
+        }
+
+        function applyAdminUserFilters({ resetPage = true } = {}) {
           const query = searchInput.value.trim().toLowerCase();
           const faculty = facultyFilter.value;
           const career = careerFilter.value;
@@ -11602,7 +11925,8 @@
             const email = String(listedUser.email || '').toLowerCase();
             const matchesQuery = !query || name.includes(query) || email.includes(query);
             const matchesFaculty = !faculty || faculty === 'Todos' || String(listedUser.faculty || '') === faculty;
-            const matchesCareer = !career || career === 'Todos' || String(careerLabel(listedUser) || '') === career;
+            const matchesCareer = !career || career === 'Todos'
+              || normalizeSearchText(careerLabel(listedUser) || '') === normalizeSearchText(career);
             const matchesRole = !role || role === 'Todos'
               || (role === 'admin' ? String(listedUser.role || 'user') === 'admin' : String(listedUser.user_type || 'student') === role);
             return matchesQuery && matchesFaculty && matchesCareer && matchesRole;
@@ -11614,13 +11938,18 @@
             return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
           });
 
-          renderUsers(filtered);
+          filteredUsers = filtered;
+          if (resetPage) {
+            usersPage = 1;
+          }
+          renderUsersPage();
         }
 
         async function loadUsers() {
           const result = await AuthAPI.listAdminUsers();
           if (!result?.ok) {
             tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No se pudieron cargar los usuarios.</td></tr>';
+            pagination?.classList.add('hidden');
             return;
           }
           allUsers = getList(result);
@@ -11645,12 +11974,12 @@
           if (editButton) {
             const listedUser = allUsers.find((item) => Number(item.id) === Number(editButton.dataset.editUser));
             if (!listedUser) return;
+            const userCareer = careerLabel(listedUser);
             container.querySelector('#edit-user-id').value = listedUser.id;
             container.querySelector('#edit-user-name').value = displayName(listedUser);
             container.querySelector('#edit-user-type').value = listedUser.user_type || 'student';
             container.querySelector('#edit-user-faculty').value = listedUser.faculty || 'FAING';
-            updateEditUserCareers();
-            container.querySelector('#edit-user-career').value = careerLabel(listedUser);
+            updateEditUserCareers(userCareer);
             updateEditUserCycles();
             container.querySelector('#edit-user-cycle').value = listedUser.academic_cycle || '';
             container.querySelector('#edit-user-code').value = listedUser.student_code || '';
@@ -11706,10 +12035,21 @@
         editCode.addEventListener('input', (event) => {
           event.target.value = event.target.value.replace(/\D+/g, '').slice(0, 10);
         });
+        editCode.addEventListener('blur', (event) => {
+          if (!event.target.value) return;
+          event.target.value = event.target.value.replace(/\D+/g, '').slice(0, 10);
+        });
 
         if (sortFilter) {
           sortFilter.addEventListener('change', applyAdminUserFilters);
         }
+
+        pagination?.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-page]');
+          if (!button) return;
+          usersPage = Number(button.dataset.page) || 1;
+          renderUsersPage();
+        });
 
         container.querySelector('#edit-user-type').addEventListener('change', (event) => {
           syncAdminEditFields(event.target.value);
@@ -11724,6 +12064,10 @@
         editForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           const userId = container.querySelector('#edit-user-id').value;
+          if (container.querySelector('#edit-user-type').value === 'student' && !/^\d{10}$/.test(String(container.querySelector('#edit-user-code').value || ''))) {
+            showToast('El codigo de estudiante debe tener exactamente 10 digitos numericos', 'error');
+            return;
+          }
           const result = await AuthAPI.updateAcademic(userId, {
             user_type: container.querySelector('#edit-user-type').value,
             faculty: container.querySelector('#edit-user-faculty').value,
@@ -11792,12 +12136,16 @@
       },
       mount({ container, router }) {
         const tbody = container.querySelector('#admin-reports-tbody');
+        const pagination = container.querySelector('#admin-reports-pagination');
         const typeFilter = container.querySelector('#admin-report-type-filter');
         const orderFilter = container.querySelector('#admin-report-order-filter');
         const reviewModal = container.querySelector('#review-report-modal');
         const sanctionModal = container.querySelector('#sanction-report-modal');
         const sanctionForm = container.querySelector('#sanction-report-form');
         let reportRows = [];
+        let filteredReportRows = [];
+        let reportsPage = 1;
+        const REPORTS_PER_PAGE = 30;
 
         function toggleSanctionCustomFields(durationValue) {
           const customGroup = container.querySelector('#sanction-custom-group');
@@ -11957,7 +12305,14 @@
           `).join('');
         }
 
-        function applyAdminReportFilters() {
+        function renderReportsPage() {
+          const pageSlice = paginateClientItems(filteredReportRows, reportsPage, REPORTS_PER_PAGE);
+          reportsPage = pageSlice.meta.currentPage;
+          formatReportRows(pageSlice.items);
+          renderPagination(pagination, pageSlice.meta, { summaryLabel: 'reportes' });
+        }
+
+        function applyAdminReportFilters({ resetPage = true } = {}) {
           let filtered = [...reportRows];
           const type = typeFilter.value;
           const order = orderFilter.value;
@@ -11968,7 +12323,11 @@
             const delta = new Date(right.created_at || 0).getTime() - new Date(left.created_at || 0).getTime();
             return order === 'oldest' ? -delta : delta;
           });
-          formatReportRows(filtered);
+          filteredReportRows = filtered;
+          if (resetPage) {
+            reportsPage = 1;
+          }
+          renderReportsPage();
         }
 
         async function loadReports() {
@@ -12002,6 +12361,12 @@
         container.querySelector('#go-admin-posts-btn').addEventListener('click', () => router.navigate('admin-posts'));
         typeFilter.addEventListener('change', applyAdminReportFilters);
         orderFilter.addEventListener('change', applyAdminReportFilters);
+        pagination?.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-page]');
+          if (!button) return;
+          reportsPage = Number(button.dataset.page) || 1;
+          renderReportsPage();
+        });
         container.querySelector('#close-review-report-modal-btn').addEventListener('click', closeReviewModal);
         container.querySelector('#close-review-report-footer-btn').addEventListener('click', closeReviewModal);
         container.querySelector('#close-sanction-report-modal-btn').addEventListener('click', closeSanctionModal);
@@ -12142,6 +12507,7 @@
       mount({ container, router }) {
         const stats = container.querySelector('#admin-post-stats');
         const tbody = container.querySelector('#admin-posts-tbody');
+        const pagination = container.querySelector('#admin-posts-pagination');
         const typeFilter = container.querySelector('#admin-post-type-filter');
         const facultyFilter = container.querySelector('#admin-post-faculty-filter');
         const authorFilter = container.querySelector('#admin-post-author-filter');
@@ -12161,6 +12527,9 @@
         });
 
         let allPosts = [];
+        let filteredPosts = [];
+        let postsPage = 1;
+        const POSTS_PER_PAGE = 30;
         let currentCommentsPostId = null;
 
         function closeCommentsModal() {
@@ -12255,7 +12624,14 @@
           }).join('');
         }
 
-        function applyAdminPostFilters() {
+        function renderPostsPage() {
+          const pageSlice = paginateClientItems(filteredPosts, postsPage, POSTS_PER_PAGE);
+          postsPage = pageSlice.meta.currentPage;
+          renderPosts(pageSlice.items);
+          renderPagination(pagination, pageSlice.meta, { summaryLabel: 'publicaciones' });
+        }
+
+        function applyAdminPostFilters({ resetPage = true } = {}) {
           let filtered = [...allPosts];
           const type = typeFilter.value;
           const faculty = facultyFilter?.value || 'Todos';
@@ -12295,7 +12671,11 @@
           } else {
             filtered.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
           }
-          renderPosts(filtered);
+          filteredPosts = filtered;
+          if (resetPage) {
+            postsPage = 1;
+          }
+          renderPostsPage();
         }
 
         function clearAdminPostFilters() {
@@ -12325,6 +12705,7 @@
           const result = await PostsAPI.listAdminPosts();
           if (!result?.ok) {
             tbody.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-slate-400">No se pudieron cargar las publicaciones.</td></tr>';
+            pagination?.classList.add('hidden');
             return;
           }
 
@@ -12391,6 +12772,12 @@
         dateToFilter?.addEventListener('change', applyAdminPostFilters);
         orderFilter.addEventListener('change', applyAdminPostFilters);
         clearFiltersButton?.addEventListener('click', clearAdminPostFilters);
+        pagination?.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-page]');
+          if (!button) return;
+          postsPage = Number(button.dataset.page) || 1;
+          renderPostsPage();
+        });
         container.querySelector('#close-comments-modal-btn').addEventListener('click', closeCommentsModal);
         confirmCommentButton.addEventListener('click', confirmAdminComment);
         commentsInput.addEventListener('keydown', async (event) => {

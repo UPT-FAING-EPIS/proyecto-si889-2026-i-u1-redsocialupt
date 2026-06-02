@@ -35,7 +35,7 @@ class PostService
         ]);
     }
 
-    public function getFeed(int $userId, array $friendIds, ?string $userFaculty, string $jwt = ''): \Illuminate\Support\Collection
+    public function getFeed(int $userId, array $friendIds, ?string $userFaculty, string $jwt = '', ?int $perPage = null, int $page = 1)
     {
         $hiddenIds = $this->socialBlockService->getHiddenUserIds($jwt);
         $normalizedFriendIds = array_values(array_unique(array_map(
@@ -44,7 +44,7 @@ class PostService
         )));
         $normalizedFaculty = trim((string) ($userFaculty ?? ''));
 
-        return Post::query()
+        $query = Post::query()
             ->whereNull('group_id')
             ->when(!empty($hiddenIds), fn ($query) => $query->whereNotIn('user_id', $hiddenIds))
             ->where(function ($query) use ($userId, $normalizedFriendIds, $normalizedFaculty) {
@@ -72,8 +72,13 @@ class PostService
                 'comments',
                 'reactions as reactions_total',
             ])
-            ->orderBy('created_at', 'desc')
-            ->get();
+            ->orderBy('created_at', 'desc');
+
+        if ($perPage !== null && $perPage > 0) {
+            return $query->paginate($perPage, ['*'], 'page', max(1, $page));
+        }
+
+        return $query->get();
     }
 
     public function getGroupPosts(int $groupId, int $userId, string $jwt): \Illuminate\Support\Collection

@@ -49,6 +49,18 @@ class CallController extends BaseController
         }
     }
 
+    public function missed(Request $request): JsonResponse
+    {
+        try {
+            return response()->json(
+                $this->callService->getMissedCalls((int) $request->auth->sub, $request->bearerToken() ?? ''),
+                200
+            );
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+        }
+    }
+
     public function show(Request $request, int $id): JsonResponse
     {
         try {

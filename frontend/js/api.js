@@ -322,7 +322,7 @@ const AuthAPI = {
 
 /* ── Posts Service ────────────────────────────────────────────── */
 const PostsAPI = {
-  getFeed: async (page = 1) => {
+  getFeed: async (pageOrOptions = null, perPage = null) => {
     const friendIds = friendIdsCache.length ? friendIdsCache.slice() : await fetchFriendIds();
     if (friendIds.length) {
       warmFriendIdsCacheInBackground();
@@ -331,7 +331,25 @@ const PostsAPI = {
     }
 
     const currentUser = getUser();
-    return apiFetch(`${API.posts}?page=${page}`, {
+    const query = new URLSearchParams();
+    if (pageOrOptions && typeof pageOrOptions === 'object') {
+      const page = Number(pageOrOptions.page);
+      const itemsPerPage = Number(pageOrOptions.perPage);
+      if (Number.isFinite(page) && page > 0) query.set('page', String(page));
+      if (Number.isFinite(itemsPerPage) && itemsPerPage > 0) query.set('per_page', String(itemsPerPage));
+    } else {
+      const page = Number(pageOrOptions);
+      const itemsPerPage = Number(perPage);
+      if (Number.isFinite(page) && page > 0 && Number.isFinite(itemsPerPage) && itemsPerPage > 0) {
+        query.set('page', String(page));
+      }
+      if (Number.isFinite(itemsPerPage) && itemsPerPage > 0) {
+        query.set('per_page', String(itemsPerPage));
+      }
+    }
+
+    const queryString = query.toString();
+    return apiFetch(`${API.posts}${queryString ? `?${queryString}` : ''}`, {
       headers: {
         'X-Friend-Ids': JSON.stringify(friendIds),
         'X-User-Faculty': currentUser?.faculty || '',
@@ -449,6 +467,7 @@ const SocialAPI = {
   getBlockedDirectory: () => apiFetch(`/api/directory/blocked`),
   getFriends: (force = false) => fetchFriendsResult(force),
   getPendingRequests: () => apiFetch(`/api/friends/pending`),
+  getFriendshipStatus: (userId) => apiFetch(`/api/friends/status/${userId}`),
   sendRequest: (receiverId) => apiFetch(`/api/friends/request`, {
     method: 'POST', body: JSON.stringify({ receiver_id: receiverId })
   }),
@@ -540,6 +559,7 @@ const ChatAPI = {
     body: JSON.stringify({ receiver_id: receiverId, mode }),
   }),
   getPendingCalls: () => apiFetch(`${API.chat}/calls/pending`),
+  getMissedCalls: () => apiFetch(`${API.chat}/calls/missed`),
   getCall: (callId) => apiFetch(`${API.chat}/calls/${callId}`),
   acceptCall: (callId) => apiFetch(`${API.chat}/calls/${callId}/accept`, { method: 'PUT' }),
   rejectCall: (callId) => apiFetch(`${API.chat}/calls/${callId}/reject`, { method: 'PUT' }),
@@ -789,6 +809,9 @@ function notificationItemId(item) {
   if (item.kind === 'friend') {
     return `friend-${item.requestId}`;
   }
+  if (item.kind === 'missed_call') {
+    return `missed-call-${item.callId}`;
+  }
   return String(item.id || `group-${item.groupName || 'group'}-${item.createdAt || ''}`);
 }
 
@@ -874,10 +897,12 @@ async function loadNotifications() {
       SocialAPI.getPendingRequests(),
       AuthAPI.listPublicUsers(),
       SocialAPI.getMyGroups(),
+      ChatAPI.getMissedCalls(),
     ]);
     const result = settled[0].status === 'fulfilled' ? settled[0].value : null;
     const usersResult = settled[1].status === 'fulfilled' ? settled[1].value : null;
     const myGroupsResult = settled[2].status === 'fulfilled' ? settled[2].value : null;
+    const missedCallsResult = settled[3].status === 'fulfilled' ? settled[3].value : null;
     const requests = getList(result);
     const usersById = new Map(getList(usersResult).map((item) => [Number(item.id), item]));
     if (!(result && result.ok)) {
@@ -921,6 +946,17 @@ async function loadNotifications() {
       return { kind: 'friend', requestId: req.id, user, createdAt: req.created_at };
     }),
     ...groupNotifications.map((item) => ({ kind: 'group', ...item })),
+    ...getList(missedCallsResult).map((call) => {
+      const callerId = Number(call.caller_id || 0);
+      const caller = usersById.get(callerId) || {};
+      return {
+        kind: 'missed_call',
+        callId: call.id,
+        caller,
+        createdAt: call.updated_at || call.created_at,
+        mode: call.mode || 'audio',
+      };
+    }),
   ].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
   const seenIds = getSeenNotificationIds();
@@ -975,6 +1011,29 @@ async function loadNotifications() {
               <button onclick="acceptFriendRequest(${item.requestId})" class="px-3 py-1.5 rounded-lg bg-[#1B2A6B] hover:bg-[#142052] text-white text-[12px] font-bold transition-colors">Aceptar</button>
               <button onclick="rejectFriendRequest(${item.requestId})" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[12px] font-bold transition-colors">Rechazar</button>
             </div>
+          </div>
+        </div>
+      `;
+    }
+    if (item.kind === 'missed_call') {
+      const caller = item.caller || {};
+      const callerName = getDisplayName(caller);
+      const itemId = notificationItemId(item);
+      const isVideoCall = item.mode === 'video';
+      return `
+        <div class="notif-item" data-notification-id="${escapeHtml(itemId)}">
+          <div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style="background:${getFacultyColor(caller.faculty || getCareerLabel(caller) || '')}">${initials(callerName)}</div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-3">
+              <span class="notif-pill call">Llamada</span>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="text-[11px] text-slate-400 font-medium">${timeAgo(item.createdAt)}</span>
+                <button type="button" data-notif-seen-id="${escapeHtml(itemId)}" class="notif-mark-item-btn" title="Marcar como vista" aria-label="Marcar como vista">
+                  <span class="material-symbols-outlined">done</span>
+                </button>
+              </div>
+            </div>
+            <p class="text-sm text-slate-800 mt-2"><span class="font-bold">${callerName || 'Usuario'}</span> te hizo una ${isVideoCall ? 'videollamada' : 'llamada'} que no respondiste</p>
           </div>
         </div>
       `;

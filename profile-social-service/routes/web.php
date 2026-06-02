@@ -20,6 +20,7 @@ $router->group(['prefix' => 'api/social', 'middleware' => 'jwt'], function () us
     // ── Amistades (RF-07) ─────────────────────────────────────────────
     $router->get('/friends',            'FriendshipController@index');
     $router->get('/friends/pending',    'FriendshipController@pending');
+    $router->get('/friends/status/{id}', 'FriendshipController@status');
     $router->post('/friends/request',   'FriendshipController@sendRequest');
     $router->put('/friends/{id}/accept', 'FriendshipController@accept');
     $router->put('/friends/{id}/reject', 'FriendshipController@reject');

@@ -153,6 +153,45 @@ class FriendshipService
             ->get();
     }
 
+    public function relationshipStatus(int $userId, int $otherUserId): array
+    {
+        if ($userId === $otherUserId) {
+            return [
+                'is_friend' => false,
+                'incoming_request_id' => null,
+                'outgoing_request_pending' => false,
+            ];
+        }
+
+        $request = FriendRequest::where(function ($q) use ($userId, $otherUserId) {
+            $q->where('sender_id', $userId)->where('receiver_id', $otherUserId);
+        })->orWhere(function ($q) use ($userId, $otherUserId) {
+            $q->where('sender_id', $otherUserId)->where('receiver_id', $userId);
+        })
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+
+        $isFriend = $request && $request->status === 'accepted';
+        $incomingRequestId = null;
+        $outgoingRequestPending = false;
+
+        if ($request && $request->status === 'pending') {
+            if ((int) $request->receiver_id === $userId) {
+                $incomingRequestId = (int) $request->id;
+            }
+            if ((int) $request->sender_id === $userId) {
+                $outgoingRequestPending = true;
+            }
+        }
+
+        return [
+            'is_friend' => $isFriend,
+            'incoming_request_id' => $incomingRequestId,
+            'outgoing_request_pending' => $outgoingRequestPending,
+        ];
+    }
+
     public function blockUser(int $blockerId, int $blockedId): UserBlock
     {
         if ($blockerId === $blockedId) {

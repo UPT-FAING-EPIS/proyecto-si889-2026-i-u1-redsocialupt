@@ -17,6 +17,7 @@ $router->group(['prefix' => 'api/chat', 'middleware' => 'jwt'], function () use 
 
     $router->post('/calls', 'CallController@start');
     $router->get('/calls/pending', 'CallController@pending');
+    $router->get('/calls/missed', 'CallController@missed');
     $router->get('/calls/{id}', 'CallController@show');
     $router->put('/calls/{id}/accept', 'CallController@accept');
     $router->put('/calls/{id}/reject', 'CallController@reject');

@@ -90,6 +90,9 @@
               <div id="feed-posts" class="flex flex-col gap-6">
                 {{feedInitialSkeleton}}
               </div>
+              <div id="feed-load-more-sentinel" class="feed-load-more hidden" aria-live="polite">
+                <span id="feed-load-more-label" class="feed-load-more-label">Cargando más publicaciones...</span>
+              </div>
             </main>
             <aside class="feed-desktop-sidebar hidden md:flex md:col-span-3 flex-col gap-6 self-start">
               <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">

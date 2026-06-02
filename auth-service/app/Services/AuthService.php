@@ -159,8 +159,8 @@ class AuthService
             throw new AuthServiceException('La escuela profesional es obligatoria para estudiantes', 422);
         }
 
-        if ($userType === 'student' && !preg_match('/^\d{1,10}$/', (string) ($data['student_code'] ?? ''))) {
-            throw new AuthServiceException('El codigo de estudiante debe ser numerico y tener maximo 10 digitos', 422);
+        if ($userType === 'student' && !preg_match('/^\d{10}$/', (string) ($data['student_code'] ?? ''))) {
+            throw new AuthServiceException('El codigo de estudiante debe tener exactamente 10 digitos numericos', 422);
         }
 
         if ($userType === 'student' && empty(trim((string) ($data['academic_cycle'] ?? '')))) {
@@ -195,22 +195,7 @@ class AuthService
 
     private function detectStudentIdentity(?string $email, ?string $fullName): ?array
     {
-        if (!preg_match('/^([a-zA-Z]{2})(\d+)@virtual\.upt\.pe$/', (string) $email, $matches)) {
-            return null;
-        }
-
-        $tokens = preg_split('/\s+/', trim((string) $fullName)) ?: [];
-        $tokens = array_values(array_filter($tokens, fn ($token) => $token !== ''));
-        if (count($tokens) < 2) {
-            return null;
-        }
-
-        $firstNameInitial = $this->normalizeInitial($tokens[0]);
-        $surnameIndex = count($tokens) >= 3 ? count($tokens) - 2 : 1;
-        $surnameInitial = $this->normalizeInitial($tokens[$surnameIndex] ?? '');
-        $expectedPrefix = $firstNameInitial . $surnameInitial;
-
-        if ($expectedPrefix === '' || strtolower($matches[1]) !== $expectedPrefix) {
+        if (!preg_match('/^([a-zA-Z]{2})(\d{10})@virtual\.upt\.pe$/', (string) $email, $matches)) {
             return null;
         }
 
@@ -411,8 +396,8 @@ class AuthService
             throw new AuthServiceException('La escuela profesional es obligatoria para estudiantes', 422);
         }
 
-        if ($userType === 'student' && !empty($data['student_code']) && !preg_match('/^\d{1,10}$/', (string) $data['student_code'])) {
-            throw new AuthServiceException('El codigo de estudiante debe ser numerico y tener maximo 10 digitos', 422);
+        if ($userType === 'student' && !empty($data['student_code']) && !preg_match('/^\d{10}$/', (string) $data['student_code'])) {
+            throw new AuthServiceException('El codigo de estudiante debe tener exactamente 10 digitos numericos', 422);
         }
 
         if ($userType === 'student' && array_key_exists('academic_cycle', $data) && trim((string) $data['academic_cycle']) === '') {

@@ -99,6 +99,14 @@ class FriendshipController extends BaseController
         return response()->json($pending, 200);
     }
 
+    public function status(Request $request, int $id): JsonResponse
+    {
+        return response()->json(
+            $this->friendshipService->relationshipStatus((int) $request->auth->sub, $id),
+            200
+        );
+    }
+
     public function listBlocked(Request $request): JsonResponse
     {
         return response()->json($this->friendshipService->listBlockedIds((int) $request->auth->sub), 200);
