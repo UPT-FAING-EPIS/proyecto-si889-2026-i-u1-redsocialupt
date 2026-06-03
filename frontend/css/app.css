@@ -4538,33 +4538,43 @@ body {
 }
 
 .live-is-desktop.live-cam-stream .live-video-col {
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
   background: #000;
 }
 
 .live-is-desktop.live-cam-stream .live-video-wrap {
-  aspect-ratio: var(--live-stream-aspect, 9 / 16);
-  width: min(100%, var(--live-desktop-portrait-width, clamp(280px, 42vh, 560px)));
-  max-width: 100%;
-  height: var(--live-desktop-portrait-height, auto);
-  max-height: min(78vh, 860px);
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  max-height: none;
   min-height: 0;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 
 .live-is-desktop.live-cam-stream #live-viewer-player video,
 .live-root.live-is-desktop.live-cam-stream #live-viewer-player video {
-  width: 100% !important;
+  width: auto !important;
   height: 100% !important;
-  max-width: none !important;
-  max-height: none !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  margin: auto !important;
   object-fit: contain !important;
   top: 0 !important;
   left: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
   transform: none !important;
+}
+
+.live-is-desktop.live-cam-stream #live-viewer-player .op-player .op-media-container,
+.live-is-desktop.live-cam-stream #live-viewer-player .op-player .op-media-element-container,
+.live-root.live-is-desktop.live-cam-stream #live-viewer-player .op-player .op-media-container,
+.live-root.live-is-desktop.live-cam-stream #live-viewer-player .op-player .op-media-element-container {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 /* ── Player controls on video (mobile) - smooth transition ── */
@@ -5042,6 +5052,13 @@ body.live-immersive-active #app-view {
 
   .live-immersive-shell.live-is-desktop .live-chat-col > div:last-child {
     padding: 10px 14px 12px;
+  }
+
+  .live-immersive-shell.live-is-desktop.live-cam-stream .live-video-wrap {
+    aspect-ratio: auto;
+    width: 100%;
+    height: 100%;
+    max-height: none;
   }
 }
 

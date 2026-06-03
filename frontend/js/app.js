@@ -6415,32 +6415,13 @@
             return;
           }
 
-          if (!liveShell.classList.contains('live-cam-stream')) {
-            liveShell.style.removeProperty('--live-desktop-portrait-width');
-            liveShell.style.removeProperty('--live-desktop-portrait-height');
-            return;
-          }
-
-          const video = viewerVideo;
-          const width = Number(video?.videoWidth || 0);
-          const height = Number(video?.videoHeight || 0);
-          const ratio = width > 0 && height > 0
-            ? width / height
-            : 9 / 16;
-          const columnRect = liveVideoWrap.parentElement?.getBoundingClientRect?.();
-          if (!columnRect) {
-            return;
-          }
-
-          const horizontalPadding = 32;
-          const verticalPadding = 32;
-          const availableWidth = Math.max(220, columnRect.width - horizontalPadding);
-          const availableHeight = Math.max(260, columnRect.height - verticalPadding);
-          const targetWidth = Math.min(availableWidth, availableHeight * ratio);
-          const targetHeight = Math.min(availableHeight, targetWidth / Math.max(ratio, 0.01));
-
-          liveShell.style.setProperty('--live-desktop-portrait-width', `${Math.round(targetWidth)}px`);
-          liveShell.style.setProperty('--live-desktop-portrait-height', `${Math.round(targetHeight)}px`);
+          // On desktop, portrait mobile streams should use the full desktop video
+          // panel and let the inner video contain itself naturally, just like the
+          // dedicated fullscreen player. Keeping wrapper-level portrait sizing
+          // here causes the whole panel (and its overlays) to collapse into a
+          // floating mobile card.
+          liveShell.style.removeProperty('--live-desktop-portrait-width');
+          liveShell.style.removeProperty('--live-desktop-portrait-height');
         }
 
         function updateStreamLayout() {
