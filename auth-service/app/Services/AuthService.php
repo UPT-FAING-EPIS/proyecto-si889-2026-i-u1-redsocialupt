@@ -209,6 +209,16 @@ class AuthService
         return preg_match('/[a-z]/', $normalized, $match) ? $match[0] : '';
     }
 
+    private function normalizeSearchValue(?string $value): string
+    {
+        $normalized = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', (string) $value);
+        $normalized = strtolower((string) $normalized);
+        $normalized = preg_replace('/[^a-z0-9\s]/', ' ', $normalized);
+        $normalized = preg_replace('/\s+/', ' ', (string) $normalized);
+
+        return trim((string) $normalized);
+    }
+
     /**
      * Actualiza avatar y bio del perfil (RF-06).
      */
@@ -287,19 +297,6 @@ class AuthService
         $usersQuery = User::query()->where('is_active', true);
 
         $query = trim((string) $query);
-        if ($query !== '') {
-            $usersQuery->where(function ($builder) use ($query) {
-                $like = '%' . $query . '%';
-                $builder
-                    ->where('name', 'like', $like)
-                    ->orWhere('full_name', 'like', $like)
-                    ->orWhere('career', 'like', $like)
-                    ->orWhere('area', 'like', $like)
-                    ->orWhere('position_title', 'like', $like)
-                    ->orWhere('faculty', 'like', $like)
-                    ->orWhere('student_code', 'like', $like);
-            });
-        }
 
         if ($faculty) {
             $usersQuery->where('faculty', $faculty);
@@ -309,13 +306,25 @@ class AuthService
             $usersQuery->where('career', $career);
         }
 
-        $usersQuery->orderBy('created_at', 'desc');
+        $users = $usersQuery
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-        if ($limit && $limit > 0) {
-            $usersQuery->limit($limit);
+        if ($query !== '') {
+            $normalizedQuery = $this->normalizeSearchValue($query);
+            $users = $users->filter(function (User $user) use ($normalizedQuery) {
+                $name = $this->normalizeSearchValue($user->name);
+                $fullName = $this->normalizeSearchValue($user->full_name);
+
+                return str_contains($name, $normalizedQuery)
+                    || str_contains($fullName, $normalizedQuery);
+            })->values();
         }
 
-        $users = $usersQuery->get();
+        if ($limit && $limit > 0) {
+            $users = $users->take($limit)->values();
+        }
+
         $formatted = [];
         foreach ($users as $user) {
             $formatted[] = $this->formatUser($user);

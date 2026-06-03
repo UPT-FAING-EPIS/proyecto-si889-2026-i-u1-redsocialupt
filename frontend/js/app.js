@@ -1846,7 +1846,7 @@
       if (!button) return;
 
       input.value = '';
-      renderSearchMessage('Escribe al menos 2 letras para buscar.');
+      renderSearchMessage('Escribe al menos 1 letra para buscar.');
       closeDropdown();
       window.AppRouter.navigate('profile', { id: button.dataset.headerSearchUser });
     }
@@ -12055,15 +12055,15 @@
         }
 
         function applyAdminUserFilters({ resetPage = true } = {}) {
-          const query = searchInput.value.trim().toLowerCase();
+          const query = normalizeSearchText(searchInput.value);
           const faculty = facultyFilter.value;
           const career = careerFilter.value;
           const role = roleFilter.value;
           const sortOrder = sortFilter ? sortFilter.value : 'desc';
 
           let filtered = allUsers.filter((listedUser) => {
-            const name = displayName(listedUser).toLowerCase();
-            const email = String(listedUser.email || '').toLowerCase();
+            const name = normalizeSearchText(displayName(listedUser));
+            const email = normalizeSearchText(String(listedUser.email || ''));
             const matchesQuery = !query || name.includes(query) || email.includes(query);
             const matchesFaculty = !faculty || faculty === 'Todos' || String(listedUser.faculty || '') === faculty;
             const matchesCareer = !career || career === 'Todos'

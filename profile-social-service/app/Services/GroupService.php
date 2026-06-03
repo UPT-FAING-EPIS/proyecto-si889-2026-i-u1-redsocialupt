@@ -21,9 +21,10 @@ class GroupService
         $query = trim($query);
 
         if ($query !== '') {
-            $groups = $groups->filter(function (Group $group) use ($query) {
-                return str_contains(mb_strtolower($group->name), mb_strtolower($query))
-                    || str_contains(mb_strtolower((string) $group->description), mb_strtolower($query));
+            $normalizedQuery = $this->normalizeSearchValue($query);
+            $groups = $groups->filter(function (Group $group) use ($normalizedQuery) {
+                return str_contains($this->normalizeSearchValue($group->name), $normalizedQuery)
+                    || str_contains($this->normalizeSearchValue((string) $group->description), $normalizedQuery);
             })->values();
         }
 
@@ -411,5 +412,15 @@ class GroupService
     public function decodeJwtRole(string $jwt): string
     {
         return (string) ($this->decodeJwtPayload($jwt)['role'] ?? '');
+    }
+
+    private function normalizeSearchValue(?string $value): string
+    {
+        $normalized = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', (string) $value);
+        $normalized = mb_strtolower((string) $normalized, 'UTF-8');
+        $normalized = preg_replace('/[^a-z0-9\s]/u', ' ', $normalized);
+        $normalized = preg_replace('/\s+/u', ' ', (string) $normalized);
+
+        return trim((string) $normalized);
     }
 }
