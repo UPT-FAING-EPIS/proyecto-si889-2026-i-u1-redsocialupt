@@ -1,0 +1,226 @@
+services:
+  auth-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: auth_db
+    volumes:
+      - auth_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  posts-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: posts_db
+    volumes:
+      - posts_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  social-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: social_db
+    volumes:
+      - social_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  chat-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: chat_db
+    volumes:
+      - chat_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  auth-service:
+    build: ./auth-service
+    volumes:
+      - ./auth-service/public/auth-uploads:/app/public/auth-uploads
+    environment:
+      APP_KEY: base64:randomkey
+      DB_CONNECTION: mysql
+      DB_HOST: auth-db
+      DB_PORT: 3306
+      DB_DATABASE: auth_db
+      DB_USERNAME: root
+      DB_PASSWORD: rootpass
+      JWT_SECRET: super-secret-key-change-in-production
+      GOOGLE_CLIENT_ID: 955206169841-jpg61cp2k46i1bdfbg7mujqukqqfsbgs.apps.googleusercontent.com
+    depends_on:
+      auth-db:
+        condition: service_healthy
+
+  posts-service:
+    build: ./posts-service
+    volumes:
+      - ./posts-service/public/uploads:/app/public/uploads
+    environment:
+      APP_KEY: base64:randomkey
+      DB_CONNECTION: mysql
+      DB_HOST: posts-db
+      DB_PORT: 3306
+      DB_DATABASE: posts_db
+      DB_USERNAME: root
+      DB_PASSWORD: rootpass
+      JWT_SECRET: super-secret-key-change-in-production
+    depends_on:
+      posts-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
+  profile-social-service:
+    build: ./profile-social-service
+    volumes:
+      - ./profile-social-service/public/group-covers:/app/public/group-covers
+    environment:
+      APP_KEY: base64:randomkey
+      DB_CONNECTION: mysql
+      DB_HOST: social-db
+      DB_PORT: 3306
+      DB_DATABASE: social_db
+      DB_USERNAME: root
+      DB_PASSWORD: rootpass
+      JWT_SECRET: super-secret-key-change-in-production
+    depends_on:
+      social-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
+  chat-service:
+    build: ./chat-service
+    volumes:
+      - ./chat-service/public/chat-uploads:/app/public/chat-uploads
+    environment:
+      APP_KEY: base64:randomkey
+      DB_CONNECTION: mysql
+      DB_HOST: chat-db
+      DB_PORT: 3306
+      DB_DATABASE: chat_db
+      DB_USERNAME: root
+      DB_PASSWORD: rootpass
+      JWT_SECRET: super-secret-key-change-in-production
+    depends_on:
+      chat-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
+
+  coturn:
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    command: >
+      -n
+      --log-file=stdout
+      --fingerprint
+      --lt-cred-mech
+      --realm=uptconnect.duckdns.org
+      --user=uptturn:UptTurn2026!media
+      --external-ip=166.1.88.230
+      --listening-ip=0.0.0.0
+      --listening-port=3478
+      --min-port=49160
+      --max-port=49200
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    networks:
+      default: {}
+      red_publica:
+        aliases:
+          - uptconnect-coturn
+
+  ovenmediaengine:
+    image: airensoft/ovenmediaengine:latest
+    restart: unless-stopped
+    environment:
+      OME_HOST_IP: uptconnect.duckdns.org
+      OME_WEBRTC_CANDIDATE_PORT: 10000-10005/udp
+      OME_WEBRTC_TCP_RELAY_PORT: 3479
+    ports:
+      - "1935:1935"
+      - "3333:3333/tcp"
+      - "3333:3333/udp"
+      - "3334:3334/tcp"
+      - "3479:3479/tcp"
+      - "3479:3479/udp"
+      - "8080:8080/tcp"
+      - "10000:10000/udp"
+      - "10001:10001/udp"
+      - "10002:10002/udp"
+      - "10003:10003/udp"
+      - "10004:10004/udp"
+      - "10005:10005/udp"
+    volumes:
+      - ./infrastructure/ome/origin_conf/Server.xml:/opt/ovenmediaengine/bin/origin_conf/Server.xml:ro
+    networks:
+      default: {}
+      red_publica:
+        aliases:
+          - uptconnect-ome
+
+
+  frontend:
+    build: ./frontend
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - auth-service
+      - posts-service
+      - profile-social-service
+      - chat-service
+    networks:
+      default: {}
+      red_publica:
+        aliases:
+          - uptconnect-frontend
+
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      default: {}
+      red_publica:
+        aliases:
+          - uptconnect-caddy
+
+volumes:
+  auth_db_data:
+  posts_db_data:
+  social_db_data:
+  chat_db_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  red_publica:
+    external: true

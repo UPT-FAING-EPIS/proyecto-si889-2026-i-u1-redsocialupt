@@ -1,0 +1,9 @@
+uptconnect.duckdns.org {
+  encode zstd gzip
+  reverse_proxy uptconnect-frontend:80
+}
+
+http://lineatest.duckdns.org {
+  encode zstd gzip
+  reverse_proxy uptconnect-frontend:80
+}

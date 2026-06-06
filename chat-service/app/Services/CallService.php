@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\MessageServiceException;
 use App\Models\CallSession;
 use App\Models\CallSignal;
+use Carbon\Carbon;
 
 class CallService
 {
@@ -222,7 +223,7 @@ class CallService
     {
         CallSession::where('receiver_id', $userId)
             ->where('status', 'ringing')
-            ->where('created_at', '<', now()->subSeconds(self::RING_TIMEOUT_SECONDS))
+            ->where('created_at', '<', Carbon::now()->subSeconds(self::RING_TIMEOUT_SECONDS))
             ->update(['status' => 'missed']);
     }
 
@@ -231,7 +232,7 @@ class CallService
         if (
             $session->status === 'ringing'
             && $session->created_at
-            && $session->created_at->lt(now()->subSeconds(self::RING_TIMEOUT_SECONDS))
+            && $session->created_at->lt(Carbon::now()->subSeconds(self::RING_TIMEOUT_SECONDS))
         ) {
             $session->status = 'missed';
             $session->save();
