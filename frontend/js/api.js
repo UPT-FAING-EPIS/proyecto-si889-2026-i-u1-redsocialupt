@@ -846,23 +846,193 @@ function bindNotificationInteractions(list) {
   list.dataset.bound = 'true';
   list.addEventListener('click', async (event) => {
     const seenButton = event.target.closest('[data-notif-seen-id]');
-    if (!seenButton) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const notificationId = String(seenButton.dataset.notifSeenId || '');
-    if (!notificationId) return;
-    const seenIds = getSeenNotificationIds();
-    seenIds.add(notificationId);
-    setSeenNotificationIds([...seenIds]);
-    const currentCount = Math.max(0, Number(list.dataset.unseenCount || '0') - 1);
-    list.dataset.unseenCount = String(currentCount);
-    updateNotificationsCountUi(currentCount);
-    const itemNode = seenButton.closest('.notif-item');
-    if (itemNode) {
-      await animateNotificationDismissal([itemNode]);
+    if (seenButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const notificationId = String(seenButton.dataset.notifSeenId || '');
+      if (!notificationId) return;
+      const seenIds = getSeenNotificationIds();
+      seenIds.add(notificationId);
+      setSeenNotificationIds([...seenIds]);
+      const currentCount = Math.max(0, Number(list.dataset.unseenCount || '0') - 1);
+      list.dataset.unseenCount = String(currentCount);
+      updateNotificationsCountUi(currentCount);
+      const itemNode = seenButton.closest('.notif-item');
+      if (itemNode) {
+        await animateNotificationDismissal([itemNode]);
+      }
+      loadNotifications();
+      return;
     }
-    loadNotifications();
+
+    const requestButton = event.target.closest('[data-request-action][data-request-id]');
+    if (requestButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const action = String(requestButton.dataset.requestAction || '');
+      const requestId = Number(requestButton.dataset.requestId || 0);
+      if (!requestId) return;
+      if (action === 'accept') {
+        await acceptFriendRequest(requestId);
+      } else if (action === 'reject') {
+        await rejectFriendRequest(requestId);
+      }
+    }
   });
+}
+
+function createNotificationElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) {
+    element.className = className;
+  }
+  if (typeof text === 'string') {
+    element.textContent = text;
+  }
+  return element;
+}
+
+function createNotificationMarkSeenButton(itemId) {
+  const button = createNotificationElement('button', 'notif-mark-item-btn');
+  button.type = 'button';
+  button.dataset.notifSeenId = String(itemId);
+  button.title = 'Marcar como vista';
+  button.setAttribute('aria-label', 'Marcar como vista');
+  const icon = createNotificationElement('span', 'material-symbols-outlined', 'done');
+  button.appendChild(icon);
+  return button;
+}
+
+function createNotificationWrapper(itemId) {
+  const wrapper = createNotificationElement('div', 'notif-item');
+  wrapper.dataset.notificationId = String(itemId);
+  return wrapper;
+}
+
+function createNotificationAvatar(label, color) {
+  const avatar = createNotificationElement(
+    'div',
+    'w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0',
+    initials(label || 'Usuario'),
+  );
+  avatar.style.background = color;
+  return avatar;
+}
+
+function createNotificationMetaRow(kindLabel, kindClass, createdAt, itemId) {
+  const row = createNotificationElement('div', 'flex items-center justify-between gap-3');
+  const pill = createNotificationElement('span', `notif-pill ${kindClass}`, kindLabel);
+  const right = createNotificationElement('div', 'flex items-center gap-2 shrink-0');
+  const time = createNotificationElement('span', 'text-[11px] text-slate-400 font-medium', timeAgo(createdAt));
+  right.appendChild(time);
+  right.appendChild(createNotificationMarkSeenButton(itemId));
+  row.appendChild(pill);
+  row.appendChild(right);
+  return row;
+}
+
+function appendNotificationMessage(target, parts = []) {
+  const paragraph = createNotificationElement('p', 'text-sm text-slate-800 mt-2');
+  parts.forEach((part) => {
+    if (!part) return;
+    if (typeof part === 'string') {
+      paragraph.appendChild(document.createTextNode(part));
+      return;
+    }
+    const span = createNotificationElement('span', part.className || '', part.text || '');
+    paragraph.appendChild(span);
+  });
+  target.appendChild(paragraph);
+}
+
+function buildFriendNotificationItem(item) {
+  const user = item.user || {};
+  const userName = getDisplayName(user) || 'Usuario';
+  const itemId = notificationItemId(item);
+  const wrapper = createNotificationWrapper(itemId);
+  wrapper.appendChild(createNotificationAvatar(userName, getFacultyColor(user.faculty || getCareerLabel(user) || '')));
+
+  const content = createNotificationElement('div', 'min-w-0 flex-1');
+  content.appendChild(createNotificationMetaRow('Amistad', 'friend', item.createdAt, itemId));
+  appendNotificationMessage(content, [
+    { text: userName, className: 'font-bold' },
+    ' te envio una solicitud de amistad',
+  ]);
+
+  const actions = createNotificationElement('div', 'mt-3 flex items-center gap-2');
+  const acceptButton = createNotificationElement(
+    'button',
+    'px-3 py-1.5 rounded-lg bg-[#1B2A6B] hover:bg-[#142052] text-white text-[12px] font-bold transition-colors',
+    'Aceptar',
+  );
+  acceptButton.type = 'button';
+  acceptButton.dataset.requestAction = 'accept';
+  acceptButton.dataset.requestId = String(item.requestId);
+
+  const rejectButton = createNotificationElement(
+    'button',
+    'px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[12px] font-bold transition-colors',
+    'Rechazar',
+  );
+  rejectButton.type = 'button';
+  rejectButton.dataset.requestAction = 'reject';
+  rejectButton.dataset.requestId = String(item.requestId);
+
+  actions.appendChild(acceptButton);
+  actions.appendChild(rejectButton);
+  content.appendChild(actions);
+  wrapper.appendChild(content);
+  return wrapper;
+}
+
+function buildMissedCallNotificationItem(item) {
+  const caller = item.caller || {};
+  const callerName = getDisplayName(caller) || 'Usuario';
+  const itemId = notificationItemId(item);
+  const wrapper = createNotificationWrapper(itemId);
+  wrapper.appendChild(createNotificationAvatar(callerName, getFacultyColor(caller.faculty || getCareerLabel(caller) || '')));
+
+  const content = createNotificationElement('div', 'min-w-0 flex-1');
+  content.appendChild(createNotificationMetaRow('Llamada', 'call', item.createdAt, itemId));
+  appendNotificationMessage(content, [
+    { text: callerName, className: 'font-bold' },
+    ` te hizo una ${item.mode === 'video' ? 'videollamada' : 'llamada'} que no respondiste`,
+  ]);
+  wrapper.appendChild(content);
+  return wrapper;
+}
+
+function buildGroupNotificationItem(item) {
+  const itemId = notificationItemId(item);
+  const wrapper = createNotificationWrapper(itemId);
+  wrapper.appendChild(createNotificationAvatar(item.name || 'Usuario', getFacultyColor(item.faculty || item.career || item.groupName || '')));
+
+  const content = createNotificationElement('div', 'min-w-0 flex-1');
+  content.appendChild(createNotificationMetaRow('Grupo', 'group', item.createdAt, itemId));
+  appendNotificationMessage(content, [
+    { text: item.name || 'Usuario', className: 'font-bold' },
+    ' quiere unirse a tu grupo ',
+    { text: item.groupName || '', className: 'font-bold' },
+  ]);
+  wrapper.appendChild(content);
+  return wrapper;
+}
+
+function renderNotificationsList(list, items) {
+  list.replaceChildren();
+  const fragment = document.createDocumentFragment();
+  items.forEach((item) => {
+    if (item.kind === 'friend') {
+      fragment.appendChild(buildFriendNotificationItem(item));
+      return;
+    }
+    if (item.kind === 'missed_call') {
+      fragment.appendChild(buildMissedCallNotificationItem(item));
+      return;
+    }
+    fragment.appendChild(buildGroupNotificationItem(item));
+  });
+  list.appendChild(fragment);
 }
 
 async function loadNotifications() {
@@ -988,75 +1158,7 @@ async function loadNotifications() {
     return;
   }
 
-  list.innerHTML = unseenItems.map((item) => {
-    if (item.kind === 'friend') {
-      const user = item.user || {};
-      const userName = getDisplayName(user);
-      const itemId = notificationItemId(item);
-      return `
-        <div class="notif-item" data-notification-id="${escapeHtml(itemId)}">
-          <div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style="background:${getFacultyColor(user.faculty || getCareerLabel(user) || '')}">${initials(userName)}</div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center justify-between gap-3">
-              <span class="notif-pill friend">Amistad</span>
-              <div class="flex items-center gap-2 shrink-0">
-                <span class="text-[11px] text-slate-400 font-medium">${timeAgo(item.createdAt)}</span>
-                <button type="button" data-notif-seen-id="${escapeHtml(itemId)}" class="notif-mark-item-btn" title="Marcar como vista" aria-label="Marcar como vista">
-                  <span class="material-symbols-outlined">done</span>
-                </button>
-              </div>
-            </div>
-            <p class="text-sm text-slate-800 mt-2"><span class="font-bold">${userName || 'Usuario'}</span> te envio una solicitud de amistad</p>
-            <div class="mt-3 flex items-center gap-2">
-              <button onclick="acceptFriendRequest(${item.requestId})" class="px-3 py-1.5 rounded-lg bg-[#1B2A6B] hover:bg-[#142052] text-white text-[12px] font-bold transition-colors">Aceptar</button>
-              <button onclick="rejectFriendRequest(${item.requestId})" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[12px] font-bold transition-colors">Rechazar</button>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-    if (item.kind === 'missed_call') {
-      const caller = item.caller || {};
-      const callerName = getDisplayName(caller);
-      const itemId = notificationItemId(item);
-      const isVideoCall = item.mode === 'video';
-      return `
-        <div class="notif-item" data-notification-id="${escapeHtml(itemId)}">
-          <div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style="background:${getFacultyColor(caller.faculty || getCareerLabel(caller) || '')}">${initials(callerName)}</div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center justify-between gap-3">
-              <span class="notif-pill call">Llamada</span>
-              <div class="flex items-center gap-2 shrink-0">
-                <span class="text-[11px] text-slate-400 font-medium">${timeAgo(item.createdAt)}</span>
-                <button type="button" data-notif-seen-id="${escapeHtml(itemId)}" class="notif-mark-item-btn" title="Marcar como vista" aria-label="Marcar como vista">
-                  <span class="material-symbols-outlined">done</span>
-                </button>
-              </div>
-            </div>
-            <p class="text-sm text-slate-800 mt-2"><span class="font-bold">${callerName || 'Usuario'}</span> te hizo una ${isVideoCall ? 'videollamada' : 'llamada'} que no respondiste</p>
-          </div>
-        </div>
-      `;
-    }
-    const itemId = notificationItemId(item);
-    return `
-      <div class="notif-item" data-notification-id="${escapeHtml(itemId)}">
-        <div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style="background:${getFacultyColor(item.faculty || item.career || item.groupName || '')}">${initials(item.name)}</div>
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center justify-between gap-3">
-            <span class="notif-pill group">Grupo</span>
-            <div class="flex items-center gap-2 shrink-0">
-              <span class="text-[11px] text-slate-400 font-medium">${timeAgo(item.createdAt)}</span>
-              <button type="button" data-notif-seen-id="${escapeHtml(itemId)}" class="notif-mark-item-btn" title="Marcar como vista" aria-label="Marcar como vista">
-                <span class="material-symbols-outlined">done</span>
-              </button>
-            </div>
-          </div>
-          <p class="text-sm text-slate-800 mt-2"><span class="font-bold">${item.name || 'Usuario'}</span> quiere unirse a tu grupo <span class="font-bold">${item.groupName}</span></p>
-        </div>
-      </div>
-    `;
-  }).join('');
+  renderNotificationsList(list, unseenItems);
   list.dataset.loaded = 'true';
   } catch (error) {
     console.error('No se pudieron cargar las notificaciones:', error);
