@@ -214,6 +214,69 @@
       }, delay + 250);
     }
 
+    async function refreshBlockedStateFromServer(fallbackNotice = null) {
+      if (!isLoggedIn()) {
+        if (fallbackNotice && isBlockedNoticeStillActive(fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite)) {
+          renderBlockedState(fallbackNotice.reason, fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite);
+          scheduleBlockedNoticeExpiry(fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite);
+          return true;
+        }
+        clearBlockedNotice();
+        showLoginState();
+        return false;
+      }
+
+      if (fallbackNotice && isBlockedNoticeStillActive(fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite)) {
+        renderBlockedState(fallbackNotice.reason, fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite);
+        scheduleBlockedNoticeExpiry(fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite);
+      }
+
+      try {
+        const res = await fetch(`${API.auth}/auth/me`, {
+          headers: authHeaders(),
+        });
+        const text = await res.text();
+        const data = buildResponseData(res, text);
+
+        if (res.ok) {
+          clearBlockedNotice();
+          saveSession(getToken(), data);
+          if (data && data.is_profile_complete === false) {
+            window.location.href = '/pages/onboarding.html';
+          } else {
+            window.location.href = '/app.html#feed';
+          }
+          return true;
+        }
+
+        if (res.status === 403 && data?.code === 'ACCOUNT_BLOCKED') {
+          setBlockedNotice(data.reason || null, data.blocked_until || null, !!data.is_indefinite);
+          renderBlockedState(data.reason || null, data.blocked_until || null, !!data.is_indefinite);
+          scheduleBlockedNoticeExpiry(data.blocked_until || null, !!data.is_indefinite);
+          return true;
+        }
+
+        if (res.status === 401) {
+          clearBlockedNotice();
+          clearSession();
+          showLoginState();
+          return false;
+        }
+      } catch (_) {
+        // Si no hay conexion, dejamos visible el ultimo estado conocido.
+      }
+
+      if (fallbackNotice && isBlockedNoticeStillActive(fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite)) {
+        renderBlockedState(fallbackNotice.reason, fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite);
+        scheduleBlockedNoticeExpiry(fallbackNotice.blocked_until, !!fallbackNotice.is_indefinite);
+        return true;
+      }
+
+      clearBlockedNotice();
+      showLoginState();
+      return false;
+    }
+
     function renderLoginDotWave() {
       if (!loginDotWave) return;
 
@@ -325,7 +388,7 @@
       loginDotWaveResizeTimer = setTimeout(renderLoginDotWave, 120);
     });
 
-    window.onload = () => {
+    window.onload = async () => {
       renderLoginDotWave();
       setupDevLogin();
       document.getElementById('blocked-logout-btn')?.addEventListener('click', () => {
@@ -335,14 +398,8 @@
       });
       const blockedNotice = getBlockedNotice();
       if (blockedNotice) {
-        if (!isBlockedNoticeStillActive(blockedNotice.blocked_until, !!blockedNotice.is_indefinite)) {
-          clearBlockedNotice();
-          showLoginState();
-        } else {
-          renderBlockedState(blockedNotice.reason, blockedNotice.blocked_until, !!blockedNotice.is_indefinite);
-          scheduleBlockedNoticeExpiry(blockedNotice.blocked_until, !!blockedNotice.is_indefinite);
-          return;
-        }
+        await refreshBlockedStateFromServer(blockedNotice);
+        return;
       }
 
       if (typeof google === 'undefined') {

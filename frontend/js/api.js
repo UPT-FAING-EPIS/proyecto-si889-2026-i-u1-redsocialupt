@@ -236,7 +236,6 @@ async function apiFetch(url, options = {}) {
     const data = buildResponseData(res, text);
     if (res.status === 403 && data?.code === 'ACCOUNT_BLOCKED') {
       setBlockedNotice(data.reason || null, data.blocked_until || null, !!data.is_indefinite);
-      clearSession();
       window.location.href = '/index.html';
       return { ok: false, status: 403, data };
     }
@@ -267,7 +266,6 @@ async function apiFetchForm(url, formData, options = {}) {
     const data = buildResponseData(res, text);
     if (res.status === 403 && data?.code === 'ACCOUNT_BLOCKED') {
       setBlockedNotice(data.reason || null, data.blocked_until || null, !!data.is_indefinite);
-      clearSession();
       window.location.href = '/index.html';
       return { ok: false, status: 403, data };
     }
@@ -772,8 +770,7 @@ function requireAuth() {
 /* ── Guard: redirect to feed if already authenticated ─────────── */
 function requireGuest() {
   if (getBlockedNotice()) {
-    if (!isLoggedIn()) return;
-    clearBlockedNotice();
+    return;
   }
   if (!isLoggedIn()) return;
 
