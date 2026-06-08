@@ -351,7 +351,11 @@ class AuthService
             throw new AuthServiceException('No puedes bloquear tu propia cuenta', 422);
         }
 
-        if (!$user->is_active) {
+        $hasBlockPayload = $isIndefinite
+            || trim((string) $blockedReason) !== ''
+            || trim((string) $blockedUntil) !== '';
+
+        if (!$user->is_active && !$hasBlockPayload) {
             $user->forceFill([
                 'is_active' => true,
                 'blocked_reason' => null,

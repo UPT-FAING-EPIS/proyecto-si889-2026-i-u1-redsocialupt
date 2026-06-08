@@ -11822,6 +11822,7 @@
               throw new Error('Ingresa una duracion manual valida');
             }
 
+            if (customUnit === 'minutes') future.setMinutes(future.getMinutes() + amount);
             if (customUnit === 'hours') future.setHours(future.getHours() + amount);
             if (customUnit === 'days') future.setDate(future.getDate() + amount);
             if (customUnit === 'weeks') future.setDate(future.getDate() + (amount * 7));
@@ -12264,31 +12265,191 @@
         const reviewModal = container.querySelector('#review-report-modal');
         const sanctionModal = container.querySelector('#sanction-report-modal');
         const sanctionForm = container.querySelector('#sanction-report-form');
+        const sanctionsTbody = container.querySelector('#admin-sanctions-tbody');
+        const sanctionsPagination = container.querySelector('#admin-sanctions-pagination');
+        const manageSanctionModal = container.querySelector('#manage-sanction-modal');
+        const manageSanctionForm = container.querySelector('#manage-sanction-form');
         let reportRows = [];
         let filteredReportRows = [];
         let reportsPage = 1;
+        let sanctionedUsers = [];
+        let sanctionsPage = 1;
         const REPORTS_PER_PAGE = 30;
+        const SANCTIONS_PER_PAGE = 20;
+        let adminPostsById = new Map();
 
         function toggleSanctionCustomFields(durationValue) {
           const customGroup = container.querySelector('#sanction-custom-group');
           customGroup.classList.toggle('hidden', durationValue !== 'custom');
         }
 
+        function buildBlockedUntilIso(durationValue, customValue, customUnit) {
+          if (durationValue === 'indefinite') {
+            return { blockedUntil: null, isIndefinite: true };
+          }
+
+          const future = new Date();
+
+          if (durationValue === '24h') future.setHours(future.getHours() + 24);
+          if (durationValue === '48h') future.setHours(future.getHours() + 48);
+          if (durationValue === '1w') future.setDate(future.getDate() + 7);
+
+          if (durationValue === 'custom') {
+            const amount = Number(customValue);
+            if (!Number.isFinite(amount) || amount <= 0) {
+              throw new Error('Ingresa una duracion manual valida');
+            }
+
+            if (customUnit === 'minutes') future.setMinutes(future.getMinutes() + amount);
+            if (customUnit === 'hours') future.setHours(future.getHours() + amount);
+            if (customUnit === 'days') future.setDate(future.getDate() + amount);
+            if (customUnit === 'weeks') future.setDate(future.getDate() + (amount * 7));
+          }
+
+          return { blockedUntil: future.toISOString(), isIndefinite: false };
+        }
+
+        function toggleManageSanctionCustomFields(durationValue) {
+          const customGroup = container.querySelector('#manage-sanction-custom-group');
+          customGroup.classList.toggle('hidden', durationValue !== 'custom');
+        }
+
+        function toggleSanctionBlockAccordion(isEnabled) {
+          const blockConfig = container.querySelector('#sanction-block-config');
+          if (!blockConfig) return;
+          blockConfig.classList.toggle('is-open', !!isEnabled);
+          blockConfig.setAttribute('aria-hidden', isEnabled ? 'false' : 'true');
+        }
+
+        function buildBlockedDurationPayload(durationValue, customValue, customUnit) {
+          if (durationValue === 'indefinite') {
+            return {
+              blocked_until: null,
+              blocked_duration_value: null,
+              blocked_duration_unit: null,
+              is_indefinite: true,
+            };
+          }
+
+          if (durationValue === '24h') {
+            return { blocked_until: null, blocked_duration_value: 24, blocked_duration_unit: 'hours', is_indefinite: false };
+          }
+          if (durationValue === '48h') {
+            return { blocked_until: null, blocked_duration_value: 48, blocked_duration_unit: 'hours', is_indefinite: false };
+          }
+          if (durationValue === '1w') {
+            return { blocked_until: null, blocked_duration_value: 1, blocked_duration_unit: 'weeks', is_indefinite: false };
+          }
+
+          if (durationValue === 'custom') {
+            const amount = Number(customValue);
+            if (!Number.isFinite(amount) || amount <= 0) {
+              throw new Error('Ingresa una duracion manual valida');
+            }
+            return {
+              blocked_until: null,
+              blocked_duration_value: amount,
+              blocked_duration_unit: customUnit,
+              is_indefinite: false,
+            };
+          }
+
+          return {
+            blocked_until: null,
+            blocked_duration_value: 24,
+            blocked_duration_unit: 'hours',
+            is_indefinite: false,
+          };
+        }
+
+        function resolveRelatedPost(report) {
+          const postId = Number(report.target_type === 'comment' ? report.post_id : report.target_id);
+          return adminPostsById.get(postId) || null;
+        }
+
+        function enrichReportWithPost(report) {
+          const relatedPost = resolveRelatedPost(report);
+          if (!relatedPost) return report;
+          const isRelatedStream = String(relatedPost.post_type || '').toLowerCase() === 'livestream';
+          const preview = String(report.content_preview || '').trim();
+          const content = String(report.content || '').trim();
+          return {
+            ...report,
+            post_type: report.post_type || relatedPost.post_type || null,
+            live_title: report.live_title || relatedPost.live_title || null,
+            content_preview: isRelatedStream && (!preview || preview === 'Sin contenido de texto')
+              ? (relatedPost.live_title || preview)
+              : report.content_preview,
+            content: isRelatedStream && !content
+              ? (relatedPost.live_title || report.content)
+              : report.content,
+          };
+        }
+
+        function setManageSanctionDurationFromUser(listedUser) {
+          const blockedUntilRaw = listedUser?.blocked_until;
+          if (!blockedUntilRaw || listedUser?.is_blocked_indefinitely) {
+            container.querySelector('#manage-sanction-duration').value = 'indefinite';
+            container.querySelector('#manage-sanction-custom-value').value = '1';
+            container.querySelector('#manage-sanction-custom-unit').value = 'hours';
+            toggleManageSanctionCustomFields('indefinite');
+            return;
+          }
+
+          const blockedUntil = new Date(blockedUntilRaw);
+          const diffMinutes = Math.max(1, Math.ceil((blockedUntil.getTime() - Date.now()) / 60000));
+          if (diffMinutes === 24 * 60) {
+            container.querySelector('#manage-sanction-duration').value = '24h';
+            toggleManageSanctionCustomFields('24h');
+            return;
+          }
+          if (diffMinutes === 48 * 60) {
+            container.querySelector('#manage-sanction-duration').value = '48h';
+            toggleManageSanctionCustomFields('48h');
+            return;
+          }
+          if (diffMinutes === 7 * 24 * 60) {
+            container.querySelector('#manage-sanction-duration').value = '1w';
+            toggleManageSanctionCustomFields('1w');
+            return;
+          }
+
+          let value = diffMinutes;
+          let unit = 'minutes';
+          if (diffMinutes % (7 * 24 * 60) === 0) {
+            value = diffMinutes / (7 * 24 * 60);
+            unit = 'weeks';
+          } else if (diffMinutes % (24 * 60) === 0) {
+            value = diffMinutes / (24 * 60);
+            unit = 'days';
+          } else if (diffMinutes % 60 === 0) {
+            value = diffMinutes / 60;
+            unit = 'hours';
+          }
+          container.querySelector('#manage-sanction-duration').value = 'custom';
+          container.querySelector('#manage-sanction-custom-value').value = String(value);
+          container.querySelector('#manage-sanction-custom-unit').value = unit;
+          toggleManageSanctionCustomFields('custom');
+        }
+
         function formatReportType(report) {
           if (report.service === 'chat') return 'message';
           if (report.target_type === 'comment') return 'comment';
-          if ((report.post_type || '').toLowerCase() === 'livestream') return 'livestream';
+          if ((report.post_type || '').toLowerCase() === 'livestream' || String(report.live_title || '').trim() !== '') return 'livestream';
           return 'post';
         }
 
-        function renderReportTypeBadge(report) {
-          const type = formatReportType(report);
-          const meta = {
+        function getReportTypeMeta(report) {
+          return {
             post: { label: 'Publicacion', classes: 'bg-sky-50 text-sky-700 border-sky-200', icon: 'article' },
             livestream: { label: 'Stream', classes: 'bg-red-50 text-red-600 border-red-200', icon: 'live_tv' },
             comment: { label: 'Comentario', classes: 'bg-violet-50 text-violet-700 border-violet-200', icon: 'chat_bubble' },
             message: { label: 'Mensaje', classes: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'mail' },
-          }[type];
+          }[formatReportType(report)];
+        }
+
+        function renderReportTypeBadge(report) {
+          const meta = getReportTypeMeta(report);
           return `<span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${meta.classes}"><span class="material-symbols-outlined text-[13px]">${meta.icon}</span>${meta.label}</span>`;
         }
 
@@ -12301,6 +12462,15 @@
           sanctionModal.classList.add('hidden');
           sanctionModal.classList.remove('flex');
           sanctionForm.reset();
+          toggleSanctionCustomFields('24h');
+          toggleSanctionBlockAccordion(false);
+        }
+
+        function closeManageSanctionModal() {
+          manageSanctionModal.classList.add('hidden');
+          manageSanctionModal.classList.remove('flex');
+          manageSanctionForm.reset();
+          toggleManageSanctionCustomFields('24h');
         }
 
         async function fetchReportDetails(report) {
@@ -12310,20 +12480,21 @@
             throw new Error(result?.data?.error || 'No se pudo cargar el reporte');
           }
 
-          return { ...report, ...result.data };
+          return enrichReportWithPost({ ...report, ...result.data });
         }
 
         function renderSanctionActions(report) {
           const isLivestreamReport = formatReportType(report) === 'livestream';
           const actions = [`
-            <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <input id="sanction-action-block" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]" checked disabled/>
-              <span>
-                <span class="block text-sm font-semibold text-slate-900">Bloquear usuario</span>
-                <span class="block text-xs text-slate-500 mt-1">La sanción siempre bloquea al usuario con la duración y razón definidas en este formulario.</span>
-              </span>
-            </label>
-            <input id="sanction-action-block-hidden" type="hidden" value="1"/>
+            <div id="sanction-action-block-card" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <label class="flex items-start gap-3">
+                <input id="sanction-action-block" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]" checked/>
+                <span>
+                  <span class="block text-sm font-semibold text-slate-900">Bloquear usuario</span>
+                  <span class="block text-xs text-slate-500 mt-1">Activa el accordion para definir la duración y la razón del bloqueo.</span>
+                </span>
+              </label>
+            </div>
           `];
 
           if (report.service === 'posts' && report.target_type === 'post') {
@@ -12351,13 +12522,19 @@
           }
 
           container.querySelector('#sanction-actions').innerHTML = actions.join('');
+          const blockConfig = container.querySelector('#sanction-block-config');
+          const blockCard = container.querySelector('#sanction-action-block-card');
+          if (blockConfig && blockCard) {
+            blockCard.appendChild(blockConfig);
+          }
+          toggleSanctionBlockAccordion(true);
         }
 
         async function openReviewModal(report) {
           try {
             const details = await fetchReportDetails(report);
             container.querySelector('#review-report-user').textContent = details.reported_user_name || `Usuario #${details.reported_user_id ?? '-'}`;
-            container.querySelector('#review-report-type').textContent = renderReportTypeBadge(details).replace(/<[^>]+>/g, '').trim();
+            container.querySelector('#review-report-type').textContent = getReportTypeMeta(details).label;
             container.querySelector('#review-report-date').textContent = details.created_at
               ? new Date(details.created_at).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' })
               : '-';
@@ -12392,11 +12569,22 @@
             container.querySelector('#sanction-reason').value = '';
             toggleSanctionCustomFields('24h');
             renderSanctionActions(details);
+            toggleSanctionBlockAccordion(true);
             sanctionModal.classList.remove('hidden');
             sanctionModal.classList.add('flex');
           } catch (error) {
             showToast(error.message || 'No se pudo preparar la sancion', 'error');
           }
+        }
+
+        function openManageSanctionModal(listedUser) {
+          container.querySelector('#manage-sanction-user-id').value = listedUser.id;
+          container.querySelector('#manage-sanction-user').textContent = displayName(listedUser);
+          container.querySelector('#manage-sanction-current').textContent = `Estado actual: ${formatBlockedUntilLabel(listedUser.blocked_until, listedUser.is_blocked_indefinitely)}`;
+          container.querySelector('#manage-sanction-reason').value = listedUser.blocked_reason || '';
+          setManageSanctionDurationFromUser(listedUser);
+          manageSanctionModal.classList.remove('hidden');
+          manageSanctionModal.classList.add('flex');
         }
 
         function formatReportRows(reports) {
@@ -12405,26 +12593,32 @@
             return;
           }
 
-          tbody.innerHTML = reports.map((report) => `
-            <tr class="hover:bg-slate-50 transition-colors">
-              <td class="py-4 px-5">
-                <div class="font-semibold text-sm text-slate-900">${escapeHtml(report.reported_user_name || `Usuario #${report.reported_user_id ?? '-'}`)}</div>
-                <div class="text-xs text-slate-500">${escapeHtml(report.service === 'chat' ? 'Mensajes' : 'Publicaciones')}</div>
-              </td>
-              <td class="py-4 px-5 text-sm text-slate-600">${renderReportTypeBadge(report)}</td>
-              <td class="py-4 px-5 text-sm text-slate-700">
-                <p class="line-clamp-2 content-break">${escapeHtml((formatReportType(report) === 'livestream' ? (report.live_title || report.content_preview) : report.content_preview) || 'Sin contenido')}</p>
-              </td>
-              <td class="py-4 px-4 text-sm text-slate-500 whitespace-nowrap">${escapeHtml(timeAgo(report.created_at))}</td>
-              <td class="py-4 pl-6 pr-5">
-                <div class="flex justify-end gap-2 flex-nowrap">
-                  <button type="button" data-report-review="${report.id}" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50">Revisar</button>
-                  <button type="button" data-report-dismiss="${report.id}" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50">Descartar</button>
-                  <button type="button" data-report-sanction="${report.id}" class="px-2.5 py-1.5 rounded-lg bg-[#1B2A6B] text-[11px] font-semibold text-white hover:bg-[#15215a]">Sancionar</button>
-                </div>
-              </td>
-            </tr>
-          `).join('');
+          tbody.innerHTML = reports.map((rawReport) => {
+            const report = enrichReportWithPost(rawReport);
+            const preview = formatReportType(report) === 'livestream'
+              ? (report.live_title || report.content_preview || 'Stream sin titulo')
+              : (report.content_preview || 'Sin contenido');
+            return `
+              <tr class="hover:bg-slate-50 transition-colors">
+                <td class="py-4 px-5">
+                  <div class="font-semibold text-sm text-slate-900">${escapeHtml(report.reported_user_name || `Usuario #${report.reported_user_id ?? '-'}`)}</div>
+                  <div class="text-xs text-slate-500">${escapeHtml(report.service === 'chat' ? 'Mensajes' : 'Publicaciones')}</div>
+                </td>
+                <td class="py-4 px-5 text-sm text-slate-600">${renderReportTypeBadge(report)}</td>
+                <td class="py-4 px-5 text-sm text-slate-700">
+                  <p class="line-clamp-2 content-break">${escapeHtml(preview)}</p>
+                </td>
+                <td class="py-4 px-4 text-sm text-slate-500 whitespace-nowrap">${escapeHtml(timeAgo(report.created_at))}</td>
+                <td class="py-4 pl-6 pr-5">
+                  <div class="flex justify-end gap-2 flex-nowrap">
+                    <button type="button" data-report-review="${report.id}" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50">Revisar</button>
+                    <button type="button" data-report-dismiss="${report.id}" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50">Descartar</button>
+                    <button type="button" data-report-sanction="${report.id}" class="px-2.5 py-1.5 rounded-lg bg-[#1B2A6B] text-[11px] font-semibold text-white hover:bg-[#15215a]">Sancionar</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('');
         }
 
         function renderReportsPage() {
@@ -12434,12 +12628,49 @@
           renderPagination(pagination, pageSlice.meta, { summaryLabel: 'reportes' });
         }
 
+        function renderSanctionsRows(users) {
+          if (!users.length) {
+            sanctionsTbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-slate-400">No hay sanciones activas.</td></tr>';
+            return;
+          }
+
+          sanctionsTbody.innerHTML = users.map((listedUser) => `
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="py-4 px-5">
+                <div class="font-semibold text-sm text-slate-900">${escapeHtml(displayName(listedUser))}</div>
+                <div class="text-xs text-slate-500">${escapeHtml(listedUser.email || '-')}</div>
+              </td>
+              <td class="py-4 px-5">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold text-[#DC2626] bg-[#FEE2E2]">
+                  <span class="w-1.5 h-1.5 rounded-full bg-[#DC2626]"></span>
+                  ${escapeHtml(formatBlockedUntilLabel(listedUser.blocked_until, listedUser.is_blocked_indefinitely))}
+                </span>
+              </td>
+              <td class="py-4 px-5 text-sm text-slate-700">${escapeHtml(listedUser.blocked_reason || 'Sin razon registrada')}</td>
+              <td class="py-4 px-5 text-sm text-slate-500 whitespace-nowrap">${escapeHtml(timeAgo(listedUser.updated_at || listedUser.created_at))}</td>
+              <td class="py-4 pl-6 pr-5">
+                <div class="flex justify-end gap-2 flex-nowrap">
+                  <button type="button" data-edit-sanction="${listedUser.id}" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50">Editar</button>
+                  <button type="button" data-remove-sanction="${listedUser.id}" class="px-2.5 py-1.5 rounded-lg bg-white border border-red-200 text-[11px] font-semibold text-red-600 hover:bg-red-50">Quitar sancion</button>
+                </div>
+              </td>
+            </tr>
+          `).join('');
+        }
+
+        function renderSanctionsPage() {
+          const pageSlice = paginateClientItems(sanctionedUsers, sanctionsPage, SANCTIONS_PER_PAGE);
+          sanctionsPage = pageSlice.meta.currentPage;
+          renderSanctionsRows(pageSlice.items);
+          renderPagination(sanctionsPagination, pageSlice.meta, { summaryLabel: 'sanciones' });
+        }
+
         function applyAdminReportFilters({ resetPage = true } = {}) {
           let filtered = [...reportRows];
           const type = typeFilter.value;
           const order = orderFilter.value;
           if (type && type !== 'Todos') {
-            filtered = filtered.filter((report) => formatReportType(report) === type);
+            filtered = filtered.filter((report) => formatReportType(enrichReportWithPost(report)) === type);
           }
           filtered.sort((left, right) => {
             const delta = new Date(right.created_at || 0).getTime() - new Date(left.created_at || 0).getTime();
@@ -12454,13 +12685,16 @@
 
         async function loadReports() {
           await ensurePublicUsersLoaded();
-          const [postReports, chatReports] = await Promise.all([
+          const [postReports, chatReports, adminPosts] = await Promise.all([
             PostsAPI.listReports('pending'),
             ChatAPI.listReports('pending'),
+            PostsAPI.listAdminPosts(),
           ]);
 
+          adminPostsById = new Map(getList(adminPosts).map((post) => [Number(post.id), post]));
+
           const reports = [];
-          if (postReports?.ok) reports.push(...getList(postReports).map((item) => ({ ...item, service: 'posts' })));
+          if (postReports?.ok) reports.push(...getList(postReports).map((item) => enrichReportWithPost({ ...item, service: 'posts' })));
           if (chatReports?.ok) {
             reports.push(...getList(chatReports).map((item) => {
               const relatedUser = publicUsersState.map.get(Number(item.reported_user_id));
@@ -12479,6 +12713,21 @@
           applyAdminReportFilters();
         }
 
+        async function loadSanctions() {
+          const result = await AuthAPI.listAdminUsers();
+          if (!result?.ok) {
+            sanctionsTbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-slate-400">No se pudieron cargar las sanciones.</td></tr>';
+            sanctionsPagination?.classList.add('hidden');
+            return;
+          }
+
+          sanctionedUsers = getList(result)
+            .filter((item) => item.is_active === false)
+            .sort((left, right) => new Date(right.updated_at || right.created_at || 0).getTime() - new Date(left.updated_at || left.created_at || 0).getTime());
+          sanctionsPage = 1;
+          renderSanctionsPage();
+        }
+
         container.querySelector('#go-admin-users-btn').addEventListener('click', () => router.navigate('admin'));
         container.querySelector('#go-admin-posts-btn').addEventListener('click', () => router.navigate('admin-posts'));
         typeFilter.addEventListener('change', applyAdminReportFilters);
@@ -12489,18 +12738,37 @@
           reportsPage = Number(button.dataset.page) || 1;
           renderReportsPage();
         });
+        sanctionsPagination?.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-page]');
+          if (!button) return;
+          sanctionsPage = Number(button.dataset.page) || 1;
+          renderSanctionsPage();
+        });
         container.querySelector('#close-review-report-modal-btn').addEventListener('click', closeReviewModal);
         container.querySelector('#close-review-report-footer-btn').addEventListener('click', closeReviewModal);
         container.querySelector('#close-sanction-report-modal-btn').addEventListener('click', closeSanctionModal);
         container.querySelector('#cancel-sanction-report-btn').addEventListener('click', closeSanctionModal);
+        container.querySelector('#close-manage-sanction-modal-btn').addEventListener('click', closeManageSanctionModal);
+        container.querySelector('#cancel-manage-sanction-btn').addEventListener('click', closeManageSanctionModal);
         container.querySelector('#sanction-duration').addEventListener('change', (event) => {
           toggleSanctionCustomFields(event.target.value);
+        });
+        container.querySelector('#manage-sanction-duration').addEventListener('change', (event) => {
+          toggleManageSanctionCustomFields(event.target.value);
         });
         reviewModal.addEventListener('click', (event) => {
           if (event.target === reviewModal) closeReviewModal();
         });
         sanctionModal.addEventListener('click', (event) => {
           if (event.target === sanctionModal) closeSanctionModal();
+        });
+        manageSanctionModal.addEventListener('click', (event) => {
+          if (event.target === manageSanctionModal) closeManageSanctionModal();
+        });
+        sanctionModal.addEventListener('change', (event) => {
+          if (event.target.id === 'sanction-action-block') {
+            toggleSanctionBlockAccordion(!!event.target.checked);
+          }
         });
         tbody.addEventListener('click', async (event) => {
           const reviewButton = event.target.closest('[data-report-review]');
@@ -12537,6 +12805,25 @@
           }
         });
 
+        sanctionsTbody.addEventListener('click', async (event) => {
+          const editButton = event.target.closest('[data-edit-sanction]');
+          if (editButton) {
+            const listedUser = sanctionedUsers.find((item) => Number(item.id) === Number(editButton.dataset.editSanction));
+            if (listedUser) openManageSanctionModal(listedUser);
+            return;
+          }
+
+          const removeButton = event.target.closest('[data-remove-sanction]');
+          if (!removeButton) return;
+          const result = await AuthAPI.toggleUser(removeButton.dataset.removeSanction);
+          if (result?.ok) {
+            showToast(result.data?.message || 'Sancion retirada', 'success');
+            await loadSanctions();
+            return;
+          }
+          showToast(result?.data?.error || 'No se pudo retirar la sancion', 'error');
+        });
+
         sanctionForm.addEventListener('submit', async (event) => {
           event.preventDefault();
 
@@ -12548,7 +12835,7 @@
           const customValue = container.querySelector('#sanction-custom-value').value;
           const customUnit = container.querySelector('#sanction-custom-unit').value;
           const sanctionReason = container.querySelector('#sanction-reason').value.trim();
-          const shouldBlock = true;
+          const shouldBlock = container.querySelector('#sanction-action-block')?.checked ?? false;
           const shouldDeletePost = container.querySelector('#sanction-action-delete-post')?.checked ?? false;
           const shouldDeleteComment = container.querySelector('#sanction-action-delete-comment')?.checked ?? false;
 
@@ -12557,10 +12844,10 @@
             return;
           }
 
-          let blockWindow = { blockedUntil: null, isIndefinite: false };
+          let blockPayload = { blocked_until: null, blocked_duration_value: null, blocked_duration_unit: null, is_indefinite: false };
           if (shouldBlock) {
             try {
-              blockWindow = buildBlockedUntilIso(durationValue, customValue, customUnit);
+              blockPayload = buildBlockedDurationPayload(durationValue, customValue, customUnit);
             } catch (error) {
               showToast(error.message || 'No se pudo calcular la duracion del bloqueo', 'error');
               return;
@@ -12586,8 +12873,10 @@
           if (shouldBlock) {
             const blockResult = await AuthAPI.toggleUser(reportedUserId, {
               blocked_reason: sanctionReason || null,
-              blocked_until: blockWindow.blockedUntil,
-              is_indefinite: blockWindow.isIndefinite,
+              blocked_until: blockPayload.blocked_until,
+              blocked_duration_value: blockPayload.blocked_duration_value,
+              blocked_duration_unit: blockPayload.blocked_duration_unit,
+              is_indefinite: blockPayload.is_indefinite,
             });
 
             if (!blockResult?.ok) {
@@ -12605,14 +12894,48 @@
           if (resolveResult?.ok) {
             showToast('Sancion aplicada correctamente', 'success');
             closeSanctionModal();
-            await loadReports();
+            await Promise.all([loadReports(), loadSanctions()]);
             return;
           }
 
           showToast(resolveResult?.data?.error || 'No se pudo cerrar el reporte como sancionado', 'error');
         });
 
-        loadReports();
+        manageSanctionForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const userId = container.querySelector('#manage-sanction-user-id').value;
+          const durationValue = container.querySelector('#manage-sanction-duration').value;
+          const customValue = container.querySelector('#manage-sanction-custom-value').value;
+          const customUnit = container.querySelector('#manage-sanction-custom-unit').value;
+          const sanctionReason = container.querySelector('#manage-sanction-reason').value.trim();
+
+          let blockPayload;
+          try {
+            blockPayload = buildBlockedDurationPayload(durationValue, customValue, customUnit);
+          } catch (error) {
+            showToast(error.message || 'No se pudo calcular la duracion del bloqueo', 'error');
+            return;
+          }
+
+          const result = await AuthAPI.toggleUser(userId, {
+            blocked_reason: sanctionReason || null,
+            blocked_until: blockPayload.blocked_until,
+            blocked_duration_value: blockPayload.blocked_duration_value,
+            blocked_duration_unit: blockPayload.blocked_duration_unit,
+            is_indefinite: blockPayload.is_indefinite,
+          });
+
+          if (result?.ok) {
+            showToast('Sancion actualizada', 'success');
+            closeManageSanctionModal();
+            await loadSanctions();
+            return;
+          }
+
+          showToast(result?.data?.error || 'No se pudo actualizar la sancion', 'error');
+        });
+
+        Promise.all([loadReports(), loadSanctions()]);
       },
     },
     'admin-posts': {

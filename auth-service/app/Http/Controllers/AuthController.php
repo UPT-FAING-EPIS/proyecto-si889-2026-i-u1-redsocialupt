@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\AuthService;
 use App\Support\ImageOptimizer;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Laravel\Lumen\Routing\Controller as BaseController;
@@ -300,15 +301,30 @@ class AuthController extends BaseController
         $this->validate($request, [
             'blocked_reason' => 'nullable|string|max:1000',
             'blocked_until' => 'nullable|date',
+            'blocked_duration_value' => 'nullable|integer|min:1',
+            'blocked_duration_unit' => 'nullable|in:minutes,hours,days,weeks',
             'is_indefinite' => 'nullable|boolean',
         ]);
 
         try {
+            $blockedUntil = $request->input('blocked_until');
+            $durationValue = $request->input('blocked_duration_value');
+            $durationUnit = $request->input('blocked_duration_unit');
+            if (!$request->boolean('is_indefinite', false) && $durationValue !== null && $durationUnit) {
+                $durationValue = (int) $durationValue;
+                $blockedUntil = Carbon::now();
+                if ($durationUnit === 'minutes') $blockedUntil->addMinutes($durationValue);
+                if ($durationUnit === 'hours') $blockedUntil->addHours($durationValue);
+                if ($durationUnit === 'days') $blockedUntil->addDays($durationValue);
+                if ($durationUnit === 'weeks') $blockedUntil->addWeeks($durationValue);
+                $blockedUntil = $blockedUntil->toIso8601String();
+            }
+
             $user = $this->authService->toggleUser(
                 $id,
                 (int) $request->auth->sub,
                 $request->input('blocked_reason'),
-                $request->input('blocked_until'),
+                $blockedUntil,
                 (bool) $request->input('is_indefinite', false)
             );
             return response()->json([

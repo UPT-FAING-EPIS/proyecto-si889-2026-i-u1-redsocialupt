@@ -88,9 +88,6 @@
             <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Duracion del bloqueo</p>
             <p id="blocked-duration-text" class="text-sm text-slate-700 leading-6"></p>
           </div>
-          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-center text-sm text-slate-600">
-            Si crees que esto fue un error, comunicate con un administrador.
-          </div>
           <button id="blocked-logout-btn" type="button" class="mt-5 w-full rounded-2xl bg-[#001256] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0a1d77]">
             Cerrar sesion
           </button>
@@ -175,6 +172,14 @@
 
       durationText.textContent = formatBlockedDuration(blockedUntil, isIndefinite);
       durationCard.classList.remove('hidden');
+    }
+
+    function isBlockedNoticeStillActive(blockedUntil, isIndefinite) {
+      if (isIndefinite) return true;
+      if (!blockedUntil) return false;
+      const date = new Date(blockedUntil);
+      if (Number.isNaN(date.getTime())) return false;
+      return date.getTime() > Date.now();
     }
 
     function renderLoginDotWave() {
@@ -298,8 +303,12 @@
       });
       const blockedNotice = getBlockedNotice();
       if (blockedNotice) {
+        if (!isBlockedNoticeStillActive(blockedNotice.blocked_until, !!blockedNotice.is_indefinite)) {
+          clearBlockedNotice();
+        } else {
         renderBlockedState(blockedNotice.reason, blockedNotice.blocked_until, !!blockedNotice.is_indefinite);
         return;
+        }
       }
 
       if (typeof google === 'undefined') {

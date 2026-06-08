@@ -94,8 +94,20 @@ class ReportService
             ? Post::find($report->target_id)
             : Comment::find($report->target_id);
 
+        $post = null;
+        if ($report->target_type === 'post') {
+            $post = $target;
+        } elseif ($target?->post_id) {
+            $post = Post::find($target->post_id);
+        }
+
+        $isLivestream = ($post->post_type ?? '') === 'livestream';
+        $liveTitle = trim((string) ($post->live_title ?? ''));
         $content = trim((string) ($target->content ?? ''));
-        $preview = mb_strimwidth($content !== '' ? $content : 'Sin contenido de texto', 0, 140, '...');
+        $fallbackText = $isLivestream
+            ? ($liveTitle !== '' ? $liveTitle : 'Stream sin titulo')
+            : 'Sin contenido de texto';
+        $preview = mb_strimwidth($content !== '' ? $content : $fallbackText, 0, 140, '...');
 
         return [
             'id' => $report->id,
@@ -111,8 +123,10 @@ class ReportService
             'reported_user_id' => $target->user_id ?? null,
             'reported_user_name' => $target->user_name ?? 'Usuario',
             'reported_user_faculty' => $target->user_faculty ?? '',
+            'post_type' => $post->post_type ?? null,
+            'live_title' => $liveTitle !== '' ? $liveTitle : null,
             'content_preview' => $preview,
-            'content' => $full ? $content : null,
+            'content' => $full ? ($content !== '' ? $content : $fallbackText) : null,
             'image_url' => $full && $report->target_type === 'post' ? ($target->image_url ?? null) : null,
             'post_id' => $report->target_type === 'comment' ? ($target->post_id ?? null) : null,
         ];
