@@ -1,16 +1,18 @@
-FROM php:8.5.6RC1-cli-alpine3.23
+FROM composer:2 AS composer-bin
 
-RUN apk update && apk upgrade --no-cache && apk add --no-cache \
-    libzip-dev \
-    zip \
-    unzip \
-    curl \
-    libpng-dev \
-    oniguruma-dev \
-    $PHPIZE_DEPS \
-    && docker-php-ext-install pdo pdo_mysql zip
+FROM php:8.4-cli-alpine3.24
 
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+RUN set -eux; \
+    apk add --no-cache \
+        libzip \
+        unzip; \
+    apk add --no-cache --virtual .build-deps \
+        $PHPIZE_DEPS \
+        libzip-dev; \
+    docker-php-ext-install -j"$(nproc)" pdo pdo_mysql zip; \
+    apk del .build-deps
+
+COPY --from=composer-bin /usr/bin/composer /usr/local/bin/composer
 
 WORKDIR /app
 
@@ -18,11 +20,12 @@ COPY . .
 COPY php.ini /usr/local/etc/php/conf.d/uploads.ini
 
 RUN cp .env.example .env \
-    && composer install --no-dev --optimize-autoloader
+    && composer install --no-dev --optimize-autoloader --no-interaction --no-progress \
+    && composer clear-cache
 
 RUN mkdir -p public/chat-uploads storage/logs storage/framework/views \
     && chmod -R 775 public/chat-uploads storage
 
 EXPOSE 8000
 
-CMD php artisan migrate --force 2>/dev/null; php -S 0.0.0.0:8000 -t public
+CMD ["sh", "-lc", "php artisan migrate --force 2>/dev/null; php -S 0.0.0.0:8000 -t public"]
