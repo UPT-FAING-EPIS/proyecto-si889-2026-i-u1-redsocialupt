@@ -1,6 +1,6 @@
 FROM composer:2 AS composer-bin
 
-FROM php:8.4-cli-alpine3.24
+FROM php:8.4-cli-alpine
 
 RUN set -eux; \
     apk add --no-cache \

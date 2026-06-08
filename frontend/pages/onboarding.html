@@ -287,24 +287,9 @@
     }
   }
 
-  function normalizeInitial(value) {
-    return String(value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .match(/[a-z]/)?.[0] || '';
-  }
-
-  function detectStudentIdentity(email, fullName) {
-    const match = String(email || '').match(/^([a-zA-Z]{2})(\d+)@virtual\.upt\.pe$/);
+  function detectStudentIdentity(email) {
+    const match = String(email || '').match(/^([a-zA-Z]{2})(\d{10})@virtual\.upt\.pe$/);
     if (!match) return null;
-
-    const tokens = String(fullName || '').trim().split(/\s+/).filter(Boolean);
-    if (tokens.length < 2) return null;
-
-    const surnameIndex = tokens.length >= 3 ? tokens.length - 2 : 1;
-    const expectedPrefix = normalizeInitial(tokens[0]) + normalizeInitial(tokens[surnameIndex]);
-    if (match[1].toLowerCase() !== expectedPrefix) return null;
 
     return { studentCode: match[2] };
   }
@@ -321,7 +306,7 @@
     nameField.value = user.full_name || user.name || '';
 
     if (user.email) {
-      const studentIdentity = detectStudentIdentity(user.email, nameField.value);
+      const studentIdentity = detectStudentIdentity(user.email);
       if (studentIdentity) {
         typeField.value = 'student';
         typeField.disabled = true;

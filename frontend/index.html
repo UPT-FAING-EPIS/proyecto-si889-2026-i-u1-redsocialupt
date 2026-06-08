@@ -174,12 +174,44 @@
       durationCard.classList.remove('hidden');
     }
 
+    function showLoginState() {
+      const blockedSection = document.getElementById('blocked-section');
+      const loginSection = document.getElementById('login-section');
+      blockedSection.classList.add('hidden');
+      loginSection.classList.remove('hidden');
+    }
+
     function isBlockedNoticeStillActive(blockedUntil, isIndefinite) {
       if (isIndefinite) return true;
       if (!blockedUntil) return false;
       const date = new Date(blockedUntil);
       if (Number.isNaN(date.getTime())) return false;
       return date.getTime() > Date.now();
+    }
+
+    let blockedNoticeExpiryTimer = null;
+    function scheduleBlockedNoticeExpiry(blockedUntil, isIndefinite) {
+      if (blockedNoticeExpiryTimer) {
+        clearTimeout(blockedNoticeExpiryTimer);
+        blockedNoticeExpiryTimer = null;
+      }
+
+      if (isIndefinite || !blockedUntil) return;
+
+      const date = new Date(blockedUntil);
+      if (Number.isNaN(date.getTime())) return;
+
+      const delay = date.getTime() - Date.now();
+      if (delay <= 0) {
+        clearBlockedNotice();
+        window.location.reload();
+        return;
+      }
+
+      blockedNoticeExpiryTimer = setTimeout(() => {
+        clearBlockedNotice();
+        window.location.reload();
+      }, delay + 250);
     }
 
     function renderLoginDotWave() {
@@ -305,9 +337,11 @@
       if (blockedNotice) {
         if (!isBlockedNoticeStillActive(blockedNotice.blocked_until, !!blockedNotice.is_indefinite)) {
           clearBlockedNotice();
+          showLoginState();
         } else {
-        renderBlockedState(blockedNotice.reason, blockedNotice.blocked_until, !!blockedNotice.is_indefinite);
-        return;
+          renderBlockedState(blockedNotice.reason, blockedNotice.blocked_until, !!blockedNotice.is_indefinite);
+          scheduleBlockedNoticeExpiry(blockedNotice.blocked_until, !!blockedNotice.is_indefinite);
+          return;
         }
       }
 
@@ -335,6 +369,7 @@
         if (result?.status === 403 && result?.data?.code === 'ACCOUNT_BLOCKED') {
           setBlockedNotice(result.data.reason || null, result.data.blocked_until || null, !!result.data.is_indefinite);
           renderBlockedState(result.data.reason || null, result.data.blocked_until || null, !!result.data.is_indefinite);
+          scheduleBlockedNoticeExpiry(result.data.blocked_until || null, !!result.data.is_indefinite);
           return;
         }
 
