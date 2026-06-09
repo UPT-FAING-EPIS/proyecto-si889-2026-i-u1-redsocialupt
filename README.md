@@ -253,7 +253,23 @@ Los usuarios con relación de amistad confirmada pueden iniciar conversaciones d
 ### RF-09 — Panel de Administración
 Los usuarios con rol de administrador tienen acceso a un panel de control exclusivo con dos módulos: **Gestión de Usuarios**, donde pueden ver el listado completo de cuentas, editar la información académica de cualquier usuario, cambiar roles entre usuario y administrador, y bloquear o desbloquear cuentas con motivo opcional de bloqueo; y **Moderación de Contenido**, donde pueden visualizar todas las publicaciones y comentarios de la plataforma y eliminarlos si incumplen las normas de la comunidad universitaria. El acceso al panel está protegido por verificación de rol en el backend.
 
+### RF-10 — Reporte de Contenido
+El sistema permitirá a los usuarios reportar publicaciones, comentarios y mensajes que consideren inapropiados o contrarios a las normas de la comunidad universitaria. Cada reporte registrará el usuario reportante, el contenido reportado, el motivo seleccionado, la fecha de creación y el estado del caso. Los administradores podrán revisar los reportes desde el panel de moderación y actualizar su estado según corresponda.
 
+### RF-11 — Grupos de Comunidad
+El sistema permitirá la creación y gestión de grupos de comunidad con el objetivo de facilitar la interacción entre usuarios con intereses comunes. Cada grupo contará con nombre, descripción, imagen de portada y configuración de privacidad pública o privada. Los grupos podrán tener un creador, administradores y miembros. En el caso de grupos privados, los usuarios deberán solicitar ingreso y esperar la aprobación de un administrador.
+
+### RF-12 — Bloqueo entre Usuarios
+El sistema permitirá que un usuario bloquee a otro de manera unilateral. Una vez aplicado el bloqueo, se restringirá la interacción social entre ambos usuarios, incluyendo el envío de mensajes, solicitudes de amistad y cualquier otra funcionalidad que implique comunicación directa. Asimismo, el sistema limitará la exposición de contenido relevante entre las partes bloqueadas.
+
+### RF-13 — Moderación Automática de Contenido
+El sistema validará automáticamente publicaciones, comentarios y mensajes antes de permitir su envío o publicación. La validación se realizará utilizando un diccionario local de palabras y expresiones restringidas. Si se detecta contenido prohibido, el sistema bloqueará la acción y mostrará un mensaje informativo indicando que el contenido incumple las normas de la plataforma.
+
+### RF-14 — Llamadas y Videollamadas entre Amigos
+Los usuarios con una relación de amistad confirmada podrán iniciar llamadas de voz y videollamadas privadas. El sistema permitirá enviar invitaciones de llamada, aceptar o rechazar solicitudes entrantes y finalizar la sesión en cualquier momento. Solo los usuarios que mantengan una amistad activa podrán utilizar esta funcionalidad.
+
+### RF-15 — Livestream como Publicación en Vivo
+El sistema permitirá iniciar transmisiones en vivo como una modalidad especial de publicación. Cada livestream incluirá un título, descripción, estado de transmisión y configuración de visibilidad. La audiencia podrá restringirse a toda la comunidad universitaria, únicamente amigos o usuarios pertenecientes a la misma facultad. Mientras la transmisión permanezca activa, se mostrará en el feed como una publicación en vivo.
 
 ## ⚙️ Requerimientos No Funcionales
 
