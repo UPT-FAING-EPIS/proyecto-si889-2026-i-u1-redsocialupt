@@ -81,18 +81,22 @@
 	}
 
 	handle /api/directory* {
+		uri replace /api/directory /api/social/directory
 		reverse_proxy profile-social-service:8000
 	}
 
 	handle /api/friends* {
+		uri replace /api/friends /api/social/friends
 		reverse_proxy profile-social-service:8000
 	}
 
 	handle /api/blocks* {
+		uri replace /api/blocks /api/social/blocks
 		reverse_proxy profile-social-service:8000
 	}
 
 	handle /api/groups* {
+		uri replace /api/groups /api/social/groups
 		reverse_proxy profile-social-service:8000
 	}
 
