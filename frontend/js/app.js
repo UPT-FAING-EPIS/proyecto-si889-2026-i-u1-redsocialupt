@@ -1074,6 +1074,90 @@
     const panel = document.createElement('div');
     panel.className = 'mention-suggestions hidden';
     document.body.appendChild(panel);
+    const shell = document.createElement('div');
+    shell.className = 'mention-textarea-shell';
+    const mirror = document.createElement('div');
+    mirror.className = 'mention-textarea-mirror';
+    mirror.setAttribute('aria-hidden', 'true');
+
+    if (textarea.parentNode) {
+      textarea.parentNode.insertBefore(shell, textarea);
+      shell.appendChild(mirror);
+      shell.appendChild(textarea);
+    }
+    textarea.classList.add('mention-textarea-enabled');
+
+    function syncMirrorStyles() {
+      const computed = window.getComputedStyle(textarea);
+      mirror.style.paddingTop = computed.paddingTop;
+      mirror.style.paddingRight = computed.paddingRight;
+      mirror.style.paddingBottom = computed.paddingBottom;
+      mirror.style.paddingLeft = computed.paddingLeft;
+      mirror.style.font = computed.font;
+      mirror.style.lineHeight = computed.lineHeight;
+      mirror.style.letterSpacing = computed.letterSpacing;
+      mirror.style.textTransform = computed.textTransform;
+      mirror.style.textAlign = computed.textAlign;
+      mirror.style.borderRadius = computed.borderRadius;
+    }
+
+    function renderMentionHighlight() {
+      const text = textarea.value || '';
+      if (!text) {
+        mirror.innerHTML = '&nbsp;';
+        return;
+      }
+
+      const mentions = [...state.selectedMentions]
+        .filter((entry) => entry?.label)
+        .sort((left, right) => String(right.label).length - String(left.label).length);
+
+      if (!mentions.length) {
+        mirror.innerHTML = `${escapeHtmlWithBreaks(text)}<br>`;
+        return;
+      }
+
+      let cursor = 0;
+      let html = '';
+
+      while (cursor < text.length) {
+        const atIndex = text.indexOf('@', cursor);
+        if (atIndex === -1) {
+          html += escapeHtmlWithBreaks(text.slice(cursor));
+          break;
+        }
+
+        const previousChar = atIndex > 0 ? text.charAt(atIndex - 1) : '';
+        const mention = mentions.find((entry) => {
+          if (previousChar && !/[\s([{>]/u.test(previousChar)) {
+            return false;
+          }
+          const label = String(entry.label || '');
+          const candidate = text.slice(atIndex + 1, atIndex + 1 + label.length);
+          const nextChar = text.charAt(atIndex + 1 + label.length);
+          return normalizeSearchText(candidate) === normalizeSearchText(label)
+            && isMentionBoundaryAfter(nextChar);
+        });
+
+        if (!mention) {
+          html += escapeHtmlWithBreaks(text.slice(cursor, atIndex + 1));
+          cursor = atIndex + 1;
+          continue;
+        }
+
+        const label = String(mention.label || '');
+        html += escapeHtmlWithBreaks(text.slice(cursor, atIndex));
+        html += `<span class="mention-textarea-highlight">@${escapeHtml(label)}</span>`;
+        cursor = atIndex + 1 + label.length;
+      }
+
+      mirror.innerHTML = `${html}<br>`;
+    }
+
+    function syncMirrorScroll() {
+      mirror.scrollTop = textarea.scrollTop;
+      mirror.scrollLeft = textarea.scrollLeft;
+    }
 
     function getSelectedMentionLabel(user) {
       return displayName(resolveProfileData(user));
@@ -1148,6 +1232,7 @@
       textarea.focus();
       textarea.setSelectionRange(caretPosition, caretPosition);
       upsertSelectedMention(resolvedUser);
+      renderMentionHighlight();
       closePanel();
     }
 
@@ -1230,10 +1315,12 @@
 
     function clear() {
       state.selectedMentions = [];
+      renderMentionHighlight();
       closePanel();
     }
 
     function handleInput() {
+      renderMentionHighlight();
       refreshSuggestions();
     }
 
@@ -1290,9 +1377,14 @@
     textarea.addEventListener('keyup', refreshSuggestions);
     textarea.addEventListener('keydown', handleKeydown);
     textarea.addEventListener('focus', refreshSuggestions);
+    textarea.addEventListener('scroll', syncMirrorScroll);
     document.addEventListener('click', handleDocumentClick);
     window.addEventListener('resize', syncPanelPosition);
+    window.addEventListener('resize', syncMirrorStyles);
     document.addEventListener('scroll', syncPanelPosition, true);
+    syncMirrorStyles();
+    renderMentionHighlight();
+    syncMirrorScroll();
 
     return {
       collectMentionUserIds,
@@ -1306,9 +1398,16 @@
         textarea.removeEventListener('keyup', refreshSuggestions);
         textarea.removeEventListener('keydown', handleKeydown);
         textarea.removeEventListener('focus', refreshSuggestions);
+        textarea.removeEventListener('scroll', syncMirrorScroll);
         document.removeEventListener('click', handleDocumentClick);
         window.removeEventListener('resize', syncPanelPosition);
+        window.removeEventListener('resize', syncMirrorStyles);
         document.removeEventListener('scroll', syncPanelPosition, true);
+        textarea.classList.remove('mention-textarea-enabled');
+        if (shell.parentNode) {
+          shell.parentNode.insertBefore(textarea, shell);
+          shell.remove();
+        }
         panel.remove();
       },
     };
@@ -1414,7 +1513,7 @@
                 </div>
                 <span class="post-comment-card__time">${escapeHtml(timeAgo(comment.created_at))}</span>
               </div>
-              <p class="post-comment-card__text content-break ${compact ? 'leading-5' : 'leading-6'}">${nl2br(comment.content || '')}</p>
+              <p class="post-comment-card__text content-break ${compact ? 'leading-5' : 'leading-6'}">${renderTextWithMentions(comment.content || '')}</p>
             </div>
             <div class="post-comment-card__actions">
               <div class="post-comment-card__actions-left">
@@ -1516,6 +1615,241 @@
     root.classList.add('flex');
     document.body.classList.add('overflow-hidden');
   }
+
+  function escapeHtmlWithBreaks(value) {
+    return escapeHtml(value).replace(/\n/g, '<br>');
+  }
+
+  function getMentionRenderableUsers() {
+    return Array.from(publicUsersState.map.values())
+      .map((entry) => resolveProfileData(entry))
+      .filter((entry) => entry.id !== null)
+      .map((entry) => ({
+        ...entry,
+        mentionLabel: displayName(entry),
+        mentionNormalizedLabel: normalizeSearchText(displayName(entry)),
+      }))
+      .sort((left, right) => right.mentionNormalizedLabel.length - left.mentionNormalizedLabel.length);
+  }
+
+  function isMentionBoundaryAfter(char) {
+    return !char || /[\s.,!?;:)\]}>"']/u.test(char);
+  }
+
+  function findMentionUserAt(text, atIndex, users = getMentionRenderableUsers()) {
+    if (atIndex < 0 || text.charAt(atIndex) !== '@') return null;
+    const previousChar = atIndex > 0 ? text.charAt(atIndex - 1) : '';
+    if (previousChar && !/[\s([{>]/u.test(previousChar)) {
+      return null;
+    }
+
+    const sliceAfter = text.slice(atIndex + 1);
+    for (const user of users) {
+      const label = user.mentionLabel || '';
+      if (!label) continue;
+      const candidateSlice = sliceAfter.slice(0, label.length);
+      if (normalizeSearchText(candidateSlice) !== user.mentionNormalizedLabel) {
+        continue;
+      }
+
+      const nextChar = text.charAt(atIndex + 1 + label.length);
+      if (!isMentionBoundaryAfter(nextChar)) {
+        continue;
+      }
+
+      return {
+        user,
+        label,
+        end: atIndex + 1 + label.length,
+      };
+    }
+
+    return null;
+  }
+
+  function renderMentionLink(user) {
+    const resolved = resolveProfileData(user);
+    const userId = Number(resolved.id || 0);
+    if (!userId) {
+      return escapeHtml(`@${displayName(resolved)}`);
+    }
+
+    return `<a href="${buildHash('profile', { id: userId })}" class="mention-link" data-action="open-profile" data-user-id="${userId}" data-mention-profile="true" data-mention-user-id="${userId}">@${escapeHtml(displayName(resolved))}</a>`;
+  }
+
+  function renderTextWithMentions(value) {
+    const text = String(value || '');
+    if (!text) return '';
+
+    const users = getMentionRenderableUsers();
+    if (!users.length) {
+      return escapeHtmlWithBreaks(text);
+    }
+
+    let cursor = 0;
+    let html = '';
+
+    while (cursor < text.length) {
+      const atIndex = text.indexOf('@', cursor);
+      if (atIndex === -1) {
+        html += escapeHtmlWithBreaks(text.slice(cursor));
+        break;
+      }
+
+      const match = findMentionUserAt(text, atIndex, users);
+      if (!match) {
+        html += escapeHtmlWithBreaks(text.slice(cursor, atIndex + 1));
+        cursor = atIndex + 1;
+        continue;
+      }
+
+      html += escapeHtmlWithBreaks(text.slice(cursor, atIndex));
+      html += renderMentionLink(match.user);
+      cursor = match.end;
+    }
+
+    return html;
+  }
+
+  let mentionProfilePopoverRoot = null;
+  let mentionProfilePopoverAnchor = null;
+  let mentionProfilePopoverHideTimer = null;
+
+  function clearMentionProfilePopoverHideTimer() {
+    if (mentionProfilePopoverHideTimer) {
+      window.clearTimeout(mentionProfilePopoverHideTimer);
+      mentionProfilePopoverHideTimer = null;
+    }
+  }
+
+  function ensureMentionProfilePopover() {
+    if (mentionProfilePopoverRoot) {
+      return mentionProfilePopoverRoot;
+    }
+
+    const root = document.createElement('div');
+    root.className = 'mention-profile-popover';
+    root.setAttribute('aria-hidden', 'true');
+    root.addEventListener('mouseenter', clearMentionProfilePopoverHideTimer);
+    root.addEventListener('mouseleave', () => {
+      scheduleHideMentionProfilePopover();
+    });
+    document.body.appendChild(root);
+    mentionProfilePopoverRoot = root;
+    return root;
+  }
+
+  function positionMentionProfilePopover(anchor, root) {
+    if (!anchor || !root) return;
+    const rect = anchor.getBoundingClientRect();
+    const topGap = 10;
+    const margin = 12;
+    const rootWidth = root.offsetWidth || Math.min(320, window.innerWidth - (margin * 2));
+    let left = rect.left;
+    if (left + rootWidth > window.innerWidth - margin) {
+      left = window.innerWidth - margin - rootWidth;
+    }
+    left = Math.max(margin, left);
+
+    let top = rect.bottom + topGap;
+    const rootHeight = root.offsetHeight || 0;
+    if (top + rootHeight > window.innerHeight - margin) {
+      top = rect.top - rootHeight - topGap;
+    }
+    top = Math.max(margin, top);
+
+    root.style.left = `${left}px`;
+    root.style.top = `${top}px`;
+  }
+
+  function hideMentionProfilePopover() {
+    clearMentionProfilePopoverHideTimer();
+    if (!mentionProfilePopoverRoot) return;
+    mentionProfilePopoverRoot.classList.remove('is-visible');
+    mentionProfilePopoverRoot.setAttribute('aria-hidden', 'true');
+    mentionProfilePopoverAnchor = null;
+  }
+
+  function scheduleHideMentionProfilePopover() {
+    clearMentionProfilePopoverHideTimer();
+    mentionProfilePopoverHideTimer = window.setTimeout(() => {
+      hideMentionProfilePopover();
+    }, 120);
+  }
+
+  function showMentionProfilePopover(anchor, userId) {
+    if (!isDesktopClient()) return;
+    const numericUserId = Number(userId || 0);
+    if (!numericUserId) return;
+    const user = resolveProfileData(publicUsersState.map.get(numericUserId) || { id: numericUserId });
+    const root = ensureMentionProfilePopover();
+    const fallbackBanner = userColor(user);
+    const bannerStyle = user.banner_url
+      ? `background-image:url('${safeUrl(user.banner_url)}'); background-size:cover; background-position:center; background-color:${fallbackBanner};`
+      : `background:${fallbackBanner};`;
+
+    root.innerHTML = `
+      <div class="mention-profile-popover__banner" style="${bannerStyle}"></div>
+      <div class="mention-profile-popover__body">
+        <div class="mention-profile-popover__avatar">
+          ${renderAvatar(user, { sizeClass: 'w-full h-full', textClass: 'text-white font-bold text-lg' })}
+        </div>
+        <div class="mention-profile-popover__copy">
+          <div class="mention-profile-popover__title">
+            <span class="mention-profile-popover__name">${escapeHtml(displayName(user))}</span>
+            <span class="mention-profile-popover__faculty" style="background:${userColor(user)}">${escapeHtml(user.faculty || 'UPT')}</span>
+          </div>
+          <div class="mention-profile-popover__career">${escapeHtml(careerLabel(user) || 'Perfil UPT')}</div>
+        </div>
+      </div>
+    `;
+    mentionProfilePopoverAnchor = anchor;
+    root.classList.add('is-visible');
+    root.setAttribute('aria-hidden', 'false');
+    positionMentionProfilePopover(anchor, root);
+  }
+
+  function initMentionProfilePopoverBehavior() {
+    const handleMouseOver = (event) => {
+      if (!isDesktopClient()) return;
+      const trigger = event.target.closest?.('[data-mention-profile="true"]');
+      if (!trigger) return;
+      if (mentionProfilePopoverAnchor === trigger) return;
+      clearMentionProfilePopoverHideTimer();
+      const userId = trigger.dataset.mentionUserId;
+      if (!userId) return;
+      showMentionProfilePopover(trigger, userId);
+    };
+
+    const handleMouseOut = (event) => {
+      const trigger = event.target.closest?.('[data-mention-profile="true"]');
+      if (!trigger) return;
+      const related = event.relatedTarget;
+      if (related instanceof Element && (trigger.contains(related) || mentionProfilePopoverRoot?.contains(related))) {
+        return;
+      }
+      scheduleHideMentionProfilePopover();
+    };
+
+    const handleScrollOrResize = () => {
+      if (mentionProfilePopoverAnchor && mentionProfilePopoverRoot?.classList.contains('is-visible')) {
+        positionMentionProfilePopover(mentionProfilePopoverAnchor, mentionProfilePopoverRoot);
+      }
+    };
+
+    document.addEventListener('mouseover', handleMouseOver);
+    document.addEventListener('mouseout', handleMouseOut);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest('[data-mention-profile="true"]')) {
+        hideMentionProfilePopover();
+      }
+    }, true);
+  }
+
+  initMentionProfilePopoverBehavior();
 
   function syncCurrentUser(payload) {
     if (payload?.token && payload?.user) {
@@ -1962,7 +2296,7 @@
             </button>
             ` : ''}
           </div>
-          <div class="text-sm text-slate-800 mb-4"><p class="content-break">${nl2br(post.content || '')}</p></div>
+          <div class="text-sm text-slate-800 mb-4"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>
           ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.parentElement.style.display='none'"/></div>` : ''}
         ${interactive ? `
           <div class="pt-3 border-t border-slate-100 space-y-3 text-slate-500">
@@ -2050,7 +2384,7 @@
             </div>
           ` : ''}
           ${post.content ? `
-            <div class="post-modal-preview-copy content-break">${nl2br(post.content)}</div>
+            <div class="post-modal-preview-copy content-break">${renderTextWithMentions(post.content)}</div>
           ` : ''}
         </div>
         ${post.image_url ? `
@@ -5083,6 +5417,7 @@
           }
 
           feedLoadPromise = (async () => {
+            await ensurePublicUsersLoaded();
             const result = await PostsAPI.getFeed({ page: 1, perPage: FEED_PER_PAGE });
             const posts = getList(result);
             const meta = getResultPaginationMeta(result, FEED_PER_PAGE);
@@ -5491,6 +5826,12 @@
         commentList.addEventListener('click', async (event) => {
           const button = event.target.closest('[data-action]');
           if (!button || !pendingCommentId) return;
+
+          if (button.dataset.action === 'open-profile') {
+            event.preventDefault();
+            router.navigate('profile', { id: button.dataset.userId });
+            return;
+          }
 
           if (button.dataset.action === 'open-reaction-picker') {
             openReactionPicker(button, {
@@ -10284,6 +10625,7 @@
           commentSort.value = sort;
           syncCommentSortChips(sort);
           commentList.innerHTML = '<p class="text-sm text-slate-400 text-center">Cargando comentarios...</p>';
+          await ensurePublicUsersLoaded();
           const result = await PostsAPI.getComments(postId, sort);
           if (!result?.ok) {
             commentList.innerHTML = '<p class="text-sm text-slate-400 text-center">No se pudieron cargar los comentarios.</p>';
@@ -10388,6 +10730,7 @@
           }
 
           async function reloadPosts() {
+            await ensurePublicUsersLoaded();
             const result = await PostsAPI.getGroupPosts(groupId);
             if (!result?.ok) {
               postsList.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">No se pudieron cargar las publicaciones del grupo.</div>';
@@ -10989,6 +11332,13 @@
         });
 
         commentList.addEventListener('click', async (event) => {
+          const profileButton = event.target.closest('[data-action="open-profile"]');
+          if (profileButton) {
+            event.preventDefault();
+            router.navigate('profile', { id: profileButton.dataset.userId });
+            return;
+          }
+
           const deleteButton = event.target.closest('[data-action="group-delete-comment"]');
           if (deleteButton) {
             const result = await PostsAPI.deleteComment(null, deleteButton.dataset.commentId);
@@ -12016,6 +12366,12 @@
         profileCommentList.addEventListener('click', async (event) => {
           const button = event.target.closest('[data-action]');
           if (!button || !pendingProfileCommentId) return;
+
+          if (button.dataset.action === 'open-profile') {
+            event.preventDefault();
+            router.navigate('profile', { id: button.dataset.userId });
+            return;
+          }
 
           if (button.dataset.action === 'open-reaction-picker') {
             openReactionPicker(button, {
@@ -13547,6 +13903,12 @@
         commentsList.addEventListener('click', async (event) => {
           const button = event.target.closest('[data-action]');
           if (!button || !currentCommentsPostId) return;
+
+          if (button.dataset.action === 'open-profile') {
+            event.preventDefault();
+            router.navigate('profile', { id: button.dataset.userId });
+            return;
+          }
 
           if (button.dataset.action === 'open-reaction-picker') {
             openReactionPicker(button, {
