@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Services\CommentService;
+use App\Services\MentionNotificationService;
+use App\Services\PostService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Laravel\Lumen\Routing\Controller as BaseController;
@@ -10,10 +12,14 @@ use Laravel\Lumen\Routing\Controller as BaseController;
 class CommentController extends BaseController
 {
     private CommentService $commentService;
+    private MentionNotificationService $mentionNotificationService;
+    private PostService $postService;
 
     public function __construct()
     {
         $this->commentService = new CommentService();
+        $this->mentionNotificationService = new MentionNotificationService();
+        $this->postService = new PostService();
     }
 
     /**
@@ -24,6 +30,8 @@ class CommentController extends BaseController
     {
         $this->validate($request, [
             'content' => 'required|string',
+            'mention_user_ids' => 'nullable|array|max:20',
+            'mention_user_ids.*' => 'integer|min:1',
         ]);
 
         try {
@@ -37,6 +45,13 @@ class CommentController extends BaseController
                     'user_faculty' => $request->auth->faculty ?? '',
                 ],
                 $request->bearerToken() ?? ''
+            );
+            $post = $this->postService->findOrFail($id);
+            $this->mentionNotificationService->createForComment(
+                $comment,
+                $post,
+                (int) $request->auth->sub,
+                $request->input('mention_user_ids', [])
             );
             $comment->reactions_count = array_fill_keys(\App\Services\LikeService::REACTION_TYPES, 0);
             $comment->reactions_total = 0;

@@ -76,6 +76,10 @@
 		reverse_proxy posts-service:8000
 	}
 
+	handle /api/mentions* {
+		reverse_proxy posts-service:8000
+	}
+
 	handle /api/group-posts* {
 		reverse_proxy posts-service:8000
 	}

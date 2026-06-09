@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\LikeService;
 use App\Services\LivestreamService;
+use App\Services\MentionNotificationService;
 use App\Services\PostService;
 use App\Support\ImageOptimizer;
 use App\Models\Like;
@@ -19,6 +20,7 @@ class PostController extends BaseController
     private PostService $postService;
     private LikeService $reactionService;
     private LivestreamService $livestreamService;
+    private MentionNotificationService $mentionNotificationService;
 
     private function publicUploadsPath(string $directory): string
     {
@@ -30,6 +32,7 @@ class PostController extends BaseController
         $this->postService = new PostService();
         $this->reactionService = new LikeService();
         $this->livestreamService = new LivestreamService();
+        $this->mentionNotificationService = new MentionNotificationService();
     }
 
     public function store(Request $request): JsonResponse
@@ -38,6 +41,8 @@ class PostController extends BaseController
             'content' => 'nullable|string|max:2000',
             'image' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
             'visibility' => 'nullable|in:all,friends,faculty',
+            'mention_user_ids' => 'nullable|array|max:20',
+            'mention_user_ids.*' => 'integer|min:1',
         ]);
 
         if (empty($request->input('content')) && !$request->hasFile('image')) {
@@ -60,6 +65,12 @@ class PostController extends BaseController
                 ]
             );
 
+            $this->mentionNotificationService->createForPost(
+                $post,
+                (int) $request->auth->sub,
+                $request->input('mention_user_ids', [])
+            );
+
             return response()->json($this->hydratePost($post, (int) $request->auth->sub), 201);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
@@ -71,6 +82,8 @@ class PostController extends BaseController
         $this->validate($request, [
             'content' => 'nullable|string|max:2000',
             'image' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
+            'mention_user_ids' => 'nullable|array|max:20',
+            'mention_user_ids.*' => 'integer|min:1',
         ]);
 
         if (empty($request->input('content')) && !$request->hasFile('image')) {
@@ -92,6 +105,12 @@ class PostController extends BaseController
                     'user_avatar' => $request->auth->avatar_url ?? null,
                 ],
                 $request->bearerToken() ?? ''
+            );
+
+            $this->mentionNotificationService->createForPost(
+                $post,
+                (int) $request->auth->sub,
+                $request->input('mention_user_ids', [])
             );
 
             return response()->json($this->hydratePost($post, (int) $request->auth->sub), 201);
@@ -202,6 +221,18 @@ class PostController extends BaseController
     {
         $this->hydratePosts(collect([$post]), $userId);
         return $post;
+    }
+
+    public function mentions(Request $request): JsonResponse
+    {
+        try {
+            return response()->json(
+                $this->mentionNotificationService->listForUser((int) $request->auth->sub),
+                200
+            );
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+        }
     }
 
     private function hydratePosts(Collection $posts, int $userId): void

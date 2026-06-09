@@ -121,6 +121,14 @@ class PostService
     public function createGroupPost(int $userId, int $groupId, array $data, string $jwt): Post
     {
         $access = $this->socialBlockService->getGroupAccess($jwt, $groupId);
+        $postsLocked = (bool) ($access['posts_locked'] ?? false);
+        $isGroupAdmin = (bool) ($access['is_admin'] ?? false);
+        $isSuperAdmin = (bool) ($access['can_manage'] ?? false) && !$isGroupAdmin;
+
+        if ($postsLocked && !$isGroupAdmin && !$isSuperAdmin) {
+            throw new PostsServiceException('Las nuevas publicaciones estan bloqueadas temporalmente en este grupo', 403);
+        }
+
         if (!(bool) ($access['can_post'] ?? false)) {
             throw new PostsServiceException('No puedes publicar en este grupo', 403);
         }

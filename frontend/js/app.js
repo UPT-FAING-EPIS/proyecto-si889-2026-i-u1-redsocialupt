@@ -1013,6 +1013,307 @@
     });
   }
 
+  function escapeRegExp(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function findActiveMentionQuery(value, caretIndex) {
+    const text = String(value || '');
+    const safeCaretIndex = Math.max(0, Math.min(Number(caretIndex) || 0, text.length));
+    const beforeCaret = text.slice(0, safeCaretIndex);
+    let atIndex = beforeCaret.lastIndexOf('@');
+
+    while (atIndex >= 0) {
+      const previousChar = atIndex > 0 ? beforeCaret.charAt(atIndex - 1) : '';
+      if (atIndex > 0 && !/[\s([{>]/.test(previousChar)) {
+        atIndex = beforeCaret.lastIndexOf('@', atIndex - 1);
+        continue;
+      }
+
+      const rawQuery = beforeCaret.slice(atIndex + 1);
+      if (/[\r\n\t]/.test(rawQuery)) {
+        return null;
+      }
+      if (rawQuery.length > 48) {
+        return null;
+      }
+      if (/\s$/.test(rawQuery) && rawQuery.trim()) {
+        return null;
+      }
+      if (/[^0-9A-Za-zÀ-ÿ\u00f1\u00d1 ._-]/.test(rawQuery)) {
+        return null;
+      }
+
+      return {
+        start: atIndex,
+        end: safeCaretIndex,
+        query: rawQuery.trim(),
+      };
+    }
+
+    return null;
+  }
+
+  function createMentionAutocomplete(textarea, options = {}) {
+    if (!(textarea instanceof HTMLTextAreaElement)) {
+      return {
+        collectMentionUserIds: () => [],
+        clear: () => {},
+        destroy: () => {},
+      };
+    }
+
+    const state = {
+      activeToken: null,
+      highlightedIndex: 0,
+      requestVersion: 0,
+      suggestions: [],
+      selectedMentions: [],
+      destroyed: false,
+    };
+    const panel = document.createElement('div');
+    panel.className = 'mention-suggestions hidden';
+    document.body.appendChild(panel);
+
+    function getSelectedMentionLabel(user) {
+      return displayName(resolveProfileData(user));
+    }
+
+    function syncPanelPosition() {
+      if (panel.classList.contains('hidden')) return;
+      const rect = textarea.getBoundingClientRect();
+      panel.style.left = `${Math.max(12, rect.left)}px`;
+      panel.style.top = `${Math.min(window.innerHeight - 12, rect.bottom + 8)}px`;
+      panel.style.width = `${Math.min(Math.max(rect.width, 260), 420)}px`;
+    }
+
+    function closePanel() {
+      state.activeToken = null;
+      state.suggestions = [];
+      panel.classList.add('hidden');
+      panel.innerHTML = '';
+    }
+
+    function openPanel() {
+      panel.classList.remove('hidden');
+      syncPanelPosition();
+    }
+
+    function upsertSelectedMention(user) {
+      const mentionId = Number(user?.id || 0);
+      const mentionLabel = getSelectedMentionLabel(user);
+      if (!mentionId || !mentionLabel) return;
+
+      state.selectedMentions = state.selectedMentions.filter((entry) => Number(entry.id) !== mentionId);
+      state.selectedMentions.push({ id: mentionId, label: mentionLabel });
+    }
+
+    function renderSuggestions() {
+      if (!state.suggestions.length) {
+        closePanel();
+        return;
+      }
+
+      panel.innerHTML = state.suggestions.map((entry, index) => {
+        const user = resolveProfileData(entry);
+        return `
+          <button
+            type="button"
+            class="mention-suggestion-item ${index === state.highlightedIndex ? 'is-active' : ''}"
+            data-mention-index="${index}"
+          >
+            ${renderAvatar(user, { sizeClass: 'w-9 h-9', textClass: 'text-white font-bold text-xs' })}
+            <span class="mention-suggestion-copy">
+              <span class="mention-suggestion-name">${escapeHtml(displayName(user))}</span>
+              <span class="mention-suggestion-meta">
+                ${escapeHtml(careerLabel(user) || 'Usuario UPT')}
+                ${entry.isFriend ? '<span class="mention-suggestion-pill">Amigo</span>' : ''}
+              </span>
+            </span>
+          </button>
+        `;
+      }).join('');
+      openPanel();
+    }
+
+    function applySuggestion(user) {
+      if (!state.activeToken) return;
+      const resolvedUser = resolveProfileData(user);
+      const mentionLabel = getSelectedMentionLabel(resolvedUser);
+      const currentValue = textarea.value || '';
+      const nextValue = `${currentValue.slice(0, state.activeToken.start)}@${mentionLabel} ${currentValue.slice(state.activeToken.end)}`;
+      const caretPosition = state.activeToken.start + mentionLabel.length + 2;
+      textarea.value = nextValue;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      textarea.focus();
+      textarea.setSelectionRange(caretPosition, caretPosition);
+      upsertSelectedMention(resolvedUser);
+      closePanel();
+    }
+
+    async function loadSuggestions(query) {
+      const currentRequestVersion = ++state.requestVersion;
+      await ensurePublicUsersLoaded();
+
+      const normalizedQuery = normalizeSearchText(query);
+      const [friendsResult, directoryResult] = await Promise.all([
+        SocialAPI.getFriends(),
+        normalizedQuery ? SocialAPI.searchDirectory(query) : Promise.resolve(null),
+      ]);
+
+      if (state.destroyed || currentRequestVersion !== state.requestVersion) {
+        return;
+      }
+
+      const friends = normalizeFriendEntries(getList(friendsResult))
+        .filter((entry) => Number(entry.id) !== Number(appState.user?.id || 0));
+      const friendIds = new Set(friends.map((entry) => Number(entry.id)));
+      const matchesQuery = (entry) => {
+        if (!normalizedQuery) return true;
+        return normalizeSearchText(displayName(entry)).includes(normalizedQuery);
+      };
+
+      const friendMatches = friends
+        .filter(matchesQuery)
+        .map((entry) => ({ ...entry, isFriend: true }));
+
+      const directorySource = normalizedQuery
+        ? getList(directoryResult)
+        : Array.from(publicUsersState.map.values());
+      const directoryMatches = directorySource
+        .map((entry) => resolveProfileData(entry))
+        .filter((entry) => entry.id !== null && Number(entry.id) !== Number(appState.user?.id || 0))
+        .filter(matchesQuery)
+        .map((entry) => ({ ...entry, isFriend: friendIds.has(Number(entry.id)) }));
+
+      const merged = [];
+      const seenIds = new Set();
+      [...friendMatches, ...directoryMatches]
+        .sort((left, right) => {
+          if (Boolean(right.isFriend) !== Boolean(left.isFriend)) {
+            return right.isFriend ? 1 : -1;
+          }
+          return displayName(left).localeCompare(displayName(right), 'es', { sensitivity: 'base' });
+        })
+        .forEach((entry) => {
+          const id = Number(entry.id);
+          if (!id || seenIds.has(id)) return;
+          seenIds.add(id);
+          merged.push(entry);
+        });
+
+      state.suggestions = merged.slice(0, normalizedQuery ? 8 : 10);
+      state.highlightedIndex = 0;
+      renderSuggestions();
+    }
+
+    function refreshSuggestions() {
+      if (state.destroyed) return;
+      const activeToken = findActiveMentionQuery(textarea.value, textarea.selectionStart ?? textarea.value.length);
+      state.activeToken = activeToken;
+      if (!activeToken) {
+        closePanel();
+        return;
+      }
+      loadSuggestions(activeToken.query).catch(() => closePanel());
+    }
+
+    function collectMentionUserIds() {
+      const content = textarea.value || '';
+      const collected = state.selectedMentions
+        .filter((entry) => entry?.label && content.match(new RegExp(`(^|\\s)@${escapeRegExp(entry.label)}(?=\\s|$|[.,!?;:])`, 'i')))
+        .map((entry) => Number(entry.id))
+        .filter((entry) => Number.isFinite(entry) && entry > 0);
+
+      return Array.from(new Set(collected));
+    }
+
+    function clear() {
+      state.selectedMentions = [];
+      closePanel();
+    }
+
+    function handleInput() {
+      refreshSuggestions();
+    }
+
+    function handleKeydown(event) {
+      if (panel.classList.contains('hidden') || !state.suggestions.length) {
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        state.highlightedIndex = (state.highlightedIndex + 1) % state.suggestions.length;
+        renderSuggestions();
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        state.highlightedIndex = (state.highlightedIndex - 1 + state.suggestions.length) % state.suggestions.length;
+        renderSuggestions();
+        return;
+      }
+
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        applySuggestion(state.suggestions[state.highlightedIndex]);
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePanel();
+      }
+    }
+
+    function handleDocumentClick(event) {
+      if (panel.contains(event.target) || textarea.contains(event.target)) {
+        return;
+      }
+      closePanel();
+    }
+
+    function handlePanelPointerDown(event) {
+      const button = event.target.closest('[data-mention-index]');
+      if (!button) return;
+      event.preventDefault();
+      const index = Number(button.dataset.mentionIndex || -1);
+      if (!Number.isFinite(index) || index < 0 || index >= state.suggestions.length) return;
+      applySuggestion(state.suggestions[index]);
+    }
+
+    panel.addEventListener('pointerdown', handlePanelPointerDown);
+    textarea.addEventListener('input', handleInput);
+    textarea.addEventListener('click', refreshSuggestions);
+    textarea.addEventListener('keyup', refreshSuggestions);
+    textarea.addEventListener('keydown', handleKeydown);
+    textarea.addEventListener('focus', refreshSuggestions);
+    document.addEventListener('click', handleDocumentClick);
+    window.addEventListener('resize', syncPanelPosition);
+    document.addEventListener('scroll', syncPanelPosition, true);
+
+    return {
+      collectMentionUserIds,
+      clear,
+      destroy() {
+        if (state.destroyed) return;
+        state.destroyed = true;
+        panel.removeEventListener('pointerdown', handlePanelPointerDown);
+        textarea.removeEventListener('input', handleInput);
+        textarea.removeEventListener('click', refreshSuggestions);
+        textarea.removeEventListener('keyup', refreshSuggestions);
+        textarea.removeEventListener('keydown', handleKeydown);
+        textarea.removeEventListener('focus', refreshSuggestions);
+        document.removeEventListener('click', handleDocumentClick);
+        window.removeEventListener('resize', syncPanelPosition);
+        document.removeEventListener('scroll', syncPanelPosition, true);
+        panel.remove();
+      },
+    };
+  }
+
   function openReactionPicker(trigger, { targetType, targetId, currentReaction, onSelect }) {
     if (reactionPickerState?.element && reactionPickerState.trigger === trigger) {
       clearReactionPickerCloseTimer();
@@ -4447,7 +4748,7 @@
           feedInitialSkeleton: renderListSkeleton(3, { lines: ['100%', '92%', '54%'], avatar: true, media: true }),
         };
       },
-      mount({ container, user, router }) {
+      mount({ container, user, params, router }) {
         let selectedImageFile = null;
         let selectedImagePreviewUrl = '';
         let pendingDeleteId = null;
@@ -4493,6 +4794,8 @@
         const publishButton = container.querySelector('#btn-publish');
         const openLiveModalButton = container.querySelector('#open-live-modal-btn');
         const liveTitleInput = container.querySelector('#live-title-input');
+        const postMentionController = createMentionAutocomplete(postContent);
+        const commentMentionController = createMentionAutocomplete(commentInput);
 
         const confirmLiveCreateButton = container.querySelector('#confirm-live-create-btn');
         const liveScreenOption = container.querySelector('#live-screen-option');
@@ -4583,6 +4886,7 @@
           pendingCommentId = Number(postId);
           commentInput.value = '';
           commentInput.style.height = '';
+          commentMentionController.clear();
           commentSort.value = currentCommentSort;
           syncCommentSortChips(currentCommentSort);
           commentModal.classList.remove('hidden');
@@ -4605,6 +4909,7 @@
 
         function closeCommentModal() {
           pendingCommentId = null;
+          commentMentionController.clear();
           if (commentPollTimer) {
             window.clearInterval(commentPollTimer);
             commentPollTimer = null;
@@ -4690,6 +4995,43 @@
           if (pendingCommentId) {
             renderCommentModalPost(pendingCommentId);
           }
+        }
+
+        async function ensureFeedPostAvailable(postId) {
+          const numericPostId = Number(postId);
+          if (!Number.isFinite(numericPostId) || numericPostId <= 0) {
+            return null;
+          }
+
+          const existing = findFeedPost(numericPostId);
+          if (existing) {
+            return existing;
+          }
+
+          const result = await PostsAPI.getPost(numericPostId);
+          if (!result?.ok || !result.data) {
+            return null;
+          }
+
+          const post = result.data;
+          const nextPosts = [post, ...feedPosts.filter((entry) => Number(entry.id) !== numericPostId)];
+          latestAppliedFeedSignature = buildFeedPageSignature(nextPosts);
+          applyFeedPosts(nextPosts);
+          return post;
+        }
+
+        async function maybeOpenFeedRoutePost() {
+          const routePostId = Number(params?.post || 0);
+          if (!Number.isFinite(routePostId) || routePostId <= 0) {
+            return;
+          }
+
+          const post = await ensureFeedPostAvailable(routePostId);
+          if (!post) {
+            return;
+          }
+
+          openCommentModal(routePostId);
         }
 
         function mergeFeedPages(firstPosts, existingPosts = feedPosts) {
@@ -4870,6 +5212,7 @@
         async function publishPost() {
           const content = postContent.value.trim();
           const visibility = postVisibility?.value || 'all';
+          const mentionUserIds = postMentionController.collectMentionUserIds();
           if (!content && !selectedImageFile) {
             showToast('Escribe algo o adjunta una imagen', 'error');
             return;
@@ -4878,7 +5221,7 @@
           publishButton.disabled = true;
           publishButton.textContent = 'Publicando...';
 
-          const result = await PostsAPI.createPost({ content, imageFile: selectedImageFile, visibility });
+          const result = await PostsAPI.createPost({ content, imageFile: selectedImageFile, visibility, mentionUserIds });
 
           publishButton.disabled = false;
           publishButton.textContent = 'Publicar';
@@ -4887,6 +5230,7 @@
             postContent.value = '';
             setPostVisibility('all');
             clearImage();
+            postMentionController.clear();
             showToast('Publicacion creada', 'success');
             loadFeed({ force: true });
             return;
@@ -4969,12 +5313,14 @@
 
         async function confirmComment() {
           const content = commentInput.value.trim();
+          const mentionUserIds = commentMentionController.collectMentionUserIds();
           if (!pendingCommentId || !content) return;
 
-          const result = await PostsAPI.addComment(pendingCommentId, content);
+          const result = await PostsAPI.addComment(pendingCommentId, content, mentionUserIds);
           if (result?.ok) {
             showToast('Comentario anadido', 'success');
             commentInput.value = '';
+            commentMentionController.clear();
             await loadFeed({ force: true });
             await loadComments(pendingCommentId, currentCommentSort);
             return;
@@ -5341,7 +5687,7 @@
           feedObserver.observe(feedLoadMoreSentinel);
         }
 
-        loadFeed();
+        loadFeed().then(() => maybeOpenFeedRoutePost()).catch(() => { });
         loadFriends();
         feedRefreshTimer = window.setInterval(() => {
           if (document.hidden) return;
@@ -5366,6 +5712,8 @@
             feedObserver.disconnect();
             feedObserver = null;
           }
+          postMentionController.destroy();
+          commentMentionController.destroy();
           closeReactionPicker();
         };
       },
@@ -9540,6 +9888,8 @@
         let selectedEditCoverPreviewUrl = '';
         let pendingCommentPostId = null;
         let currentCommentSort = 'newest';
+        let groupPostMentionController = null;
+        let groupCommentMentionController = createMentionAutocomplete(commentInput);
         const editCropState = {
           file: null,
           objectUrl: '',
@@ -9910,6 +10260,7 @@
         function openCommentModal(postId) {
           pendingCommentPostId = Number(postId);
           commentInput.value = '';
+          groupCommentMentionController?.clear();
           commentSort.value = currentCommentSort;
           syncCommentSortChips(currentCommentSort);
           commentModal.classList.remove('hidden');
@@ -9920,6 +10271,7 @@
 
         function closeCommentModal() {
           pendingCommentPostId = null;
+          groupCommentMentionController?.clear();
           commentModal.classList.add('hidden');
           commentModal.classList.remove('flex');
           commentPostPreview.innerHTML = '';
@@ -9955,6 +10307,8 @@
         async function loadConversation() {
           renderConversationTabSkeleton();
           if (!groupData?.can_view_conversation) return;
+          groupPostMentionController?.destroy();
+          groupPostMentionController = null;
 
           let selectedGroupImagePreviewUrl = '';
           const composerAvatar = conversationTab.querySelector('#group-composer-avatar');
@@ -9965,6 +10319,10 @@
           const contentInput = conversationTab.querySelector('#group-post-content');
           const publishButton = conversationTab.querySelector('#group-publish-btn');
           const postsList = conversationTab.querySelector('#group-posts-list');
+
+          if (contentInput) {
+            groupPostMentionController = createMentionAutocomplete(contentInput);
+          }
 
           if (composerAvatar) {
             setAvatarElement(composerAvatar, user);
@@ -10058,6 +10416,7 @@
 
             publishButton.addEventListener('click', async () => {
               const content = contentInput.value.trim();
+              const mentionUserIds = groupPostMentionController?.collectMentionUserIds?.() || [];
               if (!content && !selectedImageFile) {
                 showToast('Escribe algo o adjunta una imagen', 'error');
                 return;
@@ -10065,13 +10424,14 @@
 
               publishButton.disabled = true;
               publishButton.textContent = 'Publicando...';
-              const result = await PostsAPI.createGroupPost(groupId, { content, imageFile: selectedImageFile });
+              const result = await PostsAPI.createGroupPost(groupId, { content, imageFile: selectedImageFile, mentionUserIds });
               publishButton.disabled = false;
               publishButton.textContent = 'Publicar';
 
               if (result?.ok) {
                 contentInput.value = '';
                 clearImage();
+                groupPostMentionController?.clear();
                 showToast('Publicacion creada', 'success');
                 await reloadPosts();
                 return;
@@ -10209,6 +10569,11 @@
             const isSelf = Number(member.user_id) === Number(user.id);
             const canManageMember = groupCanManage() && member.role !== 'creator' && !isSelf;
             const canChangeRole = (groupData.current_role === 'creator' || isSystemAdmin()) && member.role !== 'creator' && !isSelf;
+            const roleLabel = member.role === 'creator'
+              ? 'Creador'
+              : member.role === 'admin'
+                ? 'Administrador'
+                : 'Miembro';
             return `
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4">
                       <div class="flex items-center gap-3">
@@ -10218,16 +10583,19 @@
                           <p class="text-sm text-slate-500">${escapeHtml(careerLabel(member.user || {}))}</p>
                         </div>
                       </div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${member.role === 'creator' ? 'bg-sky-50 text-sky-700 border border-sky-200' : member.role === 'admin' ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}">${escapeHtml(member.role)}</span>
+                      <div class="flex flex-wrap items-center justify-start md:justify-end gap-2 md:max-w-[24rem] md:min-w-[18rem]">
+                        <span class="inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap ${member.role === 'creator' ? 'bg-sky-50 text-sky-700 border border-sky-200' : member.role === 'admin' ? 'bg-violet-50 text-violet-700 border border-violet-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}">${escapeHtml(roleLabel)}</span>
                         ${canChangeRole ? `
-                          <select data-group-role-user="${member.user_id}" class="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                          <select data-group-role-user="${member.user_id}" class="min-w-[8.75rem] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-300 focus:border-[#1B2A6B] focus:outline-none focus:ring-2 focus:ring-[#1B2A6B]/10">
                             <option value="member" ${member.role === 'member' ? 'selected' : ''}>Miembro</option>
-                            <option value="admin" ${member.role === 'admin' ? 'selected' : ''}>Admin</option>
+                            <option value="admin" ${member.role === 'admin' ? 'selected' : ''}>Administrador</option>
                           </select>
                         ` : ''}
                         ${canManageMember ? `
-                          <button type="button" data-remove-group-member="${member.user_id}" class="px-4 py-2 rounded-xl border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors">Expulsar</button>
+                          <button type="button" data-remove-group-member="${member.user_id}" class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-red-200 bg-white text-red-600 text-sm font-semibold shadow-sm hover:bg-red-50 transition-colors whitespace-nowrap">
+                            <span class="material-symbols-outlined text-[18px] leading-none">person_remove</span>
+                            <span>Expulsar</span>
+                          </button>
                         ` : ''}
                       </div>
                     </div>
@@ -10355,6 +10723,42 @@
           renderHeader();
           renderInfoTab();
           return true;
+        }
+
+        async function ensureGroupPostAvailable(postId) {
+          const numericPostId = Number(postId);
+          if (!Number.isFinite(numericPostId) || numericPostId <= 0) {
+            return null;
+          }
+
+          const existing = findGroupPost(numericPostId);
+          if (existing) {
+            return existing;
+          }
+
+          const result = await PostsAPI.getPost(numericPostId);
+          if (!result?.ok || !result.data) {
+            return null;
+          }
+
+          groupPosts = [result.data, ...groupPosts.filter((post) => Number(post.id) !== numericPostId)];
+          return result.data;
+        }
+
+        async function maybeOpenGroupRoutePost() {
+          const routePostId = Number(params?.post || 0);
+          if (!Number.isFinite(routePostId) || routePostId <= 0) {
+            return;
+          }
+
+          setTab('conversation');
+          await loadConversation();
+          const post = await ensureGroupPostAvailable(routePostId);
+          if (!post) {
+            return;
+          }
+
+          openCommentModal(routePostId);
         }
 
         actionsWrap.addEventListener('click', async (event) => {
@@ -10570,11 +10974,13 @@
         });
         container.querySelector('#group-confirm-comment-btn').addEventListener('click', async () => {
           const content = commentInput.value.trim();
+          const mentionUserIds = groupCommentMentionController?.collectMentionUserIds?.() || [];
           if (!pendingCommentPostId || !content) return;
 
-          const result = await PostsAPI.addComment(pendingCommentPostId, content);
+          const result = await PostsAPI.addComment(pendingCommentPostId, content, mentionUserIds);
           if (result?.ok) {
             commentInput.value = '';
+            groupCommentMentionController?.clear();
             await loadComments(pendingCommentPostId, currentCommentSort);
             await loadConversation();
             return;
@@ -10637,9 +11043,16 @@
         return (async () => {
           const ok = await loadGroup();
           if (!ok) return null;
-          setTab('info');
-          renderInfoTab();
-          return () => { };
+          if (params?.post) {
+            await maybeOpenGroupRoutePost();
+          } else {
+            setTab('info');
+            renderInfoTab();
+          }
+          return () => {
+            groupPostMentionController?.destroy();
+            groupCommentMentionController?.destroy();
+          };
         })();
       },
     },
@@ -10699,6 +11112,7 @@
         const mediaCropResetButton = container.querySelector('#media-crop-reset-btn');
         const mediaCropCancelButton = container.querySelector('#media-crop-cancel-btn');
         const mediaCropCloseButton = container.querySelector('#media-crop-close-btn');
+        const profileCommentMentionController = createMentionAutocomplete(profileCommentInput);
 
         let profileData = null;
         let incomingRequestId = null;
@@ -11127,6 +11541,7 @@
           pendingProfileCommentId = Number(postId);
           profileCommentInput.value = '';
           profileCommentInput.style.height = '';
+          profileCommentMentionController.clear();
           profileCommentSort.value = currentProfileCommentSort;
           syncProfileCommentSortChips(currentProfileCommentSort);
           profileCommentModal.classList.remove('hidden');
@@ -11138,6 +11553,7 @@
 
         function closeProfileCommentModal() {
           pendingProfileCommentId = null;
+          profileCommentMentionController.clear();
           profileCommentPostPreview.innerHTML = '';
           profileCommentList.innerHTML = '<p class="text-sm text-slate-400 text-center">Selecciona una publicacion para ver sus comentarios.</p>';
           profileCommentModal.classList.add('hidden');
@@ -11173,12 +11589,14 @@
 
         async function confirmProfileComment() {
           const content = profileCommentInput.value.trim();
+          const mentionUserIds = profileCommentMentionController.collectMentionUserIds();
           if (!pendingProfileCommentId || !content) return;
 
-          const result = await PostsAPI.addComment(pendingProfileCommentId, content);
+          const result = await PostsAPI.addComment(pendingProfileCommentId, content, mentionUserIds);
           if (result?.ok) {
             showToast('Comentario anadido', 'success');
             profileCommentInput.value = '';
+            profileCommentMentionController.clear();
             await loadPosts(profileData.id);
             await loadProfileComments(pendingProfileCommentId, currentProfileCommentSort);
             return;
@@ -11214,6 +11632,14 @@
           postsList.innerHTML = posts.map((post) => renderPostCard(post, user.id, { canDelete: false })).join('');
           if (pendingProfileCommentId) {
             renderProfileCommentModalPost(pendingProfileCommentId);
+          }
+
+          const routePostId = Number(params?.post || 0);
+          if (Number.isFinite(routePostId) && routePostId > 0 && Number(params?.id || user.id) === Number(targetUserId)) {
+            const selectedPost = findProfilePost(routePostId);
+            if (selectedPost && pendingProfileCommentId !== routePostId) {
+              openProfileCommentModal(routePostId);
+            }
           }
         }
 
@@ -11809,6 +12235,7 @@
           window.removeEventListener('friendship:changed', handleProfileFriendshipChanged);
           window.removeEventListener('blocks:changed', handleProfileFriendshipChanged);
           document.removeEventListener('visibilitychange', handleProfileVisibilityChange);
+          profileCommentMentionController.destroy();
         };
       },
     },
@@ -12810,6 +13237,7 @@
         const commentsSort = container.querySelector('#admin-comments-sort');
         const commentsInput = container.querySelector('#admin-comment-input');
         const confirmCommentButton = container.querySelector('#admin-confirm-comment-btn');
+        const adminCommentMentionController = createMentionAutocomplete(commentsInput);
         const syncCommentsSortChips = bindCommentSortChips(commentsModal, commentsSort, (value) => {
           if (!currentCommentsPostId) return;
           showComments(currentCommentsPostId, value);
@@ -12823,6 +13251,7 @@
 
         function closeCommentsModal() {
           currentCommentsPostId = null;
+          adminCommentMentionController.clear();
           commentsModal.classList.add('hidden');
           commentsModal.classList.remove('flex');
         }
@@ -13034,16 +13463,18 @@
 
         async function confirmAdminComment() {
           const content = commentsInput.value.trim();
+          const mentionUserIds = adminCommentMentionController.collectMentionUserIds();
           if (!currentCommentsPostId || !content) return;
 
           confirmCommentButton.disabled = true;
-          const result = await PostsAPI.addComment(currentCommentsPostId, content);
+          const result = await PostsAPI.addComment(currentCommentsPostId, content, mentionUserIds);
           confirmCommentButton.disabled = false;
 
           if (result?.ok) {
             showToast('Comentario anadido', 'success');
             commentsInput.value = '';
             commentsInput.style.height = '';
+            adminCommentMentionController.clear();
             await loadPosts();
             await showComments(currentCommentsPostId, commentsSort.value);
             return;
@@ -13231,6 +13662,9 @@
         });
 
         loadPosts();
+        return () => {
+          adminCommentMentionController.destroy();
+        };
       },
     },
   };

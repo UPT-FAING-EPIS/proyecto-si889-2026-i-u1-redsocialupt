@@ -8132,3 +8132,72 @@ body #admin-comments-modal .post-comments-compose-send {
 body #admin-comments-modal .post-comments-compose-send .material-symbols-outlined {
   transform: rotate(-20deg) !important;
 }
+
+.mention-suggestions {
+  position: fixed;
+  z-index: 160;
+  max-height: min(320px, 48vh);
+  overflow-y: auto;
+  border: 1px solid #dbe3ef;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.18);
+  padding: 0.35rem;
+}
+
+.mention-suggestion-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  border: 0;
+  background: transparent;
+  border-radius: 0.85rem;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  transition: background-color 0.18s ease, transform 0.18s ease;
+}
+
+.mention-suggestion-item:hover,
+.mention-suggestion-item.is-active {
+  background: #eff6ff;
+}
+
+.mention-suggestion-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.mention-suggestion-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.mention-suggestion-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 0.74rem;
+  margin-top: 0.1rem;
+}
+
+.mention-suggestion-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.67rem;
+  font-weight: 700;
+}

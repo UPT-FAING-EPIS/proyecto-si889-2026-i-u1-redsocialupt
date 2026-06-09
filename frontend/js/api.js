@@ -356,19 +356,21 @@ const PostsAPI = {
   },
 
   // Crea un post. Si imageFile es un File, usa multipart; si no, usa JSON.
-  createPost: ({ content, imageFile, visibility = 'all' }) => {
+  createPost: ({ content, imageFile, visibility = 'all', mentionUserIds = [] }) => {
     if (imageFile) {
       const fd = new FormData();
       if (content) fd.append('content', content);
       fd.append('image', imageFile);
       fd.append('visibility', visibility);
+      mentionUserIds.forEach((userId) => fd.append('mention_user_ids[]', String(userId)));
       return apiFetchForm(`${API.posts}`, fd);
     }
     return apiFetch(`${API.posts}`, {
       method: 'POST',
-      body: JSON.stringify({ content, visibility }),
+      body: JSON.stringify({ content, visibility, mention_user_ids: mentionUserIds }),
     });
   },
+  getPost: (id) => apiFetch(`${API.posts}/${id}`),
   createLivestream: ({ liveTitle, content = '', visibility = 'all', liveSource = 'camera', streamKey, playbackUrl, streamAspectRatio }) => apiFetch(`/api/livestreams`, {
     method: 'POST',
     body: JSON.stringify({
@@ -417,8 +419,8 @@ const PostsAPI = {
     body: JSON.stringify({ reaction_type: reactionType }),
   }),
   getComments: (postId, sort = 'oldest') => apiFetch(`${API.posts}/${postId}/comments?sort=${encodeURIComponent(sort)}`),
-  addComment: (postId, content) => apiFetch(`${API.posts}/${postId}/comments`, {
-    method: 'POST', body: JSON.stringify({ content })
+  addComment: (postId, content, mentionUserIds = []) => apiFetch(`${API.posts}/${postId}/comments`, {
+    method: 'POST', body: JSON.stringify({ content, mention_user_ids: mentionUserIds })
   }),
   likeComment: (commentId) => apiFetch(`/api/comments/${commentId}/like`, { method: 'POST' }),
   reactComment: (commentId, reactionType = 'me_gusta') => apiFetch(`/api/comments/${commentId}/reaction`, {
@@ -442,20 +444,22 @@ const PostsAPI = {
     body: JSON.stringify(payload),
   }),
   getGroupPosts: (groupId) => apiFetch(`/api/group-posts/${groupId}`),
-  createGroupPost: (groupId, { content, imageFile }) => {
+  createGroupPost: (groupId, { content, imageFile, mentionUserIds = [] }) => {
     if (imageFile) {
       const fd = new FormData();
       if (content) fd.append('content', content);
       fd.append('image', imageFile);
+      mentionUserIds.forEach((userId) => fd.append('mention_user_ids[]', String(userId)));
       return apiFetchForm(`/api/group-posts/${groupId}`, fd);
     }
 
     return apiFetch(`/api/group-posts/${groupId}`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, mention_user_ids: mentionUserIds }),
     });
   },
   getGroupMedia: (groupId) => apiFetch(`/api/group-posts/${groupId}/media`),
+  getMentionNotifications: () => apiFetch(`/api/mentions`),
 };
 
 /* ── Social Service ───────────────────────────────────────────── */
@@ -809,6 +813,9 @@ function notificationItemId(item) {
   if (item.kind === 'missed_call') {
     return `missed-call-${item.callId}`;
   }
+  if (item.kind === 'mention') {
+    return `mention-${item.id}`;
+  }
   return String(item.id || `group-${item.groupName || 'group'}-${item.createdAt || ''}`);
 }
 
@@ -874,6 +881,33 @@ function bindNotificationInteractions(list) {
       } else if (action === 'reject') {
         await rejectFriendRequest(requestId);
       }
+    }
+
+    const mentionTarget = event.target.closest('[data-notif-open-route][data-notif-open-post]');
+    if (mentionTarget && window.AppRouter) {
+      event.preventDefault();
+      event.stopPropagation();
+      const route = String(mentionTarget.dataset.notifOpenRoute || '');
+      const postId = String(mentionTarget.dataset.notifOpenPost || '');
+      const routeId = String(mentionTarget.dataset.notifRouteId || '');
+      const commentId = String(mentionTarget.dataset.notifOpenComment || '');
+      const notificationId = String(mentionTarget.dataset.notificationId || '');
+      if (!route || !postId) return;
+
+      if (notificationId) {
+        const seenIds = getSeenNotificationIds();
+        seenIds.add(notificationId);
+        setSeenNotificationIds([...seenIds]);
+      }
+
+      const params = { post: postId };
+      if (commentId) params.comment = commentId;
+      if (routeId) params.id = routeId;
+
+      const dropdown = document.getElementById('notifications-dropdown');
+      dropdown?.classList.add('hidden');
+      window.AppRouter.navigate(route, params);
+      return;
     }
   });
 }
@@ -1015,6 +1049,36 @@ function buildGroupNotificationItem(item) {
   return wrapper;
 }
 
+function buildMentionNotificationItem(item, usersById = new Map()) {
+  const actor = usersById.get(Number(item.actor_user_id || 0)) || {};
+  const actorName = getDisplayName(actor) || 'Usuario';
+  const itemId = notificationItemId(item);
+  const wrapper = createNotificationWrapper(itemId);
+  wrapper.dataset.notifOpenRoute = item.group_id ? 'group' : 'feed';
+  wrapper.dataset.notifRouteId = item.group_id ? String(item.group_id) : '';
+  wrapper.dataset.notifOpenPost = String(item.post_id || '');
+  wrapper.dataset.notifOpenComment = item.comment_id ? String(item.comment_id) : '';
+  wrapper.classList.add('cursor-pointer', 'hover:bg-slate-50', 'transition-colors');
+  wrapper.appendChild(createNotificationAvatar(actorName, getFacultyColor(actor.faculty || getCareerLabel(actor) || ''))); 
+
+  const content = createNotificationElement('div', 'min-w-0 flex-1');
+  content.appendChild(createNotificationMetaRow('Mención', 'group', item.createdAt || item.created_at, itemId));
+  appendNotificationMessage(content, [
+    { text: actorName, className: 'font-bold' },
+    item.comment_id ? ' te mencionó en un comentario' : ' te mencionó en una publicación',
+  ]);
+
+  const excerpt = String(item.comment_excerpt || item.post_excerpt || '').trim();
+  if (excerpt) {
+    const preview = createNotificationElement('p', 'mt-2 text-xs text-slate-500 leading-5');
+    preview.textContent = excerpt;
+    content.appendChild(preview);
+  }
+
+  wrapper.appendChild(content);
+  return wrapper;
+}
+
 function renderNotificationsList(list, items) {
   list.replaceChildren();
   const fragment = document.createDocumentFragment();
@@ -1025,6 +1089,10 @@ function renderNotificationsList(list, items) {
     }
     if (item.kind === 'missed_call') {
       fragment.appendChild(buildMissedCallNotificationItem(item));
+      return;
+    }
+    if (item.kind === 'mention') {
+      fragment.appendChild(buildMentionNotificationItem(item, item.usersById || new Map()));
       return;
     }
     fragment.appendChild(buildGroupNotificationItem(item));
@@ -1065,11 +1133,13 @@ async function loadNotifications() {
       AuthAPI.listPublicUsers(),
       SocialAPI.getMyGroups(),
       ChatAPI.getMissedCalls(),
+      PostsAPI.getMentionNotifications(),
     ]);
     const result = settled[0].status === 'fulfilled' ? settled[0].value : null;
     const usersResult = settled[1].status === 'fulfilled' ? settled[1].value : null;
     const myGroupsResult = settled[2].status === 'fulfilled' ? settled[2].value : null;
     const missedCallsResult = settled[3].status === 'fulfilled' ? settled[3].value : null;
+    const mentionNotificationsResult = settled[4].status === 'fulfilled' ? settled[4].value : null;
     const requests = getList(result);
     const usersById = new Map(getList(usersResult).map((item) => [Number(item.id), item]));
     if (!(result && result.ok)) {
@@ -1113,18 +1183,24 @@ async function loadNotifications() {
       return { kind: 'friend', requestId: req.id, user, createdAt: req.created_at };
     }),
     ...groupNotifications.map((item) => ({ kind: 'group', ...item })),
-    ...getList(missedCallsResult).map((call) => {
-      const callerId = Number(call.caller_id || 0);
-      const caller = usersById.get(callerId) || {};
-      return {
-        kind: 'missed_call',
+      ...getList(missedCallsResult).map((call) => {
+        const callerId = Number(call.caller_id || 0);
+        const caller = usersById.get(callerId) || {};
+        return {
+          kind: 'missed_call',
         callId: call.id,
         caller,
         createdAt: call.updated_at || call.created_at,
-        mode: call.mode || 'audio',
-      };
-    }),
-  ].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+          mode: call.mode || 'audio',
+        };
+      }),
+      ...getList(mentionNotificationsResult).map((item) => ({
+        kind: 'mention',
+        createdAt: item.created_at,
+        ...item,
+        usersById,
+      })),
+  ].sort((a, b) => new Date(b.createdAt || b.created_at || 0) - new Date(a.createdAt || a.created_at || 0));
 
   const seenIds = getSeenNotificationIds();
   const unseenItems = items.filter((item) => !seenIds.has(notificationItemId(item)));

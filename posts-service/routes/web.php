@@ -15,6 +15,7 @@ $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($rou
     $router->get('/posts', 'PostController@index');
     $router->get('/posts/admin/all', 'PostController@adminIndex');
     $router->get('/posts/{id}', 'PostController@show');
+    $router->get('/mentions', 'PostController@mentions');
     $router->post('/livestreams', 'LivestreamController@store');
     $router->get('/livestreams/active', 'LivestreamController@active');
     $router->get('/livestreams/{id}', 'LivestreamController@show');
