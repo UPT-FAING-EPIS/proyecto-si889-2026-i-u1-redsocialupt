@@ -70,36 +70,6 @@
               </div>
               <div id="admin-reports-pagination" class="app-pagination hidden"></div>
             </div>
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
-              <div class="p-4 border-b border-slate-200 space-y-1">
-                <h2 class="text-sm font-bold text-slate-900">Sanciones activas</h2>
-                <p class="text-xs text-slate-500">Administra los usuarios bloqueados, su duración y su razón actual.</p>
-              </div>
-              <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse min-w-[980px] table-fixed">
-                  <colgroup>
-                    <col class="w-[24%]"/>
-                    <col class="w-[20%]"/>
-                    <col class="w-[28%]"/>
-                    <col class="w-[12%]"/>
-                    <col class="w-[16%]"/>
-                  </colgroup>
-                  <thead>
-                    <tr class="bg-slate-100/50 border-b border-slate-200">
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Usuario</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Estado</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Razón</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider">Desde</th>
-                      <th class="py-3 px-5 text-[12px] font-bold text-slate-500 uppercase tracking-wider text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody id="admin-sanctions-tbody" class="divide-y divide-slate-100">
-                    <tr><td colspan="5" class="py-8 text-center text-slate-400">Cargando sanciones...</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div id="admin-sanctions-pagination" class="app-pagination hidden"></div>
-            </div>
           </div>
           <div id="review-report-modal" class="fixed inset-0 z-[120] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
             <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
@@ -145,7 +115,7 @@
                 </div>
                 <button id="close-sanction-report-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
               </div>
-              <form id="sanction-report-form" class="p-6 space-y-5">
+              <form id="sanction-report-form" class="p-6 space-y-4">
                 <input id="sanction-report-id" type="hidden"/>
                 <input id="sanction-report-service" type="hidden"/>
                 <input id="sanction-report-target-type" type="hidden"/>
@@ -153,20 +123,23 @@
                 <input id="sanction-report-user-id" type="hidden"/>
                 <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
                   <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario denunciado</p>
-                  <p id="sanction-report-user" class="text-sm font-semibold text-slate-900"></p>
+                  <p id="sanction-report-user" class="text-base font-semibold text-slate-900 leading-tight"></p>
                 </div>
-                <div class="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Acciones adicionales</p>
-                  <div id="sanction-actions" class="space-y-3"></div>
+                <div class="rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
+                  <div>
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Acciones adicionales</p>
+                    <p class="text-xs text-slate-500 mt-1">Selecciona qué ocurrirá con el usuario y con el contenido denunciado.</p>
+                  </div>
+                  <div id="sanction-actions" class="space-y-2.5"></div>
                   <div id="sanction-block-config" class="report-block-accordion" aria-hidden="true">
-                    <div class="report-block-accordion__panel rounded-xl border border-slate-200 bg-white px-3.5 py-3.5 space-y-3">
+                    <div class="report-block-accordion__panel rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 space-y-4">
                       <div>
-                        <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Configuracion del bloqueo</p>
-                        <p class="text-xs text-slate-500 mt-1">Define la duracion y la razon del bloqueo para este usuario.</p>
+                        <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Configuración del bloqueo</p>
+                        <p class="text-xs text-slate-500 mt-1">Define la duración y la razón del bloqueo para este usuario.</p>
                       </div>
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="flex flex-col gap-1.5">
-                          <label class="text-sm font-semibold text-gray-700" for="sanction-duration">Duracion del bloqueo</label>
+                          <label class="text-sm font-semibold text-gray-700" for="sanction-duration">Duración del bloqueo</label>
                           <select id="sanction-duration" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
                             <option value="24h">24 horas</option>
                             <option value="48h">48 horas</option>
@@ -175,7 +148,7 @@
                             <option value="indefinite">Indefinido</option>
                           </select>
                         </div>
-                        <div id="sanction-custom-group" class="hidden grid grid-cols-[1fr_120px] gap-2 items-end">
+                        <div id="sanction-custom-group" class="hidden grid grid-cols-[1fr_130px] gap-2 items-end">
                           <div class="flex flex-col gap-1.5">
                             <label class="text-sm font-semibold text-gray-700" for="sanction-custom-value">Tiempo</label>
                             <input id="sanction-custom-value" min="1" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
@@ -192,69 +165,15 @@
                         </div>
                       </div>
                       <div class="flex flex-col gap-1.5">
-                        <label class="text-sm font-semibold text-gray-700" for="sanction-reason">Razon de la sancion</label>
-                        <textarea id="sanction-reason" class="w-full min-h-[120px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Esta razon se mostrara cuando el usuario bloqueado intente volver a entrar."></textarea>
+                        <label class="text-sm font-semibold text-gray-700" for="sanction-reason">Razón de la sanción</label>
+                        <textarea id="sanction-reason" class="w-full min-h-[110px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Esta razón se mostrará cuando el usuario bloqueado intente volver a entrar."></textarea>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div class="flex justify-end gap-3 pt-2">
+                <div class="flex justify-end gap-3 pt-1 flex-wrap">
                   <button id="cancel-sanction-report-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
                   <button type="submit" class="px-6 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Aplicar sancion</button>
-                </div>
-              </form>
-            </div>
-          </div>
-          <div id="manage-sanction-modal" class="fixed inset-0 z-[135] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
-              <div class="flex justify-between items-center p-6 border-b border-slate-200">
-                <div>
-                  <h2 class="text-lg font-bold text-slate-900">Editar sancion</h2>
-                  <p class="text-sm text-slate-500 mt-1">Actualiza la duracion o la razon del bloqueo actual.</p>
-                </div>
-                <button id="close-manage-sanction-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
-              </div>
-              <form id="manage-sanction-form" class="p-6 space-y-5">
-                <input id="manage-sanction-user-id" type="hidden"/>
-                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario bloqueado</p>
-                  <p id="manage-sanction-user" class="text-sm font-semibold text-slate-900"></p>
-                  <p id="manage-sanction-current" class="text-xs text-slate-500 mt-1"></p>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5">
-                    <label class="text-sm font-semibold text-gray-700" for="manage-sanction-duration">Duracion del bloqueo</label>
-                    <select id="manage-sanction-duration" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                      <option value="24h">24 horas</option>
-                      <option value="48h">48 horas</option>
-                      <option value="1w">1 semana</option>
-                      <option value="custom">Manual</option>
-                      <option value="indefinite">Indefinido</option>
-                    </select>
-                  </div>
-                  <div id="manage-sanction-custom-group" class="hidden grid grid-cols-[1fr_120px] gap-2 items-end">
-                    <div class="flex flex-col gap-1.5">
-                      <label class="text-sm font-semibold text-gray-700" for="manage-sanction-custom-value">Tiempo</label>
-                      <input id="manage-sanction-custom-value" min="1" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <label class="text-sm font-semibold text-gray-700" for="manage-sanction-custom-unit">Unidad</label>
-                      <select id="manage-sanction-custom-unit" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                        <option value="minutes">Minutos</option>
-                        <option value="hours">Horas</option>
-                        <option value="days">Dias</option>
-                        <option value="weeks">Semanas</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-semibold text-gray-700" for="manage-sanction-reason">Razon de la sancion</label>
-                  <textarea id="manage-sanction-reason" class="w-full min-h-[120px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Esta razon se mostrara cuando el usuario bloqueado intente volver a entrar."></textarea>
-                </div>
-                <div class="flex justify-end gap-3 pt-2">
-                  <button id="cancel-manage-sanction-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-[#1B2A6B] text-white text-sm font-semibold hover:bg-[#15215a] transition-colors">Guardar cambios</button>
                 </div>
               </form>
             </div>

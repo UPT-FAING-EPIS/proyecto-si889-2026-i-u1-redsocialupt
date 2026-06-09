@@ -317,6 +317,7 @@ class AuthController extends BaseController
                 if ($durationUnit === 'hours') $blockedUntil->addHours($durationValue);
                 if ($durationUnit === 'days') $blockedUntil->addDays($durationValue);
                 if ($durationUnit === 'weeks') $blockedUntil->addWeeks($durationValue);
+                $blockedUntil->second(0)->microsecond(0);
                 $blockedUntil = $blockedUntil->toIso8601String();
             }
 

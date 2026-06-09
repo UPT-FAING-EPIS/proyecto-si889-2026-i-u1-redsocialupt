@@ -32,9 +32,15 @@
             </div>
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div class="p-4 border-b border-slate-200 space-y-4">
-                <div class="relative max-w-2xl">
-                  <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
-                  <input id="admin-user-search" class="w-full bg-slate-50 border border-slate-200 rounded-full py-2 pl-10 pr-4 text-sm focus:ring-1 focus:ring-[#1B2A6B] outline-none" placeholder="Buscar usuario..." type="text"/>
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div class="relative max-w-2xl flex-1">
+                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
+                    <input id="admin-user-search" class="w-full bg-slate-50 border border-slate-200 rounded-full py-2 pl-10 pr-4 text-sm focus:ring-1 focus:ring-[#1B2A6B] outline-none" placeholder="Buscar usuario..." type="text"/>
+                  </div>
+                  <label class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 select-none">
+                    <input id="admin-user-sanctioned-only" type="checkbox" class="rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]"/>
+                    Solo sancionados
+                  </label>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
                   <select id="admin-user-faculty-filter" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:ring-1 focus:ring-[#1B2A6B] outline-none">
@@ -146,55 +152,78 @@
               </form>
             </div>
           </div>
-          <div id="block-user-modal" class="fixed inset-0 z-[110] hidden items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+          <div id="user-sanction-modal" class="fixed inset-0 z-[110] hidden items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
               <div class="flex justify-between items-center p-6 border-b border-slate-200">
                 <div>
-                  <h2 class="text-lg font-bold text-slate-900">Bloquear usuario</h2>
-                  <p class="text-sm text-slate-500 mt-1">Define la duración del bloqueo y una razón opcional visible para el usuario.</p>
+                  <h2 id="user-sanction-title" class="text-lg font-bold text-slate-900">Bloquear usuario</h2>
+                  <p id="user-sanction-subtitle" class="text-sm text-slate-500 mt-1">Define la duración del bloqueo y una razón opcional visible para el usuario.</p>
                 </div>
-                <button id="close-block-user-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
+                <button id="close-user-sanction-modal-btn" type="button" class="p-1 rounded-full hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined">close</span></button>
               </div>
-              <form id="block-user-form" class="p-6 space-y-5">
-                <input id="block-user-id" type="hidden"/>
-                <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario</p>
-                  <p id="block-user-name" class="text-sm font-semibold text-slate-900"></p>
-                  <p id="block-user-email" class="text-xs text-slate-500 mt-1"></p>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div class="flex flex-col gap-1.5">
-                    <label class="text-sm font-semibold text-gray-700" for="block-user-duration">Duracion</label>
-                    <select id="block-user-duration" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                      <option value="24h">24 horas</option>
-                      <option value="48h">48 horas</option>
-                      <option value="1w">1 semana</option>
-                      <option value="custom">Manual</option>
-                      <option value="indefinite">Indefinido</option>
-                    </select>
+              <form id="user-sanction-form" class="p-6 space-y-4">
+                <input id="user-sanction-id" type="hidden"/>
+                <div class="grid grid-cols-1 md:grid-cols-[1.15fr_0.85fr] gap-4">
+                  <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Usuario</p>
+                    <p id="user-sanction-name" class="text-base font-semibold text-slate-900 leading-tight"></p>
+                    <p id="user-sanction-email" class="text-xs text-slate-500 mt-1 break-all"></p>
                   </div>
-                  <div id="block-user-custom-group" class="hidden grid grid-cols-[1fr_120px] gap-2 items-end">
-                    <div class="flex flex-col gap-1.5">
-                      <label class="text-sm font-semibold text-gray-700" for="block-user-custom-value">Tiempo</label>
-                      <input id="block-user-custom-value" min="1" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
+                  <div class="rounded-2xl bg-[#F8FAFC] border border-slate-200 p-4">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Estado actual</p>
+                    <p id="user-sanction-current" class="text-sm font-semibold text-slate-900 leading-6"></p>
+                  </div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
+                  <div class="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Configuración de la sanción</p>
+                      <p class="text-xs text-slate-500 mt-1">Ajusta la duración y la razón visible para el usuario.</p>
                     </div>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div class="flex flex-col gap-1.5">
-                      <label class="text-sm font-semibold text-gray-700" for="block-user-custom-unit">Unidad</label>
-                      <select id="block-user-custom-unit" class="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
-                        <option value="hours">Horas</option>
-                        <option value="days">Dias</option>
-                        <option value="weeks">Semanas</option>
+                      <label class="text-sm font-semibold text-gray-700" for="user-sanction-duration">Duración del bloqueo</label>
+                      <select id="user-sanction-duration" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                        <option value="24h">24 horas</option>
+                        <option value="48h">48 horas</option>
+                        <option value="1w">1 semana</option>
+                        <option value="custom">Manual</option>
+                        <option value="indefinite">Indefinido</option>
                       </select>
                     </div>
+                    <div id="user-sanction-custom-group" class="hidden grid grid-cols-[1fr_130px] gap-2 items-end">
+                      <div class="flex flex-col gap-1.5">
+                        <label class="text-sm font-semibold text-gray-700" for="user-sanction-custom-value">Tiempo</label>
+                        <input id="user-sanction-custom-value" min="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none" type="number" value="1"/>
+                      </div>
+                      <div class="flex flex-col gap-1.5">
+                        <label class="text-sm font-semibold text-gray-700" for="user-sanction-custom-unit">Unidad</label>
+                        <select id="user-sanction-custom-unit" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none">
+                          <option value="minutes">Minutos</option>
+                          <option value="hours">Horas</option>
+                          <option value="days">Dias</option>
+                          <option value="weeks">Semanas</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex flex-col gap-1.5">
+                    <label class="text-sm font-semibold text-gray-700" for="user-sanction-reason">Razón de la sanción</label>
+                    <textarea id="user-sanction-reason" class="w-full min-h-[110px] bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Ej.: Incumplimiento de normas de la comunidad."></textarea>
                   </div>
                 </div>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-semibold text-gray-700" for="block-user-reason">Razon del bloqueo</label>
-                  <textarea id="block-user-reason" class="w-full min-h-[120px] bg-white border border-slate-200 rounded-2xl p-4 text-sm focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Opcional. Ej.: Incumplimiento de normas de la comunidad."></textarea>
+                <div id="user-sanction-active-card" class="hidden rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="mb-3">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Sanción activa</p>
+                    <p class="text-xs text-slate-500 mt-1">Resumen del bloqueo vigente para este usuario.</p>
+                  </div>
+                  <div id="user-sanction-history" class="space-y-3"></div>
                 </div>
-                <div class="flex justify-end gap-3 pt-2">
-                  <button id="cancel-block-user-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
-                  <button type="submit" class="px-6 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Bloquear cuenta</button>
+                <div class="flex justify-end gap-3 pt-1 flex-wrap">
+                  <button id="remove-user-sanction-btn" type="button" class="hidden px-6 py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors">Levantar sanción</button>
+                  <button id="cancel-user-sanction-btn" type="button" class="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">Cancelar</button>
+                  <button id="submit-user-sanction-btn" type="submit" class="px-6 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Bloquear cuenta</button>
                 </div>
               </form>
             </div>
