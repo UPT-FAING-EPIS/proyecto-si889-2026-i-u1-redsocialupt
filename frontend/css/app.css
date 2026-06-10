@@ -3167,14 +3167,20 @@ body {
 
 .profile-view .profile-data-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1.5rem;
 }
 
 .profile-view .profile-data-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: .75rem;
+  min-width: 0;
+}
+
+.profile-view .profile-data-item .material-symbols-outlined {
+  flex: 0 0 1.5rem;
+  margin-top: .1rem;
 }
 
 .profile-view .profile-data-item .label {
@@ -3189,6 +3195,12 @@ body {
   font-weight: 500;
   color: #111827;
   margin-top: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.profile-view .profile-data-item > div {
+  min-width: 0;
 }
 
 .profile-view .profile-about {

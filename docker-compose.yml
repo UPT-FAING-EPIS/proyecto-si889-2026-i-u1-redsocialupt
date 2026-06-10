@@ -171,8 +171,8 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./frontend:/usr/share/nginx/html
-      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./frontend:/srv
+      - ./frontend/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - auth-service
       - posts-service

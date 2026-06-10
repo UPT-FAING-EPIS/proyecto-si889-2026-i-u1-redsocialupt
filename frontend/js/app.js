@@ -1841,11 +1841,8 @@
     document.addEventListener('mouseout', handleMouseOut);
     window.addEventListener('scroll', handleScrollOrResize, true);
     window.addEventListener('resize', handleScrollOrResize);
-    document.addEventListener('click', (event) => {
-      const target = event.target;
-      if (!(target instanceof Element) || !target.closest('[data-mention-profile="true"]')) {
-        hideMentionProfilePopover();
-      }
+    document.addEventListener('click', () => {
+      hideMentionProfilePopover();
     }, true);
   }
 
@@ -5829,6 +5826,7 @@
 
           if (button.dataset.action === 'open-profile') {
             event.preventDefault();
+            hideMentionProfilePopover();
             router.navigate('profile', { id: button.dataset.userId });
             return;
           }
@@ -10787,6 +10785,7 @@
           postsList.addEventListener('click', async (event) => {
             const profileButton = event.target.closest('[data-action="open-profile"]');
             if (profileButton) {
+              hideMentionProfilePopover();
               router.navigate('profile', { id: profileButton.dataset.userId });
               return;
             }
@@ -12369,6 +12368,7 @@
 
           if (button.dataset.action === 'open-profile') {
             event.preventDefault();
+            hideMentionProfilePopover();
             router.navigate('profile', { id: button.dataset.userId });
             return;
           }
@@ -13906,6 +13906,7 @@
 
           if (button.dataset.action === 'open-profile') {
             event.preventDefault();
+            hideMentionProfilePopover();
             router.navigate('profile', { id: button.dataset.userId });
             return;
           }
