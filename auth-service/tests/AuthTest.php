@@ -4,6 +4,7 @@ namespace Tests;
 
 use App\Models\User;
 use Firebase\JWT\JWT;
+use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\TestDox;
 
 class AuthTest extends TestCase
@@ -327,5 +328,39 @@ class AuthTest extends TestCase
             'message' => 'Usuario promovido a admin',
             'role' => 'admin',
         ]);
+    }
+    #[TestDox('Levantar sancion no re-bloquea si la sancion ya expiro automaticamente')]
+    public function testUnblockDoesNotReblockUserWhenSanctionAlreadyExpired(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-10 20:00:00'));
+
+        try {
+            $admin = $this->createUser(['role' => 'admin']);
+            $blockedUser = $this->createUser([
+                'is_active' => false,
+                'blocked_reason' => 'Sancion temporal',
+                'blocked_until' => Carbon::now()->subMinute(),
+            ]);
+
+            $token = $this->generateTestToken([
+                'sub' => $admin->id,
+                'role' => 'admin',
+                'email' => $admin->email,
+            ]);
+
+            $this->put('/api/auth/admin/users/' . $blockedUser->id, [], $this->authHeader($token));
+            $this->seeStatusCode(200);
+            $this->seeJson([
+                'message' => 'Usuario desbloqueado',
+                'user' => [
+                    'id' => $blockedUser->id,
+                    'is_active' => true,
+                    'blocked_until' => null,
+                    'blocked_reason' => null,
+                ],
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 }

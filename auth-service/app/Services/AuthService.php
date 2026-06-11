@@ -355,12 +355,14 @@ class AuthService
             || trim((string) $blockedReason) !== ''
             || trim((string) $blockedUntil) !== '';
 
-        if (!$user->is_active && !$hasBlockPayload) {
-            $user->forceFill([
-                'is_active' => true,
-                'blocked_reason' => null,
-                'blocked_until' => null,
-            ])->save();
+        if (!$hasBlockPayload) {
+            if (!$user->is_active) {
+                $user->forceFill([
+                    'is_active' => true,
+                    'blocked_reason' => null,
+                    'blocked_until' => null,
+                ])->save();
+            }
 
             return $user->fresh();
         }
