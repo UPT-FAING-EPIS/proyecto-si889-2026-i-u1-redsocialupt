@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Post extends Model
 {
     protected $table    = 'posts';
-    protected $fillable = ['user_id', 'group_id', 'post_type', 'user_name', 'user_school', 'user_faculty', 'user_avatar', 'group_name', 'content', 'image_url', 'visibility', 'live_status', 'live_title', 'stream_key', 'playback_url', 'live_source', 'stream_aspect_ratio', 'duration_seconds'];
+    protected $fillable = ['user_id', 'group_id', 'post_type', 'user_name', 'user_school', 'user_faculty', 'user_avatar', 'group_name', 'content', 'image_url', 'media_type', 'video_url', 'video_mime_type', 'visibility', 'live_status', 'live_title', 'stream_key', 'playback_url', 'live_source', 'stream_aspect_ratio', 'duration_seconds'];
     protected $casts    = [
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

@@ -19,13 +19,14 @@
                   <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 bg-cover bg-center" id="composer-avatar" style="background:#1B2A6B">U</div>
                   <div class="feed-composer-input-wrap">
                     <textarea id="post-content" class="feed-composer-input" placeholder="¿Que esta pasando?" rows="2"></textarea>
-                    <div id="img-preview-wrap" class="feed-composer-preview">
+                    <div id="img-preview-wrap" class="feed-composer-preview hidden">
                       <img id="img-preview" alt="Vista previa"/>
+                      <video id="video-preview" class="hidden" playsinline controls preload="metadata"></video>
                       <button id="clear-image-btn" type="button" title="Quitar imagen">x</button>
                     </div>
                   </div>
                 </div>
-                <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" class="hidden"/>
+                <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm" class="hidden"/>
                 <input type="file" id="camera-input" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" capture="environment" class="hidden"/>
                 <div class="feed-composer-footer">
                   <div class="feed-composer-tools">

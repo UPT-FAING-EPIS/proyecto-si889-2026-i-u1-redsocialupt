@@ -31,6 +31,9 @@ class PostService
             'group_name' => $data['group_name'] ?? null,
             'content' => $data['content'] ?? null,
             'image_url' => $data['image_url'] ?? null,
+            'media_type' => $data['media_type'] ?? null,
+            'video_url' => $data['video_url'] ?? null,
+            'video_mime_type' => $data['video_mime_type'] ?? null,
             'visibility' => $data['visibility'] ?? 'all',
         ]);
     }
@@ -103,7 +106,7 @@ class PostService
     public function getGroupMedia(int $groupId, int $userId, string $jwt): \Illuminate\Support\Collection
     {
         return $this->getGroupPosts($groupId, $userId, $jwt)
-            ->filter(fn (Post $post) => !empty($post->image_url))
+            ->filter(fn (Post $post) => !empty($post->image_url) || !empty($post->video_url))
             ->values();
     }
 

@@ -128,6 +128,9 @@ class ReportService
             'content_preview' => $preview,
             'content' => $full ? ($content !== '' ? $content : $fallbackText) : null,
             'image_url' => $full && $report->target_type === 'post' ? ($target->image_url ?? null) : null,
+            'media_type' => $full && $report->target_type === 'post' ? ($target->media_type ?? null) : null,
+            'video_url' => $full && $report->target_type === 'post' ? ($target->video_url ?? null) : null,
+            'video_mime_type' => $full && $report->target_type === 'post' ? ($target->video_mime_type ?? null) : null,
             'post_id' => $report->target_type === 'comment' ? ($target->post_id ?? null) : null,
         ];
     }

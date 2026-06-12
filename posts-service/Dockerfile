@@ -4,6 +4,7 @@ FROM php:8.4-cli-alpine
 
 RUN set -eux; \
     apk add --no-cache \
+        ffmpeg \
         freetype \
         libjpeg-turbo \
         libpng \

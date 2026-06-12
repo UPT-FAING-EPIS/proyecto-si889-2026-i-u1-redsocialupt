@@ -732,6 +732,22 @@ body {
   overflow: hidden;
 }
 
+.feed-composer-preview img,
+.feed-composer-preview video {
+  width: 100%;
+  max-height: 320px;
+  display: block;
+}
+
+.feed-composer-preview img {
+  object-fit: cover;
+}
+
+.feed-composer-preview video {
+  object-fit: contain;
+  background: #020617;
+}
+
 .feed-composer-preview.upload-preview-unavailable,
 #group-image-preview-wrap.upload-preview-unavailable,
 #group-cover-preview.upload-preview-unavailable,
@@ -2708,6 +2724,15 @@ body {
   max-height: 52vh;
   border-radius: 1.5rem;
   object-fit: cover;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.post-modal-preview-media video {
+  width: 100%;
+  max-height: 52vh;
+  border-radius: 1.5rem;
+  object-fit: contain;
+  background: #020617;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
@@ -6038,6 +6063,16 @@ body #profile-comment-modal .post-modal-preview-media img {
   object-fit: cover !important;
 }
 
+body #comment-modal .post-modal-preview-media video,
+body #group-comment-modal .post-modal-preview-media video,
+body #profile-comment-modal .post-modal-preview-media video {
+  width: 100% !important;
+  max-height: 420px !important;
+  border-radius: 1rem !important;
+  object-fit: contain !important;
+  background: #020617 !important;
+}
+
 body #comment-modal .post-modal-preview-stats,
 body #group-comment-modal .post-modal-preview-stats,
 body #profile-comment-modal .post-modal-preview-stats {
@@ -7690,6 +7725,15 @@ body #admin-comments-modal .post-modal-preview-media img {
   border: 1px solid #e2e8f0 !important;
   border-radius: 0.85rem !important;
   object-fit: cover !important;
+}
+
+body #admin-comments-modal .post-modal-preview-media video {
+  width: 100% !important;
+  max-height: 300px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.85rem !important;
+  object-fit: contain !important;
+  background: #020617 !important;
 }
 
 body #admin-comments-modal .post-modal-preview-stats {

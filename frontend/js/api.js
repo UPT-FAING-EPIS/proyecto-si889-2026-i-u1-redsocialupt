@@ -319,6 +319,15 @@ const AuthAPI = {
 };
 
 /* ── Posts Service ────────────────────────────────────────────── */
+function resolvePostMediaFieldName(file) {
+  const mimeType = String(file?.type || '').trim().toLowerCase();
+  const fileName = String(file?.name || '').trim().toLowerCase();
+  if (mimeType.startsWith('video/') || fileName.endsWith('.mp4') || fileName.endsWith('.webm')) {
+    return 'video';
+  }
+  return 'image';
+}
+
 const PostsAPI = {
   getFeed: async (pageOrOptions = null, perPage = null) => {
     const friendIds = friendIdsCache.length ? friendIdsCache.slice() : await fetchFriendIds();
@@ -355,12 +364,12 @@ const PostsAPI = {
     });
   },
 
-  // Crea un post. Si imageFile es un File, usa multipart; si no, usa JSON.
-  createPost: ({ content, imageFile, visibility = 'all', mentionUserIds = [] }) => {
-    if (imageFile) {
+  // Crea un post. Si mediaFile es un File, usa multipart; si no, usa JSON.
+  createPost: ({ content, mediaFile, visibility = 'all', mentionUserIds = [] }) => {
+    if (mediaFile) {
       const fd = new FormData();
       if (content) fd.append('content', content);
-      fd.append('image', imageFile);
+      fd.append(resolvePostMediaFieldName(mediaFile), mediaFile);
       fd.append('visibility', visibility);
       mentionUserIds.forEach((userId) => fd.append('mention_user_ids[]', String(userId)));
       return apiFetchForm(`${API.posts}`, fd);
@@ -444,11 +453,11 @@ const PostsAPI = {
     body: JSON.stringify(payload),
   }),
   getGroupPosts: (groupId) => apiFetch(`/api/group-posts/${groupId}`),
-  createGroupPost: (groupId, { content, imageFile, mentionUserIds = [] }) => {
-    if (imageFile) {
+  createGroupPost: (groupId, { content, mediaFile, mentionUserIds = [] }) => {
+    if (mediaFile) {
       const fd = new FormData();
       if (content) fd.append('content', content);
-      fd.append('image', imageFile);
+      fd.append(resolvePostMediaFieldName(mediaFile), mediaFile);
       mentionUserIds.forEach((userId) => fd.append('mention_user_ids[]', String(userId)));
       return apiFetchForm(`/api/group-posts/${groupId}`, fd);
     }

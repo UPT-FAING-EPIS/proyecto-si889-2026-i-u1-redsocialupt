@@ -119,6 +119,12 @@
   ]);
   const SUPPORTED_UPLOAD_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
   const IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+  const SUPPORTED_UPLOAD_VIDEO_MIME_TYPES = new Set([
+    'video/mp4',
+    'video/webm',
+  ]);
+  const SUPPORTED_UPLOAD_VIDEO_EXTENSIONS = new Set(['mp4', 'webm']);
+  const VIDEO_UPLOAD_MAX_BYTES = 30 * 1024 * 1024;
 
   let confirmModalPromiseResolver = null;
   let reactionPickerState = null;
@@ -418,6 +424,50 @@
     }
 
     return { ok: true };
+  }
+
+  function validateSupportedVideoFile(file, label = 'video') {
+    if (!file) {
+      return { ok: false, error: `Selecciona un ${label} valido.` };
+    }
+
+    const mimeType = String(file.type || '').trim().toLowerCase();
+    const extension = getFileExtension(file.name);
+    const looksLikeVideo = mimeType.startsWith('video/') || SUPPORTED_UPLOAD_VIDEO_EXTENSIONS.has(extension);
+
+    if (!looksLikeVideo) {
+      return { ok: false, error: `Selecciona un ${label} valido.` };
+    }
+
+    const isSupportedType = SUPPORTED_UPLOAD_VIDEO_MIME_TYPES.has(mimeType) || SUPPORTED_UPLOAD_VIDEO_EXTENSIONS.has(extension);
+    if (!isSupportedType) {
+      return { ok: false, error: `El ${label} debe estar en MP4 o WEBM.` };
+    }
+
+    if (Number(file.size || 0) > VIDEO_UPLOAD_MAX_BYTES) {
+      return { ok: false, error: `El ${label} no debe superar los 30 MB.` };
+    }
+
+    return { ok: true };
+  }
+
+  function validateSupportedPostMediaFile(file, label = 'archivo multimedia') {
+    if (!file) {
+      return { ok: false, error: `Selecciona un ${label} valido.` };
+    }
+
+    const mimeType = String(file.type || '').trim().toLowerCase();
+    const extension = getFileExtension(file.name);
+
+    if (mimeType.startsWith('image/') || SUPPORTED_UPLOAD_IMAGE_EXTENSIONS.has(extension)) {
+      return validateSupportedImageFile(file, 'imagen');
+    }
+
+    if (mimeType.startsWith('video/') || SUPPORTED_UPLOAD_VIDEO_EXTENSIONS.has(extension)) {
+      return validateSupportedVideoFile(file, 'video');
+    }
+
+    return { ok: false, error: 'Adjunta una imagen JPG/PNG/GIF/WEBP o un video MP4/WEBM.' };
   }
 
   function markPreviewUnavailable(previewWrap, previewImage, message) {
@@ -1722,6 +1772,76 @@
     }
   }
 
+  function resetMediaPreview(previewWrap, previewImage, previewVideo) {
+    clearPreviewUnavailable(previewWrap, previewImage);
+    if (previewImage) {
+      previewImage.onerror = null;
+      previewImage.classList.remove('hidden');
+      previewImage.removeAttribute('src');
+    }
+    if (previewVideo) {
+      previewVideo.onerror = null;
+      previewVideo.pause?.();
+      previewVideo.classList.add('hidden');
+      previewVideo.removeAttribute('src');
+      previewVideo.load?.();
+    }
+  }
+
+  function clearComposerMediaSelection(state, elements = {}) {
+    state.file = null;
+    state.kind = null;
+    if (elements.fileInput) elements.fileInput.value = '';
+    if (elements.cameraInput) elements.cameraInput.value = '';
+    if (state.previewUrl) {
+      URL.revokeObjectURL(state.previewUrl);
+      state.previewUrl = '';
+    }
+    resetMediaPreview(elements.previewWrap, elements.previewImage, elements.previewVideo);
+    elements.previewWrap?.classList.add('hidden');
+  }
+
+  function applyComposerMediaSelection(file, state, elements = {}) {
+    if (!file) return;
+    const validation = validateSupportedPostMediaFile(file);
+    if (!validation.ok) {
+      clearComposerMediaSelection(state, elements);
+      return validation;
+    }
+
+    state.file = file;
+    state.kind = file.type.startsWith('video/') || SUPPORTED_UPLOAD_VIDEO_EXTENSIONS.has(getFileExtension(file.name))
+      ? 'video'
+      : 'image';
+
+    if (state.previewUrl) {
+      URL.revokeObjectURL(state.previewUrl);
+    }
+    state.previewUrl = URL.createObjectURL(file);
+    resetMediaPreview(elements.previewWrap, elements.previewImage, elements.previewVideo);
+
+    if (state.kind === 'video' && elements.previewVideo) {
+      elements.previewImage?.classList.add('hidden');
+      elements.previewVideo.classList.remove('hidden');
+      elements.previewVideo.onerror = () => {
+        markPreviewUnavailable(elements.previewWrap, elements.previewImage, 'Vista previa no disponible para este video.');
+      };
+      elements.previewVideo.src = state.previewUrl;
+    } else if (elements.previewImage) {
+      elements.previewImage.onerror = () => {
+        markPreviewUnavailable(
+          elements.previewWrap,
+          elements.previewImage,
+          'Vista previa no disponible para este formato.'
+        );
+      };
+      elements.previewImage.src = state.previewUrl;
+    }
+
+    elements.previewWrap?.classList.remove('hidden');
+    return { ok: true, kind: state.kind };
+  }
+
   function ensureMentionProfilePopover() {
     if (mentionProfilePopoverRoot) {
       return mentionProfilePopoverRoot;
@@ -2239,6 +2359,107 @@
     `;
   }
 
+  function getPostMediaInfo(post) {
+    const mediaType = String(post?.media_type || '').trim().toLowerCase();
+    const videoUrl = String(post?.video_url || '').trim();
+    const imageUrl = String(post?.image_url || '').trim();
+
+    if (mediaType === 'video' && videoUrl) {
+      return {
+        type: 'video',
+        url: safeUrl(videoUrl),
+        mimeType: escapeHtml(post?.video_mime_type || 'video/mp4'),
+      };
+    }
+
+    if (mediaType === 'image' && imageUrl) {
+      return {
+        type: 'image',
+        url: safeUrl(imageUrl),
+      };
+    }
+
+    if (videoUrl) {
+      return {
+        type: 'video',
+        url: safeUrl(videoUrl),
+        mimeType: escapeHtml(post?.video_mime_type || 'video/mp4'),
+      };
+    }
+
+    if (imageUrl) {
+      return {
+        type: 'image',
+        url: safeUrl(imageUrl),
+      };
+    }
+
+    return null;
+  }
+
+  function hasPostImage(post) {
+    return getPostMediaInfo(post)?.type === 'image';
+  }
+
+  function hasPostVideo(post) {
+    return getPostMediaInfo(post)?.type === 'video';
+  }
+
+  function hasPostMedia(post) {
+    return Boolean(getPostMediaInfo(post));
+  }
+
+  function renderPostMediaBlock(post, options = {}) {
+    const media = getPostMediaInfo(post);
+    if (!media) return '';
+
+    const mediaHeightClass = options.mediaHeightClass || 'h-64';
+    if (media.type === 'image') {
+      return `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3" data-post-card-ignore="true"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${media.url}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.parentElement.style.display='none'"/></div>`;
+    }
+
+    return `
+      <div class="w-full ${mediaHeightClass} bg-slate-950 overflow-hidden rounded-xl mb-3" data-post-card-ignore="true">
+        <video
+          class="w-full h-full object-contain bg-slate-950"
+          src="${media.url}"
+          playsinline
+          preload="metadata"
+          controls
+          controlsList="nodownload"
+          onerror="this.parentElement.style.display='none'"></video>
+      </div>
+    `;
+  }
+
+  function renderPostModalMedia(post, options = {}) {
+    const media = getPostMediaInfo(post);
+    if (!media) return '';
+
+    const imageAlt = options.imageAlt || 'Imagen de la publicacion';
+    if (media.type === 'image') {
+      return `
+        <div class="post-modal-preview-media">
+          <button type="button" class="post-modal-preview-media-button" data-action="open-post-image" data-image-url="${media.url}" data-image-alt="${escapeHtml(imageAlt)}">
+            <img src="${media.url}" alt="${escapeHtml(imageAlt)}" decoding="async" onerror="this.closest('.post-modal-preview-media').style.display='none'"/>
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="post-modal-preview-media">
+        <video
+          src="${media.url}"
+          playsinline
+          preload="metadata"
+          controls
+          controlsList="nodownload"
+          onerror="this.closest('.post-modal-preview-media').style.display='none'"></video>
+      </div>
+    `;
+  }
+
   function renderPostCard(post, currentUserId, options = {}) {
     if ((post.post_type || 'standard') === 'livestream') {
       return renderLivestreamCard(post, currentUserId, options);
@@ -2293,8 +2514,8 @@
             </button>
             ` : ''}
           </div>
-          <div class="text-sm text-slate-800 mb-4"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>
-          ${post.image_url ? `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${safeUrl(post.image_url)}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.parentElement.style.display='none'"/></div>` : ''}
+          ${post.content ? `<div class="text-sm text-slate-800 mb-4"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
+          ${renderPostMediaBlock(post, { mediaHeightClass })}
         ${interactive ? `
           <div class="pt-3 border-t border-slate-100 space-y-3 text-slate-500">
             <div class="flex items-center justify-between gap-3 flex-wrap">
@@ -2384,13 +2605,7 @@
             <div class="post-modal-preview-copy content-break">${renderTextWithMentions(post.content)}</div>
           ` : ''}
         </div>
-        ${post.image_url ? `
-          <div class="post-modal-preview-media">
-            <button type="button" class="post-modal-preview-media-button" data-action="open-post-image" data-image-url="${safeUrl(post.image_url)}" data-image-alt="${escapeHtml(imageAlt)}">
-              <img src="${safeUrl(post.image_url)}" alt="${escapeHtml(imageAlt)}" decoding="async" onerror="this.closest('.post-modal-preview-media').style.display='none'"/>
-            </button>
-          </div>
-        ` : ''}
+        ${renderPostModalMedia(post, { imageAlt })}
         <div class="post-modal-preview-stats">
           <div class="post-modal-preview-stat">
             ${renderReactionSummary(post.reactions_count, reactionTotal, 'Sin reacciones')}
@@ -5080,8 +5295,7 @@
         };
       },
       mount({ container, user, params, router }) {
-        let selectedImageFile = null;
-        let selectedImagePreviewUrl = '';
+        const selectedComposerMedia = { file: null, previewUrl: '', kind: null };
         let pendingDeleteId = null;
         let pendingCommentId = null;
         let currentCommentSort = 'newest';
@@ -5110,6 +5324,7 @@
         const cameraInput = container.querySelector('#camera-input');
         const previewWrap = container.querySelector('#img-preview-wrap');
         const previewImage = container.querySelector('#img-preview');
+        const previewVideo = container.querySelector('#video-preview');
         const postContent = container.querySelector('#post-content');
         const postVisibility = container.querySelector('#post-visibility');
         const postVisibilityTrigger = container.querySelector('#post-visibility-trigger');
@@ -5143,43 +5358,28 @@
         setAvatarElement(composerAvatar, user);
 
         function clearImage() {
-          selectedImageFile = null;
-          fileInput.value = '';
-          if (cameraInput) cameraInput.value = '';
-          if (selectedImagePreviewUrl) {
-            URL.revokeObjectURL(selectedImagePreviewUrl);
-            selectedImagePreviewUrl = '';
-          }
-          clearPreviewUnavailable(previewWrap, previewImage);
-          previewImage.onerror = null;
-          previewWrap.style.display = 'none';
-          previewImage.src = '';
+          clearComposerMediaSelection(selectedComposerMedia, {
+            fileInput,
+            cameraInput,
+            previewWrap,
+            previewImage,
+            previewVideo,
+          });
         }
 
         function handleComposerImageFile(file) {
           if (!file) return;
-          const validation = validateSupportedImageFile(file, 'imagen');
+          const validation = validateSupportedPostMediaFile(file);
           if (!validation.ok) {
             clearImage();
             showToast(validation.error, 'error');
             return;
           }
-          selectedImageFile = file;
-          if (selectedImagePreviewUrl) {
-            URL.revokeObjectURL(selectedImagePreviewUrl);
-          }
-          selectedImagePreviewUrl = URL.createObjectURL(file);
-          clearPreviewUnavailable(previewWrap, previewImage);
-          previewImage.onerror = () => {
-            markPreviewUnavailable(
-              previewWrap,
-              previewImage,
-              'Vista previa no disponible para este formato.'
-            );
-            showToast('No se pudo mostrar la vista previa, pero puedes intentar publicar igualmente.', 'error');
-          };
-          previewImage.src = selectedImagePreviewUrl;
-          previewWrap.style.display = 'block';
+          applyComposerMediaSelection(file, selectedComposerMedia, {
+            previewWrap,
+            previewImage,
+            previewVideo,
+          });
         }
 
         function setPostVisibility(value = 'all') {
@@ -5391,6 +5591,9 @@
             viewer_count: Number(post?.viewer_count || 0),
             content: post?.content || '',
             image_url: post?.image_url || '',
+            video_url: post?.video_url || '',
+            media_type: post?.media_type || '',
+            video_mime_type: post?.video_mime_type || '',
             live_title: post?.live_title || '',
             live_source: post?.live_source || '',
             updated_at: post?.updated_at || '',
@@ -5545,15 +5748,15 @@
           const content = postContent.value.trim();
           const visibility = postVisibility?.value || 'all';
           const mentionUserIds = postMentionController.collectMentionUserIds();
-          if (!content && !selectedImageFile) {
-            showToast('Escribe algo o adjunta una imagen', 'error');
+          if (!content && !selectedComposerMedia.file) {
+            showToast('Escribe algo o adjunta una imagen o video', 'error');
             return;
           }
 
           publishButton.disabled = true;
           publishButton.textContent = 'Publicando...';
 
-          const result = await PostsAPI.createPost({ content, imageFile: selectedImageFile, visibility, mentionUserIds });
+          const result = await PostsAPI.createPost({ content, mediaFile: selectedComposerMedia.file, visibility, mentionUserIds });
 
           publishButton.disabled = false;
           publishButton.textContent = 'Publicar';
@@ -5782,7 +5985,7 @@
           }
 
           const postCard = event.target.closest('[data-post-card]');
-          if (postCard) {
+          if (postCard && !event.target.closest('[data-post-card-ignore="true"]')) {
             openCommentModal(postCard.dataset.postId);
           }
         });
@@ -10222,7 +10425,7 @@
         let groupData = null;
         let groupPosts = [];
         let currentTab = 'info';
-        let selectedImageFile = null;
+        const selectedGroupComposerMedia = { file: null, previewUrl: '', kind: null };
         let selectedEditCoverFile = null;
         let selectedEditCoverPreviewUrl = '';
         let pendingCommentPostId = null;
@@ -10554,17 +10757,18 @@
                   <textarea id="group-post-content" rows="3" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Comparte algo con tu grupo"></textarea>
                   <div id="group-image-preview-wrap" class="hidden mt-3 relative rounded-2xl overflow-hidden border border-slate-200">
                     <img id="group-image-preview" class="w-full max-h-64 object-cover" alt="Vista previa de imagen del grupo"/>
+                    <video id="group-video-preview" class="hidden w-full max-h-64 object-contain bg-slate-950" playsinline controls preload="metadata"></video>
                     <button id="group-clear-image-btn" type="button" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 text-white hover:bg-black/75 transition-colors">x</button>
                   </div>
                 </div>
               </div>
-              <input type="file" id="group-file-input" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" class="hidden"/>
+              <input type="file" id="group-file-input" accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm" class="hidden"/>
               <input type="file" id="group-camera-input" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" capture="environment" class="hidden"/>
               <div class="mt-4 flex flex-wrap justify-between gap-3">
                 <div class="flex flex-wrap gap-3">
                   <button id="group-pick-image-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                     <span class="material-symbols-outlined text-[18px]">image</span>
-                    Agregar imagen
+                    Agregar archivo
                   </button>
                   <button id="group-pick-camera-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                     <span class="material-symbols-outlined text-[18px]">photo_camera</span>
@@ -10650,12 +10854,12 @@
           groupPostMentionController?.destroy();
           groupPostMentionController = null;
 
-          let selectedGroupImagePreviewUrl = '';
           const composerAvatar = conversationTab.querySelector('#group-composer-avatar');
           const fileInput = conversationTab.querySelector('#group-file-input');
           const cameraInput = conversationTab.querySelector('#group-camera-input');
           const previewWrap = conversationTab.querySelector('#group-image-preview-wrap');
           const previewImage = conversationTab.querySelector('#group-image-preview');
+          const previewVideo = conversationTab.querySelector('#group-video-preview');
           const contentInput = conversationTab.querySelector('#group-post-content');
           const publishButton = conversationTab.querySelector('#group-publish-btn');
           const postsList = conversationTab.querySelector('#group-posts-list');
@@ -10669,19 +10873,13 @@
           }
 
           function clearImage() {
-            selectedImageFile = null;
-            if (fileInput) fileInput.value = '';
-            if (cameraInput) cameraInput.value = '';
-            if (selectedGroupImagePreviewUrl) {
-              URL.revokeObjectURL(selectedGroupImagePreviewUrl);
-              selectedGroupImagePreviewUrl = '';
-            }
-            if (previewWrap) previewWrap.classList.add('hidden');
-            if (previewImage) {
-              clearPreviewUnavailable(previewWrap, previewImage);
-              previewImage.onerror = null;
-              previewImage.src = '';
-            }
+            clearComposerMediaSelection(selectedGroupComposerMedia, {
+              fileInput,
+              cameraInput,
+              previewWrap,
+              previewImage,
+              previewVideo,
+            });
           }
 
           function setComposerImage(file) {
@@ -10690,29 +10888,18 @@
               return;
             }
 
-            const validation = validateSupportedImageFile(file, 'imagen');
+            const validation = validateSupportedPostMediaFile(file);
             if (!validation.ok) {
               clearImage();
               showToast(validation.error, 'error');
               return;
             }
 
-            selectedImageFile = file;
-            if (selectedGroupImagePreviewUrl) {
-              URL.revokeObjectURL(selectedGroupImagePreviewUrl);
-            }
-            selectedGroupImagePreviewUrl = URL.createObjectURL(file);
-            clearPreviewUnavailable(previewWrap, previewImage);
-            previewImage.onerror = () => {
-              markPreviewUnavailable(
-                previewWrap,
-                previewImage,
-                'Vista previa no disponible para este formato.'
-              );
-              showToast('No se pudo mostrar la vista previa, pero puedes intentar publicar igualmente.', 'error');
-            };
-            previewImage.src = selectedGroupImagePreviewUrl;
-            previewWrap.classList.remove('hidden');
+            applyComposerMediaSelection(file, selectedGroupComposerMedia, {
+              previewWrap,
+              previewImage,
+              previewVideo,
+            });
           }
 
           function renderPosts() {
@@ -10758,14 +10945,14 @@
             publishButton.addEventListener('click', async () => {
               const content = contentInput.value.trim();
               const mentionUserIds = groupPostMentionController?.collectMentionUserIds?.() || [];
-              if (!content && !selectedImageFile) {
-                showToast('Escribe algo o adjunta una imagen', 'error');
+              if (!content && !selectedGroupComposerMedia.file) {
+                showToast('Escribe algo o adjunta una imagen o video', 'error');
                 return;
               }
 
               publishButton.disabled = true;
               publishButton.textContent = 'Publicando...';
-              const result = await PostsAPI.createGroupPost(groupId, { content, imageFile: selectedImageFile, mentionUserIds });
+              const result = await PostsAPI.createGroupPost(groupId, { content, mediaFile: selectedGroupComposerMedia.file, mentionUserIds });
               publishButton.disabled = false;
               publishButton.textContent = 'Publicar';
 
@@ -11008,7 +11195,7 @@
         }
 
         async function renderMediaTab() {
-          mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Cargando imagenes...</div>';
+          mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Cargando multimedia...</div>';
           if (!groupData?.can_view_conversation) {
             mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Debes pertenecer al grupo para ver su multimedia.</div>';
             return;
@@ -11022,7 +11209,7 @@
 
           const posts = getList(result);
           if (!posts.length) {
-            mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Todavia no hay imagenes en este grupo.</div>';
+            mediaTab.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center text-sm text-slate-400">Todavia no hay multimedia en este grupo.</div>';
             return;
           }
 
@@ -11031,7 +11218,9 @@
               ${posts.map((post) => `
                 <article class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div class="h-52 bg-slate-100">
-                    <img src="${safeUrl(post.image_url)}" alt="Imagen publicada en el grupo" loading="lazy" decoding="async" class="w-full h-full object-cover"/>
+                    ${hasPostVideo(post)
+                      ? `<video src="${safeUrl(post.video_url)}" class="w-full h-full object-contain bg-slate-950" playsinline controls preload="metadata"></video>`
+                      : `<img src="${safeUrl(post.image_url)}" alt="Imagen publicada en el grupo" loading="lazy" decoding="async" class="w-full h-full object-cover"/>`}
                   </div>
                   <div class="p-4">
                     <p class="font-semibold text-slate-900 text-sm">${escapeHtml(displayName(resolveProfileData({
@@ -12357,7 +12546,7 @@
           }
 
           const postCard = event.target.closest('[data-post-card]');
-          if (postCard) {
+          if (postCard && !event.target.closest('[data-post-card-ignore="true"]')) {
             openProfileCommentModal(postCard.dataset.postId);
           }
         });
@@ -13217,6 +13406,18 @@
         }
 
         function closeReviewModal() {
+          const reviewImage = container.querySelector('#review-report-image');
+          const reviewVideo = container.querySelector('#review-report-video');
+          if (reviewImage) {
+            reviewImage.src = '';
+            reviewImage.classList.add('hidden');
+          }
+          if (reviewVideo) {
+            reviewVideo.pause();
+            reviewVideo.removeAttribute('src');
+            reviewVideo.load();
+            reviewVideo.classList.add('hidden');
+          }
           reviewModal.classList.add('hidden');
           reviewModal.classList.remove('flex');
         }
@@ -13296,10 +13497,33 @@
               : '-';
             container.querySelector('#review-report-content').textContent = details.content || details.content_preview || 'Sin contenido disponible';
             const reviewImage = container.querySelector('#review-report-image');
-            if (details.image_url) {
+            const reviewVideo = container.querySelector('#review-report-video');
+            if (details.video_url) {
+              if (reviewImage) {
+                reviewImage.src = '';
+                reviewImage.classList.add('hidden');
+              }
+              if (reviewVideo) {
+                reviewVideo.src = details.video_url;
+                reviewVideo.load();
+                reviewVideo.classList.remove('hidden');
+              }
+            } else if (details.image_url) {
+              if (reviewVideo) {
+                reviewVideo.pause();
+                reviewVideo.removeAttribute('src');
+                reviewVideo.load();
+                reviewVideo.classList.add('hidden');
+              }
               reviewImage.src = details.image_url;
               reviewImage.classList.remove('hidden');
             } else {
+              if (reviewVideo) {
+                reviewVideo.pause();
+                reviewVideo.removeAttribute('src');
+                reviewVideo.load();
+                reviewVideo.classList.add('hidden');
+              }
               reviewImage.src = '';
               reviewImage.classList.add('hidden');
             }
@@ -13619,13 +13843,15 @@
 
         function renderStats(posts) {
           const total = posts.length;
-          const withImages = posts.filter((item) => !!item.image_url).length;
+          const withImages = posts.filter((item) => hasPostImage(item)).length;
+          const withVideos = posts.filter((item) => hasPostVideo(item)).length;
           const comments = posts.reduce((sum, item) => sum + Number(item.comments_count || 0), 0);
           const reactions = posts.reduce((sum, item) => sum + Number(item.reactions_total || 0), 0);
 
           const cards = [
             { value: total, label: 'Publicaciones', color: '#4A6BFF', bg: '#EBF0FF', icon: 'article' },
             { value: withImages, label: 'Con imagen', color: '#ffffff', bg: '#D4A017', icon: 'image' },
+            { value: withVideos, label: 'Con video', color: '#ffffff', bg: '#7C3AED', icon: 'videocam' },
             { value: comments, label: 'Comentarios', color: '#4A55A2', bg: '#F0F2FB', icon: 'chat_bubble' },
             { value: reactions, label: 'Reacciones', color: '#6B7280', bg: '#F3F4F6', icon: 'favorite' },
           ];
@@ -13671,13 +13897,18 @@
                 </td>
                 <td class="py-4 px-5">
                   <div class="flex gap-3 items-start">
-                      ${post.image_url ? `<img alt="Miniatura" class="w-12 h-12 rounded-lg object-cover" src="${safeUrl(post.image_url)}" loading="lazy" decoding="async" onerror="this.style.display='none'"/>` : ''}
+                      ${hasPostImage(post)
+                        ? `<img alt="Miniatura" class="w-12 h-12 rounded-lg object-cover" src="${safeUrl(post.image_url)}" loading="lazy" decoding="async" onerror="this.style.display='none'"/>`
+                        : (hasPostVideo(post)
+                          ? '<div class="w-12 h-12 rounded-lg bg-slate-950 text-white flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-[18px]">videocam</span></div>'
+                          : '')}
                     <div class="min-w-0">
                       <p class="content-break text-sm text-slate-700 mb-1.5">${escapeHtml(((post.post_type || 'standard') === 'livestream' ? (post.live_title || 'Directo UPT') : ((post.content || '').slice(0, 140))) || 'Sin contenido')}</p>
                       <div class="flex flex-wrap gap-2">
                         <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${(post.post_type || 'standard') === 'livestream' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-sky-50 text-sky-700 border-sky-200'}"><span class="material-symbols-outlined text-[13px]">${(post.post_type || 'standard') === 'livestream' ? 'live_tv' : 'article'}</span>${(post.post_type || 'standard') === 'livestream' ? 'Stream' : 'Publicacion'}</span>
                         ${post.group_id ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] font-medium border border-amber-200"><span class="material-symbols-outlined text-[12px]">groups</span>${escapeHtml(post.group_name || `Grupo #${post.group_id}`)}</span>` : ''}
-                        ${post.image_url ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-[#EEF2FF] text-[#4F46E5] rounded text-[10px] font-medium border border-[#E0E7FF]"><span class="material-symbols-outlined text-[12px]">image</span>Con imagen</span>' : ''}
+                        ${hasPostImage(post) ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-[#EEF2FF] text-[#4F46E5] rounded text-[10px] font-medium border border-[#E0E7FF]"><span class="material-symbols-outlined text-[12px]">image</span>Con imagen</span>' : ''}
+                        ${hasPostVideo(post) ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-50 text-violet-700 rounded text-[10px] font-medium border border-violet-200"><span class="material-symbols-outlined text-[12px]">videocam</span>Con video</span>' : ''}
                       </div>
                     </div>
                   </div>
@@ -13716,8 +13947,9 @@
           if (type && type !== 'Todos') {
             filtered = filtered.filter((post) => {
               const postType = String(post.post_type || 'standard');
-              if (type === 'image') return !!post.image_url;
-              if (type === 'text') return postType === 'standard' && !post.image_url;
+              if (type === 'image') return hasPostImage(post);
+              if (type === 'video') return hasPostVideo(post);
+              if (type === 'text') return postType === 'standard' && !hasPostMedia(post);
               if (type === 'group') return !!post.group_id;
               if (type === 'live_camera') return postType === 'livestream' && (post.live_source || 'camera') === 'camera';
               if (type === 'live_screen') return postType === 'livestream' && post.live_source === 'screen';
