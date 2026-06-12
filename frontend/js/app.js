@@ -6845,7 +6845,26 @@
           return true;
         }
 
-        function destroyPlayer() {
+        function ensureViewerFreezeFrameElement() {
+          if (!liveVideoWrap) {
+            return null;
+          }
+
+          if (!viewerFreezeFrame) {
+            viewerFreezeFrame = document.createElement('img');
+            viewerFreezeFrame.className = 'live-freeze-frame absolute inset-0 w-full h-full object-contain bg-black pointer-events-none hidden';
+            viewerFreezeFrame.style.zIndex = '2';
+          }
+
+          if (!viewerFreezeFrame.parentElement) {
+            liveVideoWrap.appendChild(viewerFreezeFrame);
+          }
+
+          return viewerFreezeFrame;
+        }
+
+        function destroyPlayer(options = {}) {
+          const preserveFreezeFrame = options.preserveFreezeFrame === true;
           hideViewerRetrySpinner();
           disconnectViewerPlayerMediaObserver();
           if (viewerReconnectTimer) {
@@ -6881,8 +6900,12 @@
           viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
           viewerTransportEscalated = false;
           viewerPlayerRoot.innerHTML = '';
-          viewerFreezeFrame = null;
           viewerRetrySpinner = null;
+          if (!preserveFreezeFrame) {
+            clearViewerFreezeFrame({ remove: true });
+          } else if (viewerFreezeFrame) {
+            viewerFreezeFrame.classList.remove('hidden');
+          }
         }
 
         function showViewerRetrySpinner() {
@@ -6945,17 +6968,13 @@
 
             context.drawImage(viewerVideo, 0, 0, canvas.width, canvas.height);
 
-            if (!viewerFreezeFrame) {
-              viewerFreezeFrame = document.createElement('img');
-              viewerFreezeFrame.className = 'live-freeze-frame absolute inset-0 w-full h-full object-contain bg-black pointer-events-none';
-              viewerFreezeFrame.style.zIndex = '0';
+            const freezeFrame = ensureViewerFreezeFrameElement();
+            if (!freezeFrame) {
+              return;
             }
 
-            viewerFreezeFrame.src = canvas.toDataURL('image/jpeg', 0.82);
-            if (!viewerFreezeFrame.parentElement) {
-              viewerPlayerRoot.appendChild(viewerFreezeFrame);
-            }
-            viewerFreezeFrame.classList.remove('hidden');
+            freezeFrame.src = canvas.toDataURL('image/jpeg', 0.82);
+            freezeFrame.classList.remove('hidden');
             if (options.hideVideo && viewerVideo) {
               viewerVideo.style.opacity = '0';
             }
@@ -6964,13 +6983,16 @@
           }
         }
 
-        function clearViewerFreezeFrame() {
+        function clearViewerFreezeFrame(options = {}) {
           if (!viewerFreezeFrame) {
             return;
           }
 
-          viewerFreezeFrame.remove();
-          viewerFreezeFrame = null;
+          viewerFreezeFrame.classList.add('hidden');
+          if (options.remove) {
+            viewerFreezeFrame.remove();
+            viewerFreezeFrame = null;
+          }
           if (viewerVideo) {
             viewerVideo.style.opacity = '1';
           }
