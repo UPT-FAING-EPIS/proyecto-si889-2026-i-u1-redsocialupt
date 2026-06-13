@@ -1,34 +1,87 @@
-<section class="space-y-6">
-  <div class="bg-white border border-slate-200 rounded-[1.75rem] shadow-sm px-6 py-5">
-    <div class="flex items-center justify-between gap-4 flex-wrap">
-      <div>
-        <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">UPT Connect</p>
-        <h1 class="text-2xl font-black text-slate-900 mt-2">Publicacion compartida</h1>
-        <p class="text-sm text-slate-500 mt-1">Vista publica de solo lectura.</p>
-      </div>
-      <a href="/index.html" class="inline-flex items-center gap-2 rounded-full bg-[#1B2A6B] text-white px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity">
-        <span class="material-symbols-outlined text-[18px]">login</span>
-        <span>Iniciar sesion</span>
-      </a>
+<section class="guest-shared-shell">
+  <header class="guest-shared-topbar md:hidden">
+    <a href="/index.html" class="guest-shared-topbar__back" aria-label="Volver a UPT Connect">
+      <span class="material-symbols-outlined text-[21px]">arrow_back</span>
+    </a>
+    <div class="guest-shared-topbar__copy">
+      <h1>Post</h1>
+      <p>Vista publica de solo lectura</p>
     </div>
+    <div class="guest-shared-topbar__actions">
+      <a href="/index.html" class="guest-shared-topbar__link">Iniciar sesion</a>
+    </div>
+  </header>
+
+  <div class="guest-shared-layout">
+    <main class="guest-shared-main">
+      <div class="guest-shared-main-frame">
+        <div class="guest-shared-main-header hidden md:flex">
+          <a href="/index.html" class="guest-shared-main-header__back" aria-label="Volver a UPT Connect">
+            <span class="material-symbols-outlined text-[20px]">arrow_back</span>
+          </a>
+          <div class="guest-shared-main-header__copy">
+            <h1>Post</h1>
+            <p>Vista publica de solo lectura</p>
+          </div>
+          <div class="guest-shared-main-header__actions">
+            <a href="/index.html" class="guest-shared-main-header__link">Iniciar sesion</a>
+          </div>
+        </div>
+
+        <div id="shared-post-login-prompt" class="guest-shared-modal hidden" aria-hidden="true">
+          <div class="guest-shared-modal__backdrop" data-shared-modal-close="true"></div>
+          <div class="guest-shared-modal__card" role="dialog" aria-modal="true" aria-labelledby="shared-login-title">
+            <button type="button" class="guest-shared-modal__close" data-shared-modal-close="true" aria-label="Cerrar">
+              <span class="material-symbols-outlined text-[20px]">close</span>
+            </button>
+            <div class="guest-shared-modal__icon">
+              <span class="material-symbols-outlined text-[34px]">chat_bubble</span>
+            </div>
+            <h2 id="shared-login-title" class="guest-shared-modal__title">Ve lo que todos estan diciendo.</h2>
+            <p class="guest-shared-modal__copy">Inicia sesion para leer respuestas, reaccionar y participar en UPT Connect.</p>
+            <div class="guest-shared-modal__actions">
+              <a href="/index.html" class="guest-shared-modal__primary">Iniciar sesion</a>
+              <a href="/index.html" class="guest-shared-modal__secondary">Registrate</a>
+            </div>
+          </div>
+        </div>
+
+        <div id="shared-post-container" class="guest-shared-post-slot">
+          <div class="guest-shared-loading-card">
+            Cargando publicacion...
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="guest-shared-sidebar hidden lg:flex">
+      <div class="guest-shared-signup-card">
+        <h2>&iquest;Eres nuevo en UPT Connect?</h2>
+        <p>Inicia sesion para ver comentarios, descubrir mas publicaciones y participar en la comunidad.</p>
+        <div class="guest-shared-signup-card__actions">
+          <a href="/index.html" class="guest-shared-signup-card__primary">Iniciar sesion</a>
+          <a href="/index.html" class="guest-shared-signup-card__secondary">Registrate</a>
+        </div>
+      </div>
+
+      <div id="shared-post-relevant-person" class="guest-shared-sidebar-card">
+        <div class="guest-shared-loading-card guest-shared-loading-card--compact">
+          Cargando persona relevante...
+        </div>
+      </div>
+    </aside>
   </div>
 
-  <div id="shared-post-login-prompt" class="hidden bg-[#1B2A6B] text-white rounded-2xl px-5 py-4 shadow-sm">
-    <div class="flex items-center justify-between gap-4 flex-wrap">
-      <div>
-        <p class="font-bold text-sm">Inicia sesion para interactuar</p>
-        <p class="text-xs text-white/75 mt-1">Necesitas una cuenta para reaccionar, comentar o reportar esta publicacion.</p>
-      </div>
-      <a href="/index.html" class="inline-flex items-center gap-2 rounded-full bg-white text-[#1B2A6B] px-4 py-2 text-sm font-semibold">
-        <span class="material-symbols-outlined text-[18px]">login</span>
-        <span>Ir al login</span>
-      </a>
+  <div class="guest-shared-bottom-cta" id="shared-post-bottom-cta">
+    <button type="button" class="guest-shared-bottom-cta__close" data-shared-bottom-cta-close="true" aria-label="Cerrar aviso">
+      <span class="material-symbols-outlined text-[18px]">close</span>
+    </button>
+    <div class="guest-shared-bottom-cta__copy">
+      <strong>No te pierdas lo que esta pasando</strong>
+      <span>Las personas de UPT Connect son las primeras en enterarse.</span>
     </div>
-  </div>
-
-  <div id="shared-post-container" class="space-y-4">
-    <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center text-slate-500">
-      Cargando publicacion...
+    <div class="guest-shared-bottom-cta__actions">
+      <a href="/index.html" class="guest-shared-bottom-cta__solid">Iniciar sesion</a>
     </div>
   </div>
 </section>

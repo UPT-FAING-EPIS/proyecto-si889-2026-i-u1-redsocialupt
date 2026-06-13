@@ -22,6 +22,12 @@
                     <div id="img-preview-wrap" class="feed-composer-preview hidden">
                       <img id="img-preview" alt="Vista previa"/>
                       <video id="video-preview" class="hidden" playsinline controls preload="metadata"></video>
+                      <div class="feed-composer-preview__overlay hidden" data-composer-upload-overlay="true" aria-hidden="true">
+                        <div class="feed-composer-preview__progress is-indeterminate" data-composer-upload-progress-circle="true">
+                          <span data-composer-upload-progress-value="true">...</span>
+                        </div>
+                        <div class="feed-composer-preview__status" data-composer-upload-status="true">Cargando vista previa...</div>
+                      </div>
                       <button id="clear-image-btn" type="button" title="Quitar imagen">x</button>
                     </div>
                   </div>

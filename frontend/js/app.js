@@ -1,4 +1,4 @@
-(async function () {
+﻿(async function () {
   const allowsGuestReadonlyRoute = /^#?shared-post(?:[/?]|$)/.test(String(window.location.hash || '').replace(/^#/, ''));
   if (!allowsGuestReadonlyRoute) {
     requireAuth();
@@ -640,6 +640,16 @@
   function userColor(userOrLabel) {
     if (typeof userOrLabel === 'string') return getFacultyColor(userOrLabel);
     return getFacultyColor(userOrLabel?.faculty || userOrLabel?.school || userOrLabel?.career || '');
+  }
+
+  function buildGuestProfileHandle(user) {
+    const normalized = normalizeSearchText(displayName(user))
+      .replace(/[^a-z0-9\s_-]/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const fallback = `upt_${Number(user?.id || 0) || 'usuario'}`;
+    return `@${(normalized || fallback).slice(0, 28)}`;
   }
 
   function timeAgo(dateStr) {
@@ -1787,11 +1797,14 @@
   function resetMediaPreview(previewWrap, previewImage, previewVideo) {
     clearPreviewUnavailable(previewWrap, previewImage);
     if (previewImage) {
+      previewImage.onload = null;
       previewImage.onerror = null;
       previewImage.classList.remove('hidden');
       previewImage.removeAttribute('src');
     }
     if (previewVideo) {
+      previewVideo.onloadeddata = null;
+      previewVideo.onloadedmetadata = null;
       previewVideo.onerror = null;
       previewVideo.pause?.();
       previewVideo.classList.add('hidden');
@@ -1800,17 +1813,94 @@
     }
   }
 
+  function getComposerPreviewOverlayElements(previewWrap) {
+    if (!previewWrap) return {};
+    return {
+      overlay: previewWrap.querySelector('[data-composer-upload-overlay]'),
+      progressCircle: previewWrap.querySelector('[data-composer-upload-progress-circle]'),
+      progressValue: previewWrap.querySelector('[data-composer-upload-progress-value]'),
+      status: previewWrap.querySelector('[data-composer-upload-status]'),
+    };
+  }
+
+  function setComposerPreviewOverlay(previewWrap, {
+    visible = false,
+    progress = null,
+    label = '',
+  } = {}) {
+    const { overlay, progressCircle, progressValue, status } = getComposerPreviewOverlayElements(previewWrap);
+    if (!overlay) return;
+
+    overlay.classList.toggle('hidden', !visible);
+    overlay.setAttribute('aria-hidden', visible ? 'false' : 'true');
+
+    if (!visible) {
+      progressCircle?.classList.add('is-indeterminate');
+      progressCircle?.style.removeProperty('--composer-upload-progress');
+      if (progressValue) progressValue.textContent = '...';
+      if (status) status.textContent = '';
+      return;
+    }
+
+    const numericProgress = Number(progress);
+    const hasDeterminateProgress = Number.isFinite(numericProgress);
+    const normalizedProgress = hasDeterminateProgress
+      ? Math.max(0, Math.min(100, numericProgress))
+      : 0;
+
+    progressCircle?.classList.toggle('is-indeterminate', !hasDeterminateProgress);
+    progressCircle?.style.setProperty('--composer-upload-progress', `${normalizedProgress}%`);
+    if (progressValue) {
+      progressValue.textContent = hasDeterminateProgress ? `${Math.round(normalizedProgress)}%` : '...';
+    }
+    if (status) {
+      status.textContent = label || (hasDeterminateProgress ? 'Subiendo archivo...' : 'Cargando vista previa...');
+    }
+  }
+
+  function composerHasSubmittableContent(contentInput, state) {
+    const hasText = !!String(contentInput?.value || '').trim();
+    const hasMedia = !!state?.file;
+    return hasText || hasMedia;
+  }
+
+  function syncComposerPublishButton(button, contentInput, state, idleLabel = 'Publicar') {
+    if (!button) return;
+
+    if (state?.uploadInProgress) {
+      button.disabled = true;
+      const numericProgress = Number(state.uploadProgress);
+      button.textContent = Number.isFinite(numericProgress)
+        ? `Subiendo ${Math.round(numericProgress)}%`
+        : 'Subiendo...';
+      return;
+    }
+
+    button.textContent = idleLabel;
+
+    const hasContent = composerHasSubmittableContent(contentInput, state);
+    const mediaReady = !state?.file || !!state?.previewReady;
+    const mediaBusy = !!state?.previewLoading || !!state?.uploadInProgress;
+    button.disabled = !hasContent || !mediaReady || mediaBusy;
+  }
+
   function clearComposerMediaSelection(state, elements = {}) {
     state.file = null;
     state.kind = null;
+    state.previewReady = false;
+    state.previewLoading = false;
+    state.uploadInProgress = false;
+    state.uploadProgress = 0;
     if (elements.fileInput) elements.fileInput.value = '';
     if (elements.cameraInput) elements.cameraInput.value = '';
     if (state.previewUrl) {
       URL.revokeObjectURL(state.previewUrl);
       state.previewUrl = '';
     }
+    setComposerPreviewOverlay(elements.previewWrap, { visible: false });
     resetMediaPreview(elements.previewWrap, elements.previewImage, elements.previewVideo);
     elements.previewWrap?.classList.add('hidden');
+    elements.onStateChange?.();
   }
 
   function applyComposerMediaSelection(file, state, elements = {}) {
@@ -1825,32 +1915,56 @@
     state.kind = file.type.startsWith('video/') || SUPPORTED_UPLOAD_VIDEO_EXTENSIONS.has(getFileExtension(file.name))
       ? 'video'
       : 'image';
+    state.previewReady = false;
+    state.previewLoading = true;
+    state.uploadInProgress = false;
+    state.uploadProgress = 0;
 
     if (state.previewUrl) {
       URL.revokeObjectURL(state.previewUrl);
     }
     state.previewUrl = URL.createObjectURL(file);
     resetMediaPreview(elements.previewWrap, elements.previewImage, elements.previewVideo);
+    setComposerPreviewOverlay(elements.previewWrap, {
+      visible: true,
+      progress: null,
+      label: 'Cargando vista previa...',
+    });
+
+    const markReady = () => {
+      state.previewLoading = false;
+      state.previewReady = true;
+      setComposerPreviewOverlay(elements.previewWrap, { visible: false });
+      elements.onStateChange?.();
+    };
+
+    const markFailed = (message) => {
+      state.previewLoading = false;
+      state.previewReady = false;
+      setComposerPreviewOverlay(elements.previewWrap, { visible: false });
+      markPreviewUnavailable(elements.previewWrap, elements.previewImage, message);
+      elements.onStateChange?.();
+    };
 
     if (state.kind === 'video' && elements.previewVideo) {
       elements.previewImage?.classList.add('hidden');
       elements.previewVideo.classList.remove('hidden');
+      elements.previewVideo.onloadeddata = markReady;
       elements.previewVideo.onerror = () => {
-        markPreviewUnavailable(elements.previewWrap, elements.previewImage, 'Vista previa no disponible para este video.');
+        markFailed('Vista previa no disponible para este video.');
       };
       elements.previewVideo.src = state.previewUrl;
+      elements.previewVideo.load?.();
     } else if (elements.previewImage) {
+      elements.previewImage.onload = markReady;
       elements.previewImage.onerror = () => {
-        markPreviewUnavailable(
-          elements.previewWrap,
-          elements.previewImage,
-          'Vista previa no disponible para este formato.'
-        );
+        markFailed('Vista previa no disponible para este formato.');
       };
       elements.previewImage.src = state.previewUrl;
     }
 
     elements.previewWrap?.classList.remove('hidden');
+    elements.onStateChange?.();
     return { ok: true, kind: state.kind };
   }
 
@@ -2487,6 +2601,230 @@
     return Boolean(getPostMediaInfo(post));
   }
 
+  function formatInlineVideoTime(totalSeconds) {
+    const numericSeconds = Number(totalSeconds);
+    if (!Number.isFinite(numericSeconds) || numericSeconds < 0) {
+      return '0:00';
+    }
+    const rounded = Math.floor(numericSeconds);
+    const minutes = Math.floor(rounded / 60);
+    const seconds = rounded % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  let socialVideoBindingsReady = false;
+  let activeSocialVideoElement = null;
+  let lastSocialVideoPointerAction = 0;
+
+  function syncSocialVideoPlayerUi(video) {
+    if (!(video instanceof HTMLVideoElement)) return;
+    const shell = video.closest('[data-social-video-player]');
+    if (!shell) return;
+    const toggleIcon = shell.querySelector('[data-social-video-toggle-icon]');
+    const muteIcon = shell.querySelector('[data-social-video-mute-icon]');
+    const currentLabel = shell.querySelector('[data-social-video-current]');
+    const durationLabel = shell.querySelector('[data-social-video-duration]');
+    const seek = shell.querySelector('[data-social-video-seek]');
+    const volume = shell.querySelector('[data-social-video-volume]');
+
+    shell.classList.toggle('is-playing', !video.paused && !video.ended);
+    shell.classList.toggle('is-muted', !!video.muted || Number(video.volume || 0) <= 0.001);
+
+    if (toggleIcon) {
+      toggleIcon.textContent = video.paused || video.ended ? 'play_arrow' : 'pause';
+    }
+    if (muteIcon) {
+      const effectiveVolume = video.muted ? 0 : Number(video.volume || 0);
+      muteIcon.textContent = effectiveVolume <= 0.001
+        ? 'volume_off'
+        : (effectiveVolume < 0.5 ? 'volume_down' : 'volume_up');
+    }
+    if (currentLabel) {
+      currentLabel.textContent = formatInlineVideoTime(video.currentTime || 0);
+    }
+    if (durationLabel) {
+      durationLabel.textContent = formatInlineVideoTime(video.duration || 0);
+    }
+    if (seek) {
+      const duration = Number(video.duration || 0);
+      seek.max = duration > 0 ? String(duration) : '0';
+      if (!seek.matches(':active')) {
+        seek.value = String(Math.min(duration > 0 ? duration : 0, Number(video.currentTime || 0)));
+      }
+    }
+    if (volume instanceof HTMLInputElement && !volume.matches(':active')) {
+      volume.value = String(Math.max(0, Math.min(1, video.muted ? 0 : Number(video.volume || 0))));
+    }
+  }
+
+  function pauseOtherSocialVideos(currentVideo) {
+    document.querySelectorAll('video[data-social-video-element="true"]').forEach((candidate) => {
+      if (!(candidate instanceof HTMLVideoElement)) return;
+      if (candidate === currentVideo) return;
+      if (!candidate.paused) {
+        candidate.pause();
+      }
+    });
+    activeSocialVideoElement = currentVideo;
+  }
+
+  function toggleSocialVideoPlayback(video) {
+    if (!(video instanceof HTMLVideoElement)) return;
+    if (video.paused || video.ended) {
+      pauseOtherSocialVideos(video);
+      video.play().catch(() => syncSocialVideoPlayerUi(video));
+    } else {
+      video.pause();
+    }
+    syncSocialVideoPlayerUi(video);
+  }
+
+  function resolveSocialVideoContext(control) {
+    const shell = control?.closest?.('[data-social-video-player]');
+    const video = shell?.querySelector?.('video[data-social-video-element="true"]');
+    if (!(shell instanceof HTMLElement) || !(video instanceof HTMLVideoElement)) {
+      return { shell: null, video: null };
+    }
+    return { shell, video };
+  }
+
+  function ensureSocialVideoBindings() {
+    if (socialVideoBindingsReady) return;
+    socialVideoBindingsReady = true;
+
+    document.addEventListener('play', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLVideoElement) || target.dataset.socialVideoElement !== 'true') return;
+      pauseOtherSocialVideos(target);
+      syncSocialVideoPlayerUi(target);
+    }, true);
+
+    ['pause', 'volumechange', 'loadedmetadata', 'durationchange', 'timeupdate', 'ended'].forEach((eventName) => {
+      document.addEventListener(eventName, (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLVideoElement) || target.dataset.socialVideoElement !== 'true') return;
+        if (eventName === 'ended' && activeSocialVideoElement === target) {
+          activeSocialVideoElement = null;
+        }
+        syncSocialVideoPlayerUi(target);
+      }, true);
+    });
+
+    window.__uptSocialVideoSurfaceClick = (surface, event) => {
+      if (event?.target?.closest?.('[data-social-video-controls]')) return;
+      const { video } = resolveSocialVideoContext(surface);
+      if (!video) return;
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      toggleSocialVideoPlayback(video);
+    };
+
+    window.__uptSocialVideoToggleClick = (button, event) => {
+      const { video } = resolveSocialVideoContext(button);
+      if (!video) return;
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      toggleSocialVideoPlayback(video);
+    };
+
+    window.__uptSocialVideoMuteClick = (button, event) => {
+      const { shell, video } = resolveSocialVideoContext(button);
+      if (!shell || !video) return;
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      const savedVolume = Number(shell.dataset.previousVolume || video.volume || 1);
+      if (video.muted || Number(video.volume || 0) <= 0.001) {
+        video.muted = false;
+        video.volume = Math.max(0.05, Math.min(1, savedVolume || 1));
+      } else {
+        shell.dataset.previousVolume = String(video.volume || 1);
+        video.muted = true;
+      }
+      syncSocialVideoPlayerUi(video);
+    };
+
+    window.__uptSocialVideoSeekInput = (input, event) => {
+      const { video } = resolveSocialVideoContext(input);
+      if (!(input instanceof HTMLInputElement) || !video) return;
+      event?.stopPropagation?.();
+      const nextTime = Number(input.value);
+      if (Number.isFinite(nextTime)) {
+        video.currentTime = nextTime;
+        syncSocialVideoPlayerUi(video);
+      }
+    };
+
+    window.__uptSocialVideoVolumeInput = (input, event) => {
+      const { shell, video } = resolveSocialVideoContext(input);
+      if (!(input instanceof HTMLInputElement) || !shell || !video) return;
+      event?.stopPropagation?.();
+      const nextVolume = Number(input.value);
+      if (!Number.isFinite(nextVolume)) return;
+      video.volume = Math.max(0, Math.min(1, nextVolume));
+      video.muted = video.volume <= 0.001;
+      if (video.volume > 0.001) {
+        shell.dataset.previousVolume = String(video.volume);
+      }
+      syncSocialVideoPlayerUi(video);
+    };
+
+    window.__uptSocialVideoFullscreenClick = (button, event) => {
+      const { shell, video } = resolveSocialVideoContext(button);
+      if (!shell || !video) return;
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      const target = shell.requestFullscreen ? shell : video;
+      target.requestFullscreen?.().catch?.(() => { });
+    };
+  }
+
+  function renderInlineSocialVideo(media, options = {}) {
+    const heightClass = options.heightClass || 'h-64';
+    const roundedClass = options.roundedClass || 'rounded-2xl';
+    const shellClass = options.shellClass || '';
+    const aspectStyle = options.aspectStyle ? ` style="${options.aspectStyle}"` : '';
+    const tagLabel = options.tagLabel ? `<span class="social-video-player__tag">${escapeHtml(options.tagLabel)}</span>` : '';
+
+    return `
+      <div class="social-video-player ${roundedClass} ${heightClass} ${shellClass}" data-social-video-player="true" data-post-card-ignore="true"${aspectStyle}>
+        <div class="social-video-player__surface" data-social-video-surface="true" onclick="window.__uptSocialVideoSurfaceClick?.(this, event)">
+          <video
+            class="social-video-player__video"
+            src="${media.url}"
+            playsinline
+            preload="metadata"
+            data-social-video-element="true"
+            onerror="this.closest('[data-social-video-player]').style.display='none'"></video>
+          <div class="social-video-player__top">
+            ${tagLabel}
+          </div>
+          <div class="social-video-player__controls" data-social-video-controls="true">
+            <button type="button" class="social-video-player__icon-btn" data-social-video-toggle="true" aria-label="Reproducir o pausar" onclick="window.__uptSocialVideoToggleClick?.(this, event)">
+              <span class="material-symbols-outlined" data-social-video-toggle-icon="true">play_arrow</span>
+            </button>
+            <div class="social-video-player__timeline">
+              <input type="range" min="0" max="0" value="0" step="0.1" class="social-video-player__seek" data-social-video-seek="true" aria-label="Progreso del video" oninput="window.__uptSocialVideoSeekInput?.(this, event)"/>
+              <div class="social-video-player__time">
+                <span data-social-video-current="true">0:00</span>
+                <span>/</span>
+                <span data-social-video-duration="true">0:00</span>
+              </div>
+            </div>
+            <div class="social-video-player__audio">
+              <button type="button" class="social-video-player__icon-btn" data-social-video-mute="true" aria-label="Silenciar o restaurar volumen" onclick="window.__uptSocialVideoMuteClick?.(this, event)">
+                <span class="material-symbols-outlined" data-social-video-mute-icon="true">volume_up</span>
+              </button>
+              <input type="range" min="0" max="1" value="1" step="0.05" class="social-video-player__volume" data-social-video-volume="true" aria-label="Volumen del video" oninput="window.__uptSocialVideoVolumeInput?.(this, event)"/>
+            </div>
+            <button type="button" class="social-video-player__icon-btn" data-social-video-fullscreen="true" aria-label="Pantalla completa" onclick="window.__uptSocialVideoFullscreenClick?.(this, event)">
+              <span class="material-symbols-outlined">open_in_full</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderPostMediaBlock(post, options = {}) {
     const media = getPostMediaInfo(post);
     if (!media) return '';
@@ -2496,18 +2834,11 @@
       return `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3" data-post-card-ignore="true"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${media.url}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.parentElement.style.display='none'"/></div>`;
     }
 
-    return `
-      <div class="w-full ${mediaHeightClass} bg-slate-950 overflow-hidden rounded-xl mb-3" data-post-card-ignore="true">
-        <video
-          class="w-full h-full object-contain bg-slate-950"
-          src="${media.url}"
-          playsinline
-          preload="metadata"
-          controls
-          controlsList="nodownload"
-          onerror="this.parentElement.style.display='none'"></video>
-      </div>
-    `;
+    return renderInlineSocialVideo(media, {
+      heightClass: mediaHeightClass,
+      roundedClass: 'rounded-xl',
+      shellClass: 'mb-3',
+    });
   }
 
   function renderPublicShareActionButton(post, options = {}) {
@@ -2536,7 +2867,7 @@
   function renderSharedReadonlyPost(post) {
     if (!post) {
       return `
-        <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center text-slate-500">
+        <div class="guest-shared-loading-card">
           No se pudo cargar la publicacion compartida.
         </div>
       `;
@@ -2549,64 +2880,118 @@
       user_school: post.user_school,
       user_avatar: post.user_avatar,
     });
-    const authorCareer = careerLabel(author);
+    const authorCareer = careerLabel(author) || 'Comunidad UPT';
+    const authorHandle = buildGuestProfileHandle(author);
     const visibilityMeta = getVisibilityMeta(post.visibility);
-    const authorMeta = [
-      authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
-      `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
-    ].filter(Boolean).join('<span>&middot;</span>');
+    const publishedDate = post?.created_at
+      ? new Date(post.created_at).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' })
+      : 'Ahora';
+    const commentsCount = Number(post.comments_count || 0);
+    const repliesLabel = commentsCount === 1 ? 'Leer 1 respuesta' : `Leer ${commentsCount} respuestas`;
+    const reactionsTotal = Number(post.reactions_total || 0);
 
     return `
-      <article class="bg-white border border-slate-200 rounded-[1.75rem] p-5 shadow-sm" data-shared-readonly-post="true">
-        <div class="flex justify-between items-start mb-3 gap-3">
-          <button type="button" class="flex items-center gap-3 text-left min-w-0" data-guest-login-required="true">
-            ${renderAvatar(author, { sizeClass: 'w-11 h-11', textClass: 'text-white font-bold', showOnline: true })}
-            <div class="min-w-0">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="font-bold text-sm text-slate-900">${escapeHtml(displayName(author))}</span>
-                <span class="text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1" style="background:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
-                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
-                  <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
+      <article class="guest-shared-post" data-shared-readonly-post="true">
+        <div class="guest-shared-post__head">
+          <button type="button" class="guest-shared-post__author text-left min-w-0" data-guest-login-required="true">
+            ${renderAvatar(author, { sizeClass: 'w-12 h-12', textClass: 'text-white font-bold text-sm', showOnline: true })}
+            <div class="guest-shared-post__author-copy">
+              <div class="guest-shared-post__author-main">
+                <span class="guest-shared-post__name">${escapeHtml(displayName(author))}</span>
+                <span class="guest-shared-post__faculty" style="background:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
+              </div>
+              <div class="guest-shared-post__handle-row">
+                <span>${escapeHtml(authorHandle)}</span>
+                <span>·</span>
+                <span>${escapeHtml(authorCareer)}</span>
+                <span>·</span>
+                <span class="inline-flex items-center gap-1">
+                  <span class="material-symbols-outlined text-[13px]">${visibilityMeta.icon}</span>
                   ${escapeHtml(visibilityMeta.label)}
                 </span>
               </div>
-              <div class="text-slate-500 text-xs mt-0.5">${authorMeta}</div>
             </div>
           </button>
-          <div class="inline-flex items-center gap-2 rounded-full bg-slate-50 border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-500 shrink-0">
-            <span class="material-symbols-outlined text-[14px]">visibility</span>
-            Solo lectura
-          </div>
         </div>
-        ${post.content ? `<div class="text-sm text-slate-800 mb-4"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
-        ${renderPostMediaBlock(post, { mediaHeightClass: 'min-h-[18rem] md:min-h-[24rem]' })}
-        <div class="pt-3 border-t border-slate-100 space-y-3 text-slate-500">
-          <div class="flex items-center justify-between gap-3 flex-wrap">
+        ${post.content ? `<div class="guest-shared-post__copy"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
+        ${renderPostMediaBlock(post, { mediaHeightClass: 'min-h-[16rem] md:min-h-[22rem]' })}
+        <div class="guest-shared-post__meta">
+          <span>${escapeHtml(publishedDate)}</span>
+          <span>·</span>
+          <span>${reactionsTotal > 0 ? `${reactionsTotal} reacciones` : 'Sin reacciones aun'}</span>
+        </div>
+        <div class="guest-shared-post__divider"></div>
+        <div class="space-y-3 text-slate-500">
+          <div class="guest-shared-post__stats">
             ${renderReactionSummary(post.reactions_count, post.reactions_total)}
             <button type="button" data-guest-login-required="true" class="text-sm font-medium hover:text-slate-700 transition-colors">
-              ${post.comments_count || 0} comentarios
+              ${commentsCount} comentarios
             </button>
           </div>
-          <div class="social-post-actions social-post-actions--four">
-            <button type="button" class="social-reaction-trigger" data-guest-login-required="true">
+          <div class="social-post-actions social-post-actions--four guest-shared-post__actions">
+            <button type="button" class="social-reaction-trigger" data-guest-login-required="true" aria-label="Reaccionar">
               <span class="material-symbols-outlined">thumb_up</span>
               <span>Reaccionar</span>
             </button>
-            <button type="button" class="social-post-action" data-guest-login-required="true">
+            <button type="button" class="social-post-action" data-guest-login-required="true" aria-label="Comentar">
               <span class="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
               <span>Comentar</span>
             </button>
-            <button type="button" class="social-post-action social-post-action--report" data-guest-login-required="true">
+            <button type="button" class="social-post-action social-post-action--report" data-guest-login-required="true" aria-label="Reportar">
               <span class="material-symbols-outlined text-[18px]">flag</span>
               <span>Reportar</span>
             </button>
-            <button type="button" class="social-post-action" data-guest-login-required="true">
+            <button type="button" class="social-post-action" data-guest-login-required="true" aria-label="Compartir">
               <span class="material-symbols-outlined text-[18px]">share</span>
               <span>Compartir</span>
             </button>
           </div>
+          <button type="button" class="guest-shared-post__replies" data-guest-login-required="true">
+            <span class="material-symbols-outlined text-[20px]">chat_bubble</span>
+            <span>${escapeHtml(repliesLabel)}</span>
+          </button>
         </div>
       </article>
+    `;
+  }
+
+  function renderSharedRelevantAuthor(post) {
+    if (!post) {
+      return `
+        <div class="guest-shared-loading-card guest-shared-loading-card--compact">
+          No se pudo cargar la persona relevante.
+        </div>
+      `;
+    }
+
+    const author = resolveProfileData({
+      id: post.user_id,
+      user_name: post.user_name,
+      user_faculty: post.user_faculty,
+      user_school: post.user_school,
+      user_avatar: post.user_avatar,
+    });
+    const handle = buildGuestProfileHandle(author);
+    const career = careerLabel(author) || 'Comunidad UPT';
+
+    return `
+      <div class="guest-shared-relevant">
+        <div>
+          <p class="guest-shared-relevant__eyebrow">Persona relevante</p>
+          <h2 class="guest-shared-relevant__title">Autor del post</h2>
+        </div>
+        <div class="guest-shared-relevant__card">
+          ${renderAvatar(author, { sizeClass: 'w-14 h-14', textClass: 'text-white font-bold text-base', showOnline: true })}
+          <div class="min-w-0">
+            <div class="guest-shared-relevant__name">${escapeHtml(displayName(author))}</div>
+            <div class="guest-shared-relevant__handle">${escapeHtml(handle)}</div>
+            <div class="guest-shared-relevant__meta">
+              <span class="guest-shared-relevant__pill">${escapeHtml(career)}</span>
+              <span class="guest-shared-relevant__pill" style="color:#fff;background:${userColor(author)};border-color:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -2625,17 +3010,10 @@
       `;
     }
 
-    return `
-      <div class="post-modal-preview-media">
-        <video
-          src="${media.url}"
-          playsinline
-          preload="metadata"
-          controls
-          controlsList="nodownload"
-          onerror="this.closest('.post-modal-preview-media').style.display='none'"></video>
-      </div>
-    `;
+    return `<div class="post-modal-preview-media">${renderInlineSocialVideo(media, {
+      heightClass: 'min-h-[18rem] md:min-h-[24rem]',
+      roundedClass: 'rounded-[1.35rem]',
+    })}</div>`;
   }
 
   function renderPostCard(post, currentUserId, options = {}) {
@@ -5485,7 +5863,7 @@
         };
       },
       mount({ container, user, params, router }) {
-        const selectedComposerMedia = { file: null, previewUrl: '', kind: null };
+        const selectedComposerMedia = { file: null, previewUrl: '', kind: null, previewReady: false, previewLoading: false, uploadInProgress: false, uploadProgress: 0 };
         let pendingDeleteId = null;
         let pendingCommentId = null;
         let currentCommentSort = 'newest';
@@ -5554,6 +5932,7 @@
             previewWrap,
             previewImage,
             previewVideo,
+            onStateChange: () => syncComposerPublishButton(publishButton, postContent, selectedComposerMedia),
           });
         }
 
@@ -5569,6 +5948,7 @@
             previewWrap,
             previewImage,
             previewVideo,
+            onStateChange: () => syncComposerPublishButton(publishButton, postContent, selectedComposerMedia),
           });
         }
 
@@ -5942,14 +6322,49 @@
             showToast('Escribe algo o adjunta una imagen o video', 'error');
             return;
           }
+          if (selectedComposerMedia.file && !selectedComposerMedia.previewReady) {
+            showToast('Espera a que cargue la vista previa antes de publicar', 'error');
+            return;
+          }
 
-          publishButton.disabled = true;
-          publishButton.textContent = 'Publicando...';
+          selectedComposerMedia.uploadInProgress = !!selectedComposerMedia.file;
+          selectedComposerMedia.uploadProgress = 0;
+          if (selectedComposerMedia.file) {
+            setComposerPreviewOverlay(previewWrap, {
+              visible: true,
+              progress: 0,
+              label: 'Subiendo archivo...',
+            });
+            syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+          } else {
+            publishButton.disabled = true;
+            publishButton.textContent = 'Publicando...';
+          }
 
-          const result = await PostsAPI.createPost({ content, mediaFile: selectedComposerMedia.file, visibility, mentionUserIds });
+          const result = await PostsAPI.createPost({
+            content,
+            mediaFile: selectedComposerMedia.file,
+            visibility,
+            mentionUserIds,
+            onUploadProgress: ({ percent }) => {
+              if (!selectedComposerMedia.file) return;
+              const numericPercent = Number(percent);
+              if (Number.isFinite(numericPercent)) {
+                selectedComposerMedia.uploadProgress = numericPercent;
+              }
+              setComposerPreviewOverlay(previewWrap, {
+                visible: true,
+                progress: Number.isFinite(numericPercent) ? numericPercent : null,
+                label: 'Subiendo archivo...',
+              });
+              syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+            },
+          });
 
-          publishButton.disabled = false;
-          publishButton.textContent = 'Publicar';
+          selectedComposerMedia.uploadInProgress = false;
+          selectedComposerMedia.uploadProgress = 0;
+          setComposerPreviewOverlay(previewWrap, { visible: false });
+          syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
 
           if (result?.ok) {
             postContent.value = '';
@@ -6091,6 +6506,7 @@
           loadComments(pendingCommentId, commentSort.value);
         });
         publishButton.addEventListener('click', publishPost);
+        postContent?.addEventListener('input', () => syncComposerPublishButton(publishButton, postContent, selectedComposerMedia));
 
         warmPublicUsersInBackground();
 
@@ -6102,6 +6518,7 @@
           const [file] = event.target.files || [];
           handleComposerImageFile(file);
         });
+        syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
 
         postVisibilityMenu?.addEventListener('click', (event) => {
           const option = event.target.closest('[data-visibility-option]');
@@ -6461,9 +6878,12 @@
       mount({ container, params }) {
         const host = container.querySelector('#shared-post-container');
         const loginPrompt = container.querySelector('#shared-post-login-prompt');
+        const relevantPersonHost = container.querySelector('#shared-post-relevant-person');
+        const bottomCta = container.querySelector('#shared-post-bottom-cta');
+        const bottomCtaCloseButton = container.querySelector('[data-shared-bottom-cta-close]');
         const rawId = String(params?.id || '').trim();
         const shareHash = String(window.location.hash || '').replace(/^#shared-post\/?/, '').split('?')[0];
-        let promptTimer = 0;
+        let bottomCtaDismissed = false;
 
         const renderState = (markup) => {
           if (host) {
@@ -6471,34 +6891,67 @@
           }
         };
 
+        const renderAuthorCompanions = (post) => {
+          if (relevantPersonHost) {
+            relevantPersonHost.innerHTML = renderSharedRelevantAuthor(post);
+          }
+        };
+
         const showLoginPrompt = () => {
           if (!loginPrompt) return;
           loginPrompt.classList.remove('hidden');
-          if (promptTimer) {
-            window.clearTimeout(promptTimer);
-          }
-          promptTimer = window.setTimeout(() => {
-            loginPrompt.classList.add('hidden');
-            promptTimer = 0;
-          }, 4200);
+          loginPrompt.setAttribute('aria-hidden', 'false');
+        };
+
+        const hideLoginPrompt = () => {
+          if (!loginPrompt) return;
+          loginPrompt.classList.add('hidden');
+          loginPrompt.setAttribute('aria-hidden', 'true');
+        };
+
+        const hideBottomCta = () => {
+          bottomCtaDismissed = true;
+          if (!bottomCta) return;
+          bottomCta.classList.add('hidden');
+          bottomCta.style.display = 'none';
+          bottomCta.setAttribute('aria-hidden', 'true');
         };
 
         const loadPost = async () => {
           if (!shareHash && !rawId) {
-            renderState('<div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center text-slate-500">Enlace publico invalido.</div>');
+            renderState('<div class="guest-shared-loading-card">Enlace publico invalido.</div>');
+            renderAuthorCompanions(null);
             return;
           }
 
           const result = await PostsAPI.getPublicPost(shareHash || encodeResourceHash(rawId));
           if (!result?.ok || !result?.data?.id) {
-            renderState('<div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center text-slate-500">Esta publicacion ya no esta disponible para invitados.</div>');
+            renderState('<div class="guest-shared-loading-card">Esta publicacion ya no esta disponible para invitados.</div>');
+            renderAuthorCompanions(null);
             return;
           }
 
           renderState(renderSharedReadonlyPost(result.data));
+          renderAuthorCompanions(result.data);
         };
 
         const handleClick = (event) => {
+          const ctaCloseTarget = event.target.closest?.('[data-shared-bottom-cta-close]');
+          if (ctaCloseTarget) {
+            event.preventDefault?.();
+            event.stopPropagation?.();
+            hideBottomCta();
+            return;
+          }
+
+          const modalCloseButton = event.target.closest?.('[data-shared-modal-close]');
+          if (modalCloseButton) {
+            event.preventDefault?.();
+            event.stopPropagation?.();
+            hideLoginPrompt();
+            return;
+          }
+
           const actionTarget = event.target.closest?.('[data-guest-login-required], .mention-link, [data-action="open-profile"]');
           if (!actionTarget) return;
           event.preventDefault?.();
@@ -6507,12 +6960,18 @@
         };
 
         container.addEventListener('click', handleClick);
+        if (bottomCtaCloseButton) {
+          bottomCtaCloseButton.addEventListener('click', hideBottomCta);
+        }
+        if (bottomCta && bottomCtaDismissed) {
+          hideBottomCta();
+        }
         loadPost();
 
         return () => {
           container.removeEventListener('click', handleClick);
-          if (promptTimer) {
-            window.clearTimeout(promptTimer);
+          if (bottomCtaCloseButton) {
+            bottomCtaCloseButton.removeEventListener('click', hideBottomCta);
           }
         };
       },
@@ -10723,7 +11182,7 @@
         let groupData = null;
         let groupPosts = [];
         let currentTab = 'info';
-        const selectedGroupComposerMedia = { file: null, previewUrl: '', kind: null };
+        const selectedGroupComposerMedia = { file: null, previewUrl: '', kind: null, previewReady: false, previewLoading: false, uploadInProgress: false, uploadProgress: 0 };
         let selectedEditCoverFile = null;
         let selectedEditCoverPreviewUrl = '';
         let pendingCommentPostId = null;
@@ -11056,6 +11515,12 @@
                   <div id="group-image-preview-wrap" class="hidden mt-3 relative rounded-2xl overflow-hidden border border-slate-200">
                     <img id="group-image-preview" class="w-full max-h-64 object-cover" alt="Vista previa de imagen del grupo"/>
                     <video id="group-video-preview" class="hidden w-full max-h-64 object-contain bg-slate-950" playsinline controls preload="metadata"></video>
+                    <div class="feed-composer-preview__overlay hidden" data-composer-upload-overlay="true" aria-hidden="true">
+                      <div class="feed-composer-preview__progress is-indeterminate" data-composer-upload-progress-circle="true">
+                        <span data-composer-upload-progress-value="true">...</span>
+                      </div>
+                      <div class="feed-composer-preview__status" data-composer-upload-status="true">Cargando vista previa...</div>
+                    </div>
                     <button id="group-clear-image-btn" type="button" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 text-white hover:bg-black/75 transition-colors">x</button>
                   </div>
                 </div>
@@ -11177,6 +11642,7 @@
               previewWrap,
               previewImage,
               previewVideo,
+              onStateChange: () => syncComposerPublishButton(publishButton, contentInput, selectedGroupComposerMedia),
             });
           }
 
@@ -11197,6 +11663,7 @@
               previewWrap,
               previewImage,
               previewVideo,
+              onStateChange: () => syncComposerPublishButton(publishButton, contentInput, selectedGroupComposerMedia),
             });
           }
 
@@ -11239,6 +11706,7 @@
               const [file] = event.target.files || [];
               setComposerImage(file);
             });
+            contentInput.addEventListener('input', () => syncComposerPublishButton(publishButton, contentInput, selectedGroupComposerMedia));
 
             publishButton.addEventListener('click', async () => {
               const content = contentInput.value.trim();
@@ -11247,12 +11715,48 @@
                 showToast('Escribe algo o adjunta una imagen o video', 'error');
                 return;
               }
+              if (selectedGroupComposerMedia.file && !selectedGroupComposerMedia.previewReady) {
+                showToast('Espera a que cargue la vista previa antes de publicar', 'error');
+                return;
+              }
 
-              publishButton.disabled = true;
-              publishButton.textContent = 'Publicando...';
-              const result = await PostsAPI.createGroupPost(groupId, { content, mediaFile: selectedGroupComposerMedia.file, mentionUserIds });
-              publishButton.disabled = false;
-              publishButton.textContent = 'Publicar';
+              selectedGroupComposerMedia.uploadInProgress = !!selectedGroupComposerMedia.file;
+              selectedGroupComposerMedia.uploadProgress = 0;
+              if (selectedGroupComposerMedia.file) {
+                setComposerPreviewOverlay(previewWrap, {
+                  visible: true,
+                  progress: 0,
+                  label: 'Subiendo archivo...',
+                });
+                syncComposerPublishButton(publishButton, contentInput, selectedGroupComposerMedia);
+              } else {
+                publishButton.disabled = true;
+                publishButton.textContent = 'Publicando...';
+              }
+
+              const result = await PostsAPI.createGroupPost(groupId, {
+                content,
+                mediaFile: selectedGroupComposerMedia.file,
+                mentionUserIds,
+                onUploadProgress: ({ percent }) => {
+                  if (!selectedGroupComposerMedia.file) return;
+                  const numericPercent = Number(percent);
+                  if (Number.isFinite(numericPercent)) {
+                    selectedGroupComposerMedia.uploadProgress = numericPercent;
+                  }
+                  setComposerPreviewOverlay(previewWrap, {
+                    visible: true,
+                    progress: Number.isFinite(numericPercent) ? numericPercent : null,
+                    label: 'Subiendo archivo...',
+                  });
+                  syncComposerPublishButton(publishButton, contentInput, selectedGroupComposerMedia);
+                },
+              });
+
+              selectedGroupComposerMedia.uploadInProgress = false;
+              selectedGroupComposerMedia.uploadProgress = 0;
+              setComposerPreviewOverlay(previewWrap, { visible: false });
+              syncComposerPublishButton(publishButton, contentInput, selectedGroupComposerMedia);
 
               if (result?.ok) {
                 contentInput.value = '';
@@ -11265,6 +11769,7 @@
 
               showToast(result?.data?.error || 'No se pudo publicar en el grupo', 'error');
             });
+            syncComposerPublishButton(publishButton, contentInput, selectedGroupComposerMedia);
           }
 
           postsList.addEventListener('click', async (event) => {
@@ -14734,6 +15239,7 @@
     startGlobalIncomingCallWatcher();
     startNotificationsPolling();
   }
+  ensureSocialVideoBindings();
   AppRouter.render();
   if (shouldBootAuthenticatedRuntime) {
     bootstrapGlobalCallManager().catch((error) => {

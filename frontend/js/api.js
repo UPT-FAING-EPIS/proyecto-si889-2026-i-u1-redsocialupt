@@ -248,6 +248,67 @@ async function apiFetch(url, options = {}) {
 
 /* ── Generic fetch (multipart/FormData) ──────────────────────── */
 async function apiFetchForm(url, formData, options = {}) {
+  if (typeof options.onUploadProgress === 'function') {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      const method = options.method || 'POST';
+      xhr.open(method, url, true);
+      xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`);
+      Object.entries(options.headers || {}).forEach(([key, value]) => {
+        if (value != null) {
+          xhr.setRequestHeader(key, value);
+        }
+      });
+
+      xhr.upload.onprogress = (event) => {
+        const total = Number(event.total || 0);
+        const loaded = Number(event.loaded || 0);
+        const percent = event.lengthComputable && total > 0
+          ? Math.max(0, Math.min(100, (loaded / total) * 100))
+          : null;
+        options.onUploadProgress({
+          loaded,
+          total,
+          percent,
+        });
+      };
+
+      xhr.onerror = () => {
+        resolve({ ok: false, data: { error: 'Error de conexion' } });
+      };
+
+      xhr.onload = () => {
+        const status = Number(xhr.status || 0);
+        const ok = status >= 200 && status < 300;
+        const pseudoResponse = { ok, status };
+        const data = buildResponseData(pseudoResponse, xhr.responseText || '');
+
+        if (status === 401) {
+          logout();
+          resolve({ ok: false, status: 401, data: { error: 'Sesion expirada' } });
+          return;
+        }
+
+        if (status === 403 && data?.code === 'ACCOUNT_BLOCKED') {
+          setBlockedNotice(data.reason || null, data.blocked_until || null, !!data.is_indefinite);
+          window.location.href = '/index.html';
+          resolve({ ok: false, status: 403, data });
+          return;
+        }
+
+        options.onUploadProgress({
+          loaded: 1,
+          total: 1,
+          percent: 100,
+        });
+
+        resolve({ ok, status, data });
+      };
+
+      xhr.send(formData);
+    });
+  }
+
   try {
     const res = await fetch(url, {
       method: options.method || 'POST',
@@ -383,14 +444,14 @@ const PostsAPI = {
   getPublicPost: (hash) => apiFetchPublic(`/api/public/posts/${encodeURIComponent(String(hash || '').trim())}`),
 
   // Crea un post. Si mediaFile es un File, usa multipart; si no, usa JSON.
-  createPost: ({ content, mediaFile, visibility = 'all', mentionUserIds = [] }) => {
+  createPost: ({ content, mediaFile, visibility = 'all', mentionUserIds = [], onUploadProgress = null }) => {
     if (mediaFile) {
       const fd = new FormData();
       if (content) fd.append('content', content);
       fd.append(resolvePostMediaFieldName(mediaFile), mediaFile);
       fd.append('visibility', visibility);
       mentionUserIds.forEach((userId) => fd.append('mention_user_ids[]', String(userId)));
-      return apiFetchForm(`${API.posts}`, fd);
+      return apiFetchForm(`${API.posts}`, fd, { onUploadProgress });
     }
     return apiFetch(`${API.posts}`, {
       method: 'POST',
@@ -471,13 +532,13 @@ const PostsAPI = {
     body: JSON.stringify(payload),
   }),
   getGroupPosts: (groupId) => apiFetch(`/api/group-posts/${groupId}`),
-  createGroupPost: (groupId, { content, mediaFile, mentionUserIds = [] }) => {
+  createGroupPost: (groupId, { content, mediaFile, mentionUserIds = [], onUploadProgress = null }) => {
     if (mediaFile) {
       const fd = new FormData();
       if (content) fd.append('content', content);
       fd.append(resolvePostMediaFieldName(mediaFile), mediaFile);
       mentionUserIds.forEach((userId) => fd.append('mention_user_ids[]', String(userId)));
-      return apiFetchForm(`/api/group-posts/${groupId}`, fd);
+      return apiFetchForm(`/api/group-posts/${groupId}`, fd, { onUploadProgress });
     }
 
     return apiFetch(`/api/group-posts/${groupId}`, {
