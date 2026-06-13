@@ -3090,8 +3090,9 @@
     const messagesSummary = container.querySelector('#messages-summary');
     const messagesCount = container.querySelector('#messages-count');
     const CHAT_POLL_INTERVAL_MS = 1000;
-    const CALL_POLL_INTERVAL_MS = 1000;
-    const CALL_SIGNAL_POLL_INTERVAL_MS = 700;
+    const CALL_INBOX_POLL_INTERVAL_MS = 650;
+    const CALL_SESSION_POLL_INTERVAL_MS = 450;
+    const CALL_SIGNAL_POLL_INTERVAL_MS = 250;
     const CALL_ICE_SERVERS = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
@@ -4496,7 +4497,7 @@
         } catch (error) {
           console.warn('Error de llamadas pendientes:', error);
         }
-      }, CALL_POLL_INTERVAL_MS);
+      }, CALL_INBOX_POLL_INTERVAL_MS);
     }
 
     async function pollPendingCallsOnce() {
@@ -4543,7 +4544,7 @@
       if (!callSessionTimer) {
         callSessionTimer = window.setInterval(() => {
           pollActiveCallState().catch((error) => console.warn('Error de estado de llamada:', error));
-        }, CALL_POLL_INTERVAL_MS);
+        }, CALL_SESSION_POLL_INTERVAL_MS);
       }
 
       if (!callSignalTimer) {
@@ -4551,6 +4552,9 @@
           pollCallSignals().catch((error) => console.warn('Error de senales de llamada:', error));
         }, CALL_SIGNAL_POLL_INTERVAL_MS);
       }
+
+      pollActiveCallState().catch((error) => console.warn('Error de estado de llamada:', error));
+      pollCallSignals().catch((error) => console.warn('Error de senales de llamada:', error));
     }
 
     async function openOutgoingCall(mode) {
@@ -4584,6 +4588,7 @@
       tryPlayRemoteMedia();
       updateCallWindow();
       startActiveCallPolling();
+      pollActiveCallState().catch((error) => console.warn('Error de estado inicial de llamada:', error));
     }
 
     async function startOutgoingCallForUser(targetUser, mode) {
@@ -4616,6 +4621,7 @@
       await beginWebRtcIfNeeded();
       tryPlayRemoteMedia();
       startActiveCallPolling();
+      pollCallSignals().catch((error) => console.warn('Error de senales al aceptar la llamada:', error));
     }
 
     async function rejectIncomingCall() {
