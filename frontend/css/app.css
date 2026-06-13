@@ -5501,7 +5501,7 @@ body.live-immersive-active #app-view {
   position: absolute;
   right: 0;
   bottom: 12px;
-  font-size: 28px;
+  font-size: 26px;
   line-height: 1;
   contain: layout paint style;
   animation: live-float-up 2.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -5535,7 +5535,7 @@ body.live-immersive-active #app-view {
   }
 
   .live-float-emoji {
-    font-size: 22px;
+    font-size: 19px;
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.32));
   }
 }

@@ -7385,8 +7385,20 @@
           `;
         };
 
-
         const floatingReactionQueues = new WeakMap();
+        const floatingReactionState = new WeakMap();
+
+        function getFloatingReactionState(target) {
+          let state = floatingReactionState.get(target);
+          if (!state) {
+            state = {
+              activeCount: 0,
+              laneCursor: 0,
+            };
+            floatingReactionState.set(target, state);
+          }
+          return state;
+        }
 
         function addFloatingReaction(type) {
           const emojiMap = {
@@ -7400,32 +7412,47 @@
 
           [floatingReactions].forEach((target) => {
             if (!target) return;
-            const activeBubbles = target.querySelectorAll('.live-float-emoji');
-            if (activeBubbles.length > 18) {
-              activeBubbles[0]?.remove();
-            }
+            const state = getFloatingReactionState(target);
             const nextAvailableAt = floatingReactionQueues.get(target) || 0;
             const now = Date.now();
             const delayMs = Math.max(0, nextAvailableAt - now);
-            const spacingMs = isDesktopClient() ? 185 : 225;
+            const spacingMs = isDesktopClient() ? 210 : 255;
             floatingReactionQueues.set(target, Math.max(now, nextAvailableAt) + spacingMs);
 
             window.setTimeout(() => {
+              if (!target.isConnected) {
+                return;
+              }
+
+              const maxActive = isDesktopClient() ? 10 : 7;
+              if (state.activeCount >= maxActive) {
+                const oldestBubble = target.querySelector('.live-float-emoji');
+                if (oldestBubble) {
+                  oldestBubble.remove();
+                  state.activeCount = Math.max(0, state.activeCount - 1);
+                }
+              }
+
               const bubble = document.createElement('div');
-              const lanes = isDesktopClient() ? 5 : 4;
-              const lane = Math.floor(Math.random() * lanes);
-              const laneOffset = lane * (isDesktopClient() ? 18 : 14);
-              const xOffset = (Math.random() - 0.5) * (isDesktopClient() ? 42 : 28);
-              const durationMs = 2600 + Math.floor(Math.random() * 640);
+              const lanes = isDesktopClient() ? 6 : 5;
+              const lane = state.laneCursor % lanes;
+              state.laneCursor += 1;
+              const laneOffset = lane * (isDesktopClient() ? 18 : 13);
+              const xOffset = ((lane % 2 === 0 ? -1 : 1) * (10 + Math.floor(Math.random() * (isDesktopClient() ? 18 : 12))));
+              const durationMs = 2200 + Math.floor(Math.random() * 420);
               bubble.textContent = emoji;
               bubble.className = 'live-float-emoji';
               bubble.style.right = `${8 + laneOffset}px`;
-              bubble.style.bottom = `${10 + Math.floor(Math.random() * 18)}px`;
+              bubble.style.bottom = `${10 + (lane % 3) * 6}px`;
               bubble.style.setProperty('--float-x', `${xOffset}px`);
-              bubble.style.setProperty('--float-rise', `${-160 - Math.floor(Math.random() * 70)}px`);
+              bubble.style.setProperty('--float-rise', `${-150 - lane * (isDesktopClient() ? 16 : 12) - Math.floor(Math.random() * 28)}px`);
               bubble.style.animationDuration = `${durationMs}ms`;
+              state.activeCount += 1;
+              bubble.addEventListener('animationend', () => {
+                bubble.remove();
+                state.activeCount = Math.max(0, state.activeCount - 1);
+              }, { once: true });
               target.appendChild(bubble);
-              window.setTimeout(() => bubble.remove(), durationMs + 120);
             }, delayMs);
           });
         }
