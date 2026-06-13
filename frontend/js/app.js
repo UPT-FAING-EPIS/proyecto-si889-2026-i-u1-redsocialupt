@@ -8530,23 +8530,13 @@
           if (selectedSettings.facingMode === 'user' || selectedSettings.facingMode === 'environment') {
             currentFacingMode = selectedSettings.facingMode;
           }
-          let cameraOutputStream = cameraStream;
-          if (!isDesktopClient()) {
-            try {
-              const portraitOutput = await createMobilePortraitCameraOutput(cameraStream);
-              if (portraitOutput?.stream) {
-                bundle.videoTransformer = portraitOutput;
-                cameraOutputStream = portraitOutput.stream;
-                selectedSettings = { ...selectedSettings, ...portraitOutput.settings };
-              }
-            } catch (error) {
-              console.warn('No se pudo normalizar la camara movil a retrato:', error);
-            }
-          }
-
           bundle.cameraStream = cameraStream;
-          bundle.previewStream = cameraOutputStream;
-          bundle.publishedStream = cameraOutputStream;
+          // Keep the mobile camera stream native. Repainting every frame through a
+          // portrait canvas looks neat visually, but it is too expensive under
+          // real movement and weak devices, which is exactly when the livestream
+          // starts looking like slides for viewers.
+          bundle.previewStream = cameraStream;
+          bundle.publishedStream = cameraStream;
           bundle.micAudioTracks = cameraStream.getAudioTracks();
           bundle.videoSettings = selectedSettings;
           applyLiveTrackHints(bundle.previewStream, 'camera');
