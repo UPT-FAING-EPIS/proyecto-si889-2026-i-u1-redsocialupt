@@ -2235,7 +2235,7 @@
   function buildLivestreamWebRtcUrl(streamKey, _revision = '', transport = LIVESTREAM_PRIMARY_TRANSPORT) {
     const hostname = window.location.hostname;
     const encodedKey = encodeURIComponent(streamKey);
-    const playbackPath = `app/${encodedKey}`;
+    const playbackPath = `app/${encodedKey}/master`;
     const resolvedTransport = (typeof transport === 'string' && transport.length)
       ? transport
       : resolveDefaultLivestreamViewerTransport();

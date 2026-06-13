@@ -229,7 +229,7 @@
 								<Name>adaptive_llhls</Name>
 								<FileName>master</FileName>
 								<Options>
-									<WebRtcAutoAbr>false</WebRtcAutoAbr>
+									<WebRtcAutoAbr>true</WebRtcAutoAbr>
 									<HLSChunklistPathDepth>0</HLSChunklistPathDepth>
 									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>
@@ -238,12 +238,25 @@
 									<Video>bypass_video</Video>
 									<Audio>bypass_audio</Audio>
 								</Rendition>
+								<Rendition>
+									<Name>low</Name>
+									<Video>fallback_low</Video>
+									<Audio>bypass_audio</Audio>
+								</Rendition>
 							</Playlist>
 
 							<Encodes>
 								<Video>
 									<Name>bypass_video</Name>
 									<Bypass>true</Bypass>
+								</Video>
+								<Video>
+									<Name>fallback_low</Name>
+									<Codec>h264</Codec>
+									<Width>640</Width>
+									<Height>360</Height>
+									<Bitrate>900000</Bitrate>
+									<Framerate>24</Framerate>
 								</Video>
 								<Audio>
 									<Name>bypass_audio</Name>
