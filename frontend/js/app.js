@@ -7183,7 +7183,7 @@
           viewerRetrySpinner.classList.add('hidden');
         }
 
-        function queueViewerReconnect(sourceUrl, delayMs = 900) {
+        function queueViewerReconnect(sourceUrl, delayMs = 550) {
           if (!sourceUrl || viewerReconnectTimer) {
             return;
           }
@@ -8086,7 +8086,7 @@
                 } else if ((nextState === 'stalled' || nextState === 'error') && liveData?.live_status === 'live') {
                   captureViewerFreezeFrame({ hideVideo: true });
                   if (!maybeEscalateViewerTransport()) {
-                    queueViewerReconnect(sourceUrl, 1200);
+                    queueViewerReconnect(sourceUrl, 700);
                   }
                 }
               });
@@ -8100,7 +8100,7 @@
             window.setTimeout(() => {
               if (viewerPlayer === player && viewerPlayerSourceUrl === sourceUrl && !viewerVideo) {
                 if (!maybeEscalateViewerTransport()) {
-                  queueViewerReconnect(sourceUrl, 1400);
+                  queueViewerReconnect(sourceUrl, 900);
                 }
               }
             }, 1500);
@@ -8565,9 +8565,9 @@
             return false;
           }
           return waitForPublishedManifest(streamKey, {
-            attempts: 12,
-            pauseMs: 120,
-            requestTimeoutMs: 900,
+            attempts: 8,
+            pauseMs: 80,
+            requestTimeoutMs: 600,
           });
         }
 
@@ -8754,13 +8754,14 @@
 
             nextBundle = await buildHostInputStream(source);
             nextLivekit = await publishHostBundle(nextBundle, source, nextStreamKey);
-            await waitForViewerReadyStream(nextStreamKey);
+            const viewerReadyPromise = waitForViewerReadyStream(nextStreamKey).catch(() => false);
             const nextAspectRatio = getLivestreamAspectRatioFromSettings(source, nextBundle?.videoSettings || {});
             liveData.live_source = source;
             liveData.stream_key = nextStreamKey;
             liveData.stream_aspect_ratio = nextAspectRatio;
             liveData.updated_at = new Date().toISOString();
             await syncLivestreamSourceState(source, nextStreamKey, nextAspectRatio);
+            await viewerReadyPromise;
             ovenLivekit = nextLivekit;
             hostMediaBundle = nextBundle;
             hostPublishing = true;
@@ -8768,7 +8769,7 @@
             refreshHostAudioButtons();
             showHostPreview();
             if (previousLivekit && previousLivekit !== nextLivekit) {
-              await delay(1800);
+              await delay(450);
               await disposeOvenLivekit(previousLivekit, { clearCurrent: false });
             }
             if (previousBundle && previousBundle !== nextBundle) {
@@ -8804,7 +8805,7 @@
                 const recoveredBundle = await buildHostInputStream(previousSource);
                 const recoveryStreamKey = nextLivestreamStreamKey();
                 const recoveredLivekit = await publishHostBundle(recoveredBundle, previousSource, recoveryStreamKey);
-                await waitForViewerReadyStream(recoveryStreamKey);
+                const recoveryViewerReadyPromise = waitForViewerReadyStream(recoveryStreamKey).catch(() => false);
                 ovenLivekit = recoveredLivekit;
                 hostMediaBundle = recoveredBundle;
                 hostPublishing = true;
@@ -8815,6 +8816,7 @@
                 liveData.stream_aspect_ratio = recoveredAspectRatio;
                 liveData.updated_at = new Date().toISOString();
                 await syncLivestreamSourceState(previousSource, recoveryStreamKey, recoveredAspectRatio);
+                await recoveryViewerReadyPromise;
                 restored = true;
                 showHostPreview();
                 refreshHostAudioButtons();
@@ -8909,7 +8911,7 @@
               viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
               viewerTransportEscalated = false;
               viewerBoundSourceUrl = '';
-              viewerSourceWarmupUntil = Date.now() + 450;
+              viewerSourceWarmupUntil = Date.now() + 180;
               captureViewerFreezeFrame({ hideVideo: true });
               beginLiveSourceTransition();
               showViewerPlayer();
