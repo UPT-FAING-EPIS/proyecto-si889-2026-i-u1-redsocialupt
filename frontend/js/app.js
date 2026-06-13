@@ -8224,10 +8224,10 @@
                 aspectRatio: { ideal: 16 / 9 },
               }
               : {
-                // Mobile camera: avoid strict portrait + crop-and-scale because
-                // some Android devices respond with a zoomed/cropped stream.
-                width: { ideal: 1280, max: 1280 },
-                height: { ideal: 720, max: 720 },
+                // Mobile camera: start from a lighter baseline so movement under
+                // weak networks does not punish viewers immediately.
+                width: { ideal: 960, max: 1280 },
+                height: { ideal: 540, max: 720 },
                 frameRate: { ideal: 24, max: 30 },
               };
 
@@ -8584,9 +8584,9 @@
         function buildLivestreamConnectionConfig(source, transportMode = LIVESTREAM_PRIMARY_TRANSPORT) {
           const isScreen = source === 'screen';
           const desktop = isDesktopClient();
-          const targetVideoBitrate = isScreen ? 12000 : (desktop ? 10000 : 6500);
-          const startBitrate = isScreen ? 8000 : (desktop ? 7600 : 4600);
-          const minBitrate = isScreen ? 3200 : (desktop ? 3500 : 2200);
+          const targetVideoBitrate = isScreen ? 12000 : (desktop ? 10000 : 3800);
+          const startBitrate = isScreen ? 8000 : (desktop ? 7600 : 2400);
+          const minBitrate = isScreen ? 3200 : (desktop ? 3500 : 1200);
 
           return {
             preferredVideoFormat: 'H264',
