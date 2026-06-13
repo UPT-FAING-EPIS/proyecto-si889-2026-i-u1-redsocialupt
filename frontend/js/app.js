@@ -1,10 +1,22 @@
 (async function () {
-  requireAuth();
+  const allowsGuestReadonlyRoute = /^#?shared-post(?:[/?]|$)/.test(String(window.location.hash || '').replace(/^#/, ''));
+  if (!allowsGuestReadonlyRoute) {
+    requireAuth();
+  }
 
   const appView = document.getElementById('app-view');
   const sidebar = document.querySelector('app-sidebar');
   const appState = {
-    user: getUser(),
+    user: getUser() || {
+      id: 0,
+      role: 'guest',
+      name: 'Invitado',
+      full_name: 'Invitado',
+      faculty: '',
+      career: '',
+      school: '',
+      avatar_url: null,
+    },
     cleanup: null,
   };
   const publicUsersState = {
@@ -2068,9 +2080,75 @@
   }
 
   function getShortHashParamKey(route) {
-    if (route === 'profile' || route === 'group' || route === 'live') return 'id';
+    if (route === 'profile' || route === 'group' || route === 'live' || route === 'shared-post') return 'id';
     if (route === 'messages') return 'user';
     return '';
+  }
+
+  function isPublicSharedPostRoute(route = '') {
+    return String(route || '').trim() === 'shared-post';
+  }
+
+  function canSharePostPublicly(post) {
+    if (!post || String(post.post_type || 'standard') !== 'standard') {
+      return false;
+    }
+    if (Number(post.group_id || 0) > 0) {
+      return false;
+    }
+    return String(post.visibility || '').trim() === 'all';
+  }
+
+  function buildPublicPostUrl(postId) {
+    const hash = buildHash('shared-post', { id: postId });
+    return new URL(`${window.location.pathname}${hash}`, window.location.origin).toString();
+  }
+
+  async function copyTextToClipboard(text) {
+    const value = String(text || '').trim();
+    if (!value) return false;
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+
+    const input = document.createElement('textarea');
+    input.value = value;
+    input.setAttribute('readonly', '');
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    try {
+      return document.execCommand('copy');
+    } finally {
+      input.remove();
+    }
+  }
+
+  async function copyPublicPostLink(postId) {
+    await copyTextToClipboard(buildPublicPostUrl(postId));
+    showToast('Enlace publico copiado', 'success');
+  }
+
+  async function handleSharePublicPostAction(actionTarget) {
+    if (!actionTarget || actionTarget.dataset.action !== 'share-public-post') {
+      return false;
+    }
+
+    const postId = Number(actionTarget.dataset.postId || 0);
+    if (!postId) {
+      showToast('No se pudo generar el enlace publico', 'error');
+      return true;
+    }
+
+    try {
+      await copyPublicPostLink(postId);
+    } catch (error) {
+      console.warn('No se pudo copiar el enlace publico de la publicacion:', error);
+      showToast('No se pudo copiar el enlace publico', 'error');
+    }
+    return true;
   }
 
   function getShortHashRouteParam(route, params = {}) {
@@ -2432,6 +2510,106 @@
     `;
   }
 
+  function renderPublicShareActionButton(post, options = {}) {
+    if (!canSharePostPublicly(post)) {
+      return '';
+    }
+
+    const variant = options.variant || 'card';
+    if (variant === 'modal') {
+      return `
+        <button type="button" class="post-modal-preview-report" data-action="share-public-post" data-post-id="${post.id}">
+          <span class="material-symbols-outlined text-[15px]">share</span>
+          <span>Compartir</span>
+        </button>
+      `;
+    }
+
+    return `
+      <button type="button" data-action="share-public-post" data-post-id="${post.id}" class="social-post-action">
+        <span class="material-symbols-outlined text-[18px]">share</span>
+        <span>Compartir</span>
+      </button>
+    `;
+  }
+
+  function renderSharedReadonlyPost(post) {
+    if (!post) {
+      return `
+        <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center text-slate-500">
+          No se pudo cargar la publicacion compartida.
+        </div>
+      `;
+    }
+
+    const author = resolveProfileData({
+      id: post.user_id,
+      user_name: post.user_name,
+      user_faculty: post.user_faculty,
+      user_school: post.user_school,
+      user_avatar: post.user_avatar,
+    });
+    const authorCareer = careerLabel(author);
+    const visibilityMeta = getVisibilityMeta(post.visibility);
+    const authorMeta = [
+      authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
+      `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
+    ].filter(Boolean).join('<span>&middot;</span>');
+
+    return `
+      <article class="bg-white border border-slate-200 rounded-[1.75rem] p-5 shadow-sm" data-shared-readonly-post="true">
+        <div class="flex justify-between items-start mb-3 gap-3">
+          <button type="button" class="flex items-center gap-3 text-left min-w-0" data-guest-login-required="true">
+            ${renderAvatar(author, { sizeClass: 'w-11 h-11', textClass: 'text-white font-bold', showOnline: true })}
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="font-bold text-sm text-slate-900">${escapeHtml(displayName(author))}</span>
+                <span class="text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1" style="background:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
+                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
+                  <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
+                  ${escapeHtml(visibilityMeta.label)}
+                </span>
+              </div>
+              <div class="text-slate-500 text-xs mt-0.5">${authorMeta}</div>
+            </div>
+          </button>
+          <div class="inline-flex items-center gap-2 rounded-full bg-slate-50 border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-500 shrink-0">
+            <span class="material-symbols-outlined text-[14px]">visibility</span>
+            Solo lectura
+          </div>
+        </div>
+        ${post.content ? `<div class="text-sm text-slate-800 mb-4"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
+        ${renderPostMediaBlock(post, { mediaHeightClass: 'min-h-[18rem] md:min-h-[24rem]' })}
+        <div class="pt-3 border-t border-slate-100 space-y-3 text-slate-500">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            ${renderReactionSummary(post.reactions_count, post.reactions_total)}
+            <button type="button" data-guest-login-required="true" class="text-sm font-medium hover:text-slate-700 transition-colors">
+              ${post.comments_count || 0} comentarios
+            </button>
+          </div>
+          <div class="social-post-actions social-post-actions--four">
+            <button type="button" class="social-reaction-trigger" data-guest-login-required="true">
+              <span class="material-symbols-outlined">thumb_up</span>
+              <span>Reaccionar</span>
+            </button>
+            <button type="button" class="social-post-action" data-guest-login-required="true">
+              <span class="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
+              <span>Comentar</span>
+            </button>
+            <button type="button" class="social-post-action social-post-action--report" data-guest-login-required="true">
+              <span class="material-symbols-outlined text-[18px]">flag</span>
+              <span>Reportar</span>
+            </button>
+            <button type="button" class="social-post-action" data-guest-login-required="true">
+              <span class="material-symbols-outlined text-[18px]">share</span>
+              <span>Compartir</span>
+            </button>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
   function renderPostModalMedia(post, options = {}) {
     const media = getPostMediaInfo(post);
     if (!media) return '';
@@ -2467,6 +2645,8 @@
     const canDelete = options.canDelete ?? Number(post.user_id) === Number(currentUserId);
     const interactive = options.interactive !== false;
     const clickable = options.clickable !== false;
+    const canSharePublic = canSharePostPublicly(post);
+    const actionsClass = canSharePublic ? 'social-post-actions social-post-actions--four' : 'social-post-actions social-post-actions--three';
     const mediaHeightClass = options.mediaHeightClass || 'h-64';
     const hideAudienceBadge = options.hideAudienceBadge === true || (options.hideGroupBadge === true && Number(post.group_id) > 0);
     const author = resolveProfileData({
@@ -2524,7 +2704,7 @@
                 ${post.comments_count || 0} comentarios
               </button>
             </div>
-            <div class="social-post-actions social-post-actions--three">
+            <div class="${actionsClass}">
               ${renderReactionTrigger('post', post.id, post.current_reaction, true)}
               <button type="button" data-action="comment-post" data-post-id="${post.id}" class="social-post-action">
                 <span class="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
@@ -2534,6 +2714,7 @@
                 <span class="material-symbols-outlined text-[18px]">flag</span>
                 <span>Reportar</span>
               </button>
+              ${renderPublicShareActionButton(post)}
             </div>
           </div>
         ` : ''}
@@ -2620,10 +2801,13 @@
           <div class="social-reaction-bar">
             ${renderReactionTrigger('post', post.id, post.current_reaction, true)}
           </div>
-          <button type="button" class="post-modal-preview-report" data-action="report-post" data-post-id="${post.id}">
-            <span class="material-symbols-outlined text-[15px]">flag</span>
-            <span>Reportar</span>
-          </button>
+          <div class="flex items-center gap-4">
+            ${renderPublicShareActionButton(post, { variant: 'modal' })}
+            <button type="button" class="post-modal-preview-report" data-action="report-post" data-post-id="${post.id}">
+              <span class="material-symbols-outlined text-[15px]">flag</span>
+              <span>Reportar</span>
+            </button>
+          </div>
         </div>
       </article>
     `;
@@ -5934,6 +6118,9 @@
         postsContainer.addEventListener('click', async (event) => {
           const actionTarget = event.target.closest('[data-action]');
           if (actionTarget) {
+            if (await handleSharePublicPostAction(actionTarget)) {
+              return;
+            }
             const postId = Number(actionTarget.dataset.postId);
             if (actionTarget.dataset.action === 'open-profile') {
               router.navigate('profile', { id: actionTarget.dataset.userId });
@@ -6130,6 +6317,7 @@
         commentPostPreview.addEventListener('click', async (event) => {
           const actionTarget = event.target.closest('[data-action]');
           if (!actionTarget) return;
+          if (await handleSharePublicPostAction(actionTarget)) return;
 
           if (actionTarget.dataset.action === 'open-profile') {
             router.navigate('profile', { id: actionTarget.dataset.userId });
@@ -6257,6 +6445,69 @@
           postMentionController.destroy();
           commentMentionController.destroy();
           closeReactionPicker();
+        };
+      },
+    },
+    'shared-post': {
+      title: 'Publicacion compartida',
+      templatePath: '/pages/shared_post.html',
+      publicReadonly: true,
+      mount({ container, params }) {
+        const host = container.querySelector('#shared-post-container');
+        const loginPrompt = container.querySelector('#shared-post-login-prompt');
+        const rawId = String(params?.id || '').trim();
+        const shareHash = String(window.location.hash || '').replace(/^#shared-post\/?/, '').split('?')[0];
+        let promptTimer = 0;
+
+        const renderState = (markup) => {
+          if (host) {
+            host.innerHTML = markup;
+          }
+        };
+
+        const showLoginPrompt = () => {
+          if (!loginPrompt) return;
+          loginPrompt.classList.remove('hidden');
+          if (promptTimer) {
+            window.clearTimeout(promptTimer);
+          }
+          promptTimer = window.setTimeout(() => {
+            loginPrompt.classList.add('hidden');
+            promptTimer = 0;
+          }, 4200);
+        };
+
+        const loadPost = async () => {
+          if (!shareHash && !rawId) {
+            renderState('<div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center text-slate-500">Enlace publico invalido.</div>');
+            return;
+          }
+
+          const result = await PostsAPI.getPublicPost(shareHash || encodeResourceHash(rawId));
+          if (!result?.ok || !result?.data?.id) {
+            renderState('<div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center text-slate-500">Esta publicacion ya no esta disponible para invitados.</div>');
+            return;
+          }
+
+          renderState(renderSharedReadonlyPost(result.data));
+        };
+
+        const handleClick = (event) => {
+          const actionTarget = event.target.closest?.('[data-guest-login-required], .mention-link, [data-action="open-profile"]');
+          if (!actionTarget) return;
+          event.preventDefault?.();
+          event.stopPropagation?.();
+          showLoginPrompt();
+        };
+
+        container.addEventListener('click', handleClick);
+        loadPost();
+
+        return () => {
+          container.removeEventListener('click', handleClick);
+          if (promptTimer) {
+            window.clearTimeout(promptTimer);
+          }
         };
       },
     },
@@ -11490,6 +11741,7 @@
         commentPostPreview.addEventListener('click', async (event) => {
           const actionTarget = event.target.closest('[data-action]');
           if (!actionTarget) return;
+          if (await handleSharePublicPostAction(actionTarget)) return;
 
           if (actionTarget.dataset.action === 'open-profile') {
             router.navigate('profile', { id: actionTarget.dataset.userId });
@@ -12544,6 +12796,9 @@
         postsList.addEventListener('click', async (event) => {
           const button = event.target.closest('[data-action]');
           if (button) {
+            if (await handleSharePublicPostAction(button)) {
+              return;
+            }
             if (button.dataset.action === 'open-profile') {
               router.navigate('profile', { id: button.dataset.userId });
               return;
@@ -12641,6 +12896,7 @@
         profileCommentPostPreview.addEventListener('click', async (event) => {
           const button = event.target.closest('[data-action]');
           if (!button) return;
+          if (await handleSharePublicPostAction(button)) return;
 
           if (button.dataset.action === 'open-profile') {
             router.navigate('profile', { id: button.dataset.userId });
@@ -14243,6 +14499,7 @@
         commentPostPreview.addEventListener('click', async (event) => {
           const actionTarget = event.target.closest('[data-action]');
           if (!actionTarget || !currentCommentsPostId) return;
+          if (await handleSharePublicPostAction(actionTarget)) return;
 
           if (actionTarget.dataset.action === 'open-profile') {
             router.navigate('profile', { id: actionTarget.dataset.userId });
@@ -14288,6 +14545,11 @@
 
   views.messages.mount = initMessagesView;
 
+  function applyViewShellMode(view) {
+    const isPublicReadonly = view?.publicReadonly === true;
+    document.body.classList.toggle('guest-shared-post-page', isPublicReadonly);
+  }
+
   const AppRouter = {
     currentRoute: null,
     navigate(route, params = {}, options = {}) {
@@ -14312,6 +14574,7 @@
     async render() {
       const parsed = parseRoute();
       const view = views[parsed.route] || views.feed;
+      applyViewShellMode(view);
 
       if (view.adminOnly && appState.user.role !== 'admin') {
         showToast('No tienes acceso a esa seccion', 'error');
@@ -14330,8 +14593,10 @@
 
       this.currentRoute = parsed;
       appView.innerHTML = await resolveViewMarkup(view, { user: appState.user, params: parsed.params, router: this });
-      if (sidebar) sidebar.setAttribute('active-nav', view.activeNav || parsed.route);
-      if (window.setupLayoutData) window.setupLayoutData(appState.user);
+      if (sidebar && !view.publicReadonly) {
+        sidebar.setAttribute('active-nav', view.activeNav || parsed.route);
+      }
+      if (window.setupLayoutData && !view.publicReadonly) window.setupLayoutData(appState.user);
       setDocumentTitle(view.title || parsed.route);
 
       if (view.mount) {
@@ -14409,6 +14674,14 @@
 
   window.AppRouter = AppRouter;
 
+  document.addEventListener('click', (event) => {
+    const shareButton = event.target.closest?.('[data-action="share-public-post"]');
+    if (!shareButton) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    handleSharePublicPostAction(shareButton);
+  });
+
   window.addEventListener('hashchange', () => {
     closeReactionPicker();
     AppRouter.render();
@@ -14420,6 +14693,7 @@
 
   const initialRoute = parseRoute();
   const initialView = views[initialRoute.route] || views.feed;
+  const shouldBootAuthenticatedRuntime = isLoggedIn();
   prewarmViewTemplates([
     initialView?.templatePath,
     views.feed?.templatePath,
@@ -14430,13 +14704,17 @@
     Object.values(views).map((view) => view?.templatePath).filter(Boolean),
   );
 
-  if (window.setupLayoutData) window.setupLayoutData(appState.user);
-  startGlobalIncomingCallWatcher();
-  startNotificationsPolling();
+  if (window.setupLayoutData && shouldBootAuthenticatedRuntime && !initialView?.publicReadonly) window.setupLayoutData(appState.user);
+  if (shouldBootAuthenticatedRuntime) {
+    startGlobalIncomingCallWatcher();
+    startNotificationsPolling();
+  }
   AppRouter.render();
-  bootstrapGlobalCallManager().catch((error) => {
-    console.error('Global call manager bootstrap error:', error);
-  });
+  if (shouldBootAuthenticatedRuntime) {
+    bootstrapGlobalCallManager().catch((error) => {
+      console.error('Global call manager bootstrap error:', error);
+    });
+  }
 })().catch((error) => {
   console.error('App bootstrap error:', error);
   const appView = document.getElementById('app-view');

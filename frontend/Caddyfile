@@ -68,6 +68,10 @@
 		reverse_proxy posts-service:8000
 	}
 
+	handle /api/public/posts* {
+		reverse_proxy posts-service:8000
+	}
+
 	handle /api/comments* {
 		reverse_proxy posts-service:8000
 	}

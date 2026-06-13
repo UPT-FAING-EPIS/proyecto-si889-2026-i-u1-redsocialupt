@@ -153,6 +153,26 @@ class PostService
         return $post;
     }
 
+    public function findShareablePublicPostOrFail(int $postId): Post
+    {
+        $post = Post::query()
+            ->whereKey($postId)
+            ->whereNull('group_id')
+            ->where('post_type', 'standard')
+            ->where('visibility', 'all')
+            ->withCount([
+                'comments',
+                'reactions as reactions_total',
+            ])
+            ->first();
+
+        if (!$post) {
+            throw new PostsServiceException('Publicacion publica no encontrada', 404);
+        }
+
+        return $post;
+    }
+
     public function destroy(int $userId, int $postId): void
     {
         $this->destroyWithAccess($userId, $postId);

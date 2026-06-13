@@ -276,6 +276,23 @@ async function apiFetchForm(url, formData, options = {}) {
   }
 }
 
+async function apiFetchPublic(url, options = {}) {
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+      },
+    });
+    const text = await res.text();
+    const data = buildResponseData(res, text);
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    console.error('Public API error:', e);
+    return { ok: false, data: { error: 'Error de conexion' } };
+  }
+}
+
 /* ── Auth Service ─────────────────────────────────────────────── */
 const AuthAPI = {
   googleLogin: (idToken) => apiFetch(`${API.auth}/auth/google`, {
@@ -363,6 +380,7 @@ const PostsAPI = {
       },
     });
   },
+  getPublicPost: (hash) => apiFetchPublic(`/api/public/posts/${encodeURIComponent(String(hash || '').trim())}`),
 
   // Crea un post. Si mediaFile es un File, usa multipart; si no, usa JSON.
   createPost: ({ content, mediaFile, visibility = 'all', mentionUserIds = [] }) => {

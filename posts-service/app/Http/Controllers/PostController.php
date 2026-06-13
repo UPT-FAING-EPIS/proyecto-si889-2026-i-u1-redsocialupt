@@ -246,6 +246,21 @@ class PostController extends BaseController
         }
     }
 
+    public function showPublicShared(string $hash): JsonResponse
+    {
+        try {
+            $postId = $this->decodePublicPostHash($hash);
+            if ($postId <= 0) {
+                return response()->json(['error' => 'Publicacion publica no encontrada'], 404);
+            }
+
+            $post = $this->postService->findShareablePublicPostOrFail($postId);
+            return response()->json($this->hydratePost($post, 0), 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], $e->getCode() ?: 500);
+        }
+    }
+
     private function hydratePosts(Collection $posts, int $userId): void
     {
         if ($posts->isEmpty()) {
@@ -352,5 +367,26 @@ class PostController extends BaseController
             'video_url' => null,
             'video_mime_type' => null,
         ];
+    }
+
+    private function decodePublicPostHash(string $hash): int
+    {
+        $normalized = trim($hash);
+        if ($normalized === '') {
+            return 0;
+        }
+
+        $mixed = base_convert(strtolower($normalized), 36, 10);
+        if (!is_numeric($mixed)) {
+            return 0;
+        }
+
+        $raw = (int) $mixed - 104729;
+        if ($raw <= 0 || ($raw % 7919) !== 0) {
+            return 0;
+        }
+
+        $decoded = (int) ($raw / 7919);
+        return $decoded > 0 ? $decoded : 0;
     }
 }

@@ -10,6 +10,8 @@ $router->get('/', function () {
     ]);
 });
 
+$router->get('/api/public/posts/{hash}', 'PostController@showPublicShared');
+
 $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($router) {
     $router->post('/posts', 'PostController@store');
     $router->get('/posts', 'PostController@index');
