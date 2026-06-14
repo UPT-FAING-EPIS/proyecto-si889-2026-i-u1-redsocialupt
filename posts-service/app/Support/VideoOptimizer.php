@@ -12,8 +12,8 @@ class VideoOptimizer
         string $destinationDir,
         string $prefix = 'post_video',
         int $maxWidth = 1280,
-        int $maxHeight = 720,
-        int $targetBitrateKbps = 1800
+        int $maxHeight = 1280,
+        int $targetBitrateKbps = 3500
     ): array {
         if (!$file->isValid()) {
             throw new RuntimeException('No se pudo procesar el video subido');
@@ -35,19 +35,21 @@ class VideoOptimizer
             return [
                 'filename' => basename($fallbackPath),
                 'mime_type' => self::guessMimeType($file, $fallbackExtension),
+                'poster_filename' => null,
             ];
         }
 
         $optimizedPath = rtrim($destinationDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $baseName . '.mp4';
-        $bufferSizeKbps = max(2200, $targetBitrateKbps * 2);
+        $posterPath = rtrim($destinationDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $baseName . '.jpg';
+        $bufferSizeKbps = max(7000, $targetBitrateKbps * 2);
         $scaleFilter = sprintf(
-            "scale='trunc(min(%d,iw)/2)*2':'trunc(min(%d,ih)/2)*2':force_original_aspect_ratio=decrease",
+            "fps=30,scale='trunc(min(%d,iw)/2)*2':'trunc(min(%d,ih)/2)*2':force_original_aspect_ratio=decrease",
             $maxWidth,
             $maxHeight
         );
 
         $command = sprintf(
-            'ffmpeg -y -i %s -map 0:v:0 -map 0:a? -vf %s -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -movflags +faststart -crf 28 -maxrate %dk -bufsize %dk -c:a aac -b:a 96k -ac 2 %s 2>&1',
+            'ffmpeg -y -i %s -map 0:v:0 -map 0:a? -vf %s -c:v libx264 -preset faster -profile:v main -pix_fmt yuv420p -movflags +faststart -crf 23 -maxrate %dk -bufsize %dk -g 60 -keyint_min 30 -sc_threshold 0 -c:a aac -b:a 128k -ac 2 %s 2>&1',
             escapeshellarg($file->getRealPath()),
             escapeshellarg($scaleFilter),
             $targetBitrateKbps,
@@ -61,6 +63,9 @@ class VideoOptimizer
             if (is_file($optimizedPath)) {
                 @unlink($optimizedPath);
             }
+            if (is_file($posterPath)) {
+                @unlink($posterPath);
+            }
             if (!copy($file->getRealPath(), $fallbackPath)) {
                 throw new RuntimeException('No se pudo optimizar ni guardar el video subido');
             }
@@ -68,13 +73,33 @@ class VideoOptimizer
             return [
                 'filename' => basename($fallbackPath),
                 'mime_type' => self::guessMimeType($file, $fallbackExtension),
+                'poster_filename' => null,
             ];
         }
+
+        self::generatePosterFrame($optimizedPath, $posterPath);
 
         return [
             'filename' => basename($optimizedPath),
             'mime_type' => 'video/mp4',
+            'poster_filename' => is_file($posterPath) ? basename($posterPath) : null,
         ];
+    }
+
+    public static function ensurePosterForExistingVideo(string $videoPath, string $posterPath): bool
+    {
+        if (!is_file($videoPath)) {
+            return false;
+        }
+        if (is_file($posterPath) && filesize($posterPath) > 0) {
+            return true;
+        }
+        if (!self::ffmpegAvailable()) {
+            return false;
+        }
+
+        self::generatePosterFrame($videoPath, $posterPath);
+        return is_file($posterPath) && filesize($posterPath) > 0;
     }
 
     private static function ffmpegAvailable(): bool
@@ -97,5 +122,21 @@ class VideoOptimizer
         }
 
         return $extension === 'webm' ? 'video/webm' : 'video/mp4';
+    }
+
+    private static function generatePosterFrame(string $videoPath, string $posterPath): void
+    {
+        $command = sprintf(
+            'ffmpeg -y -ss 0.15 -i %s -frames:v 1 -q:v 3 %s 2>&1',
+            escapeshellarg($videoPath),
+            escapeshellarg($posterPath)
+        );
+
+        exec($command, $output, $exitCode);
+        if ($exitCode !== 0 || !is_file($posterPath) || filesize($posterPath) <= 0) {
+            if (is_file($posterPath)) {
+                @unlink($posterPath);
+            }
+        }
     }
 }

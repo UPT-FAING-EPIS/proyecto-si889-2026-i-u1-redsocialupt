@@ -14,6 +14,8 @@ $router->get('/api/public/posts/{hash}', 'PostController@showPublicShared');
 
 $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($router) {
     $router->post('/posts', 'PostController@store');
+    $router->post('/posts/preupload', 'PostController@preupload');
+    $router->delete('/posts/preupload', 'PostController@cancelPreupload');
     $router->get('/posts', 'PostController@index');
     $router->get('/posts/admin/all', 'PostController@adminIndex');
     $router->get('/posts/{id}', 'PostController@show');

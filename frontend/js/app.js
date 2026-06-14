@@ -1,4 +1,4 @@
-﻿(async function () {
+(async function () {
   const allowsGuestReadonlyRoute = /^#?shared-post(?:[/?]|$)/.test(String(window.location.hash || '').replace(/^#/, ''));
   if (!allowsGuestReadonlyRoute) {
     requireAuth();
@@ -970,7 +970,7 @@
     }
   }
 
-  function renderReactionSummary(reactionsCount = {}, fallbackTotal = 0, emptyLabel = 'Se el primero en reaccionar') {
+  function renderReactionSummary(reactionsCount = {}, fallbackTotal = 0, emptyLabel = 'Sé el primero en reaccionar') {
     const entries = reactionCountSummary(reactionsCount);
     const topEntries = entries
       .sort((left, right) => right.total - left.total)
@@ -1805,8 +1805,12 @@
     if (previewVideo) {
       previewVideo.onloadeddata = null;
       previewVideo.onloadedmetadata = null;
+      previewVideo.oncanplay = null;
       previewVideo.onerror = null;
       previewVideo.pause?.();
+      previewVideo.currentTime = 0;
+      previewVideo.loop = true;
+      previewVideo.removeAttribute('poster');
       previewVideo.classList.add('hidden');
       previewVideo.removeAttribute('src');
       previewVideo.load?.();
@@ -1949,13 +1953,31 @@
     if (state.kind === 'video' && elements.previewVideo) {
       elements.previewImage?.classList.add('hidden');
       elements.previewVideo.classList.remove('hidden');
-      elements.previewVideo.onloadeddata = markReady;
+      elements.previewVideo.muted = true;
+      elements.previewVideo.defaultMuted = true;
+      elements.previewVideo.autoplay = false;
+      elements.previewVideo.loop = false;
+      elements.previewVideo.playsInline = true;
+      elements.previewVideo.preload = 'metadata';
+      let previewMarkedReady = false;
+      const markVideoReady = () => {
+        if (previewMarkedReady) return;
+        previewMarkedReady = true;
+        // Seek to first frame for thumbnail — do NOT play
+        try { elements.previewVideo.currentTime = 0.01; } catch (_) {}
+        markReady();
+      };
+      elements.previewVideo.onloadedmetadata = markVideoReady;
+      elements.previewVideo.onloadeddata = markVideoReady;
+      elements.previewVideo.oncanplay = markVideoReady;
       elements.previewVideo.onerror = () => {
         markFailed('Vista previa no disponible para este video.');
       };
       elements.previewVideo.src = state.previewUrl;
       elements.previewVideo.load?.();
     } else if (elements.previewImage) {
+      elements.previewVideo?.classList.add('hidden');
+      elements.previewImage.classList.remove('hidden');
       elements.previewImage.onload = markReady;
       elements.previewImage.onerror = () => {
         markFailed('Vista previa no disponible para este formato.');
@@ -2555,12 +2577,14 @@
     const mediaType = String(post?.media_type || '').trim().toLowerCase();
     const videoUrl = String(post?.video_url || '').trim();
     const imageUrl = String(post?.image_url || '').trim();
+    const videoPosterUrl = String(post?.video_poster_url || '').trim();
 
     if (mediaType === 'video' && videoUrl) {
       return {
         type: 'video',
         url: safeUrl(videoUrl),
         mimeType: escapeHtml(post?.video_mime_type || 'video/mp4'),
+        posterUrl: videoPosterUrl ? safeUrl(videoPosterUrl) : '',
       };
     }
 
@@ -2576,6 +2600,7 @@
         type: 'video',
         url: safeUrl(videoUrl),
         mimeType: escapeHtml(post?.video_mime_type || 'video/mp4'),
+        posterUrl: videoPosterUrl ? safeUrl(videoPosterUrl) : '',
       };
     }
 
@@ -2615,46 +2640,149 @@
   let socialVideoBindingsReady = false;
   let activeSocialVideoElement = null;
   let lastSocialVideoPointerAction = 0;
+  let socialVideoViewportObserver = null;
+  let adaptivePostMediaBindingsReady = false;
+  let adaptivePostMediaResizeFrame = 0;
+
+  function hasHydratedSocialVideoSource(video) {
+    if (!(video instanceof HTMLVideoElement)) return false;
+    return !!String(video.getAttribute('src') || '').trim() || video.dataset.socialVideoHydrated === '1';
+  }
+
+  function syncSocialVideoPosterState(video) {
+    if (!(video instanceof HTMLVideoElement)) return;
+    const shell = video.closest('[data-social-video-player]');
+    if (!(shell instanceof HTMLElement)) return;
+    const hasFrames = Number(video.readyState || 0) >= 2 || Number(video.currentTime || 0) > 0.01;
+    shell.classList.toggle('is-media-ready', hasFrames);
+  }
+
+  function ensureSocialVideoViewportObserver() {
+    if (socialVideoViewportObserver || !('IntersectionObserver' in window)) {
+      return socialVideoViewportObserver;
+    }
+
+    socialVideoViewportObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const target = entry.target;
+        if (!(target instanceof HTMLVideoElement)) return;
+        if (entry.isIntersecting) {
+          hydrateSocialVideoSource(target, { preload: 'metadata' });
+          return;
+        }
+        if (!target.paused) {
+          target.pause();
+        }
+        if (activeSocialVideoElement === target) {
+          activeSocialVideoElement = null;
+        }
+      });
+    }, {
+      rootMargin: '90px 0px',
+      threshold: 0.08,
+    });
+
+    return socialVideoViewportObserver;
+  }
+
+  function registerSocialVideoElement(video) {
+    if (!(video instanceof HTMLVideoElement)) return;
+    if (!video.dataset.socialVideoElementObserved) {
+      video.dataset.socialVideoElementObserved = '1';
+      ensureSocialVideoViewportObserver()?.observe?.(video);
+    }
+    syncSocialVideoPosterState(video);
+  }
+
+  function hydrateSocialVideoSource(video, { preload = 'metadata' } = {}) {
+    if (!(video instanceof HTMLVideoElement)) {
+      return Promise.resolve(false);
+    }
+    if (hasHydratedSocialVideoSource(video)) {
+      if (preload === 'auto' && video.preload !== 'auto') {
+        video.preload = 'auto';
+      }
+      return Promise.resolve(true);
+    }
+
+    const sourceUrl = String(video.dataset.socialVideoSrc || '').trim();
+    if (!sourceUrl) {
+      return Promise.resolve(false);
+    }
+
+    video.dataset.socialVideoHydrated = '1';
+    video.preload = preload;
+    video.src = sourceUrl;
+    video.load?.();
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        syncSocialVideoPosterState(video);
+        resolve(true);
+      };
+
+      video.addEventListener('loadedmetadata', finish, { once: true });
+      video.addEventListener('loadeddata', finish, { once: true });
+      video.addEventListener('error', finish, { once: true });
+      window.setTimeout(finish, 1200);
+    });
+  }
 
   function syncSocialVideoPlayerUi(video) {
     if (!(video instanceof HTMLVideoElement)) return;
     const shell = video.closest('[data-social-video-player]');
     if (!shell) return;
     const toggleIcon = shell.querySelector('[data-social-video-toggle-icon]');
-    const muteIcon = shell.querySelector('[data-social-video-mute-icon]');
-    const currentLabel = shell.querySelector('[data-social-video-current]');
-    const durationLabel = shell.querySelector('[data-social-video-duration]');
+    const volumeIcon = shell.querySelector('[data-social-video-volume-icon]');
+    const remainingLabel = shell.querySelector('[data-social-video-remaining]');
     const seek = shell.querySelector('[data-social-video-seek]');
     const volume = shell.querySelector('[data-social-video-volume]');
+    const fullscreenIcon = shell.querySelector('[data-social-video-fullscreen-icon]');
 
     shell.classList.toggle('is-playing', !video.paused && !video.ended);
     shell.classList.toggle('is-muted', !!video.muted || Number(video.volume || 0) <= 0.001);
+    syncSocialVideoPosterState(video);
 
     if (toggleIcon) {
       toggleIcon.textContent = video.paused || video.ended ? 'play_arrow' : 'pause';
     }
-    if (muteIcon) {
+    if (volumeIcon) {
       const effectiveVolume = video.muted ? 0 : Number(video.volume || 0);
-      muteIcon.textContent = effectiveVolume <= 0.001
+      volumeIcon.textContent = effectiveVolume <= 0.001
         ? 'volume_off'
         : (effectiveVolume < 0.5 ? 'volume_down' : 'volume_up');
     }
-    if (currentLabel) {
-      currentLabel.textContent = formatInlineVideoTime(video.currentTime || 0);
-    }
-    if (durationLabel) {
-      durationLabel.textContent = formatInlineVideoTime(video.duration || 0);
+    if (remainingLabel) {
+      const duration = Number(video.duration || 0);
+      const current = Number(video.currentTime || 0);
+      remainingLabel.textContent = `${formatInlineVideoTime(current)} / ${formatInlineVideoTime(duration)}`;
     }
     if (seek) {
       const duration = Number(video.duration || 0);
       seek.max = duration > 0 ? String(duration) : '0';
-      if (!seek.matches(':active')) {
+      if (!seek.matches(':active') && seek.dataset.seeking !== 'true') {
         seek.value = String(Math.min(duration > 0 ? duration : 0, Number(video.currentTime || 0)));
       }
     }
     if (volume instanceof HTMLInputElement && !volume.matches(':active')) {
       volume.value = String(Math.max(0, Math.min(1, video.muted ? 0 : Number(video.volume || 0))));
     }
+    if (fullscreenIcon) {
+      const fullscreenElement = document.fullscreenElement;
+      const isFullscreenActive = fullscreenElement === shell || fullscreenElement === video;
+      fullscreenIcon.textContent = isFullscreenActive ? 'fullscreen_exit' : 'fullscreen';
+    }
+  }
+
+  function closeOpenSocialVideoVolumePopovers(exceptShell = null) {
+    document.querySelectorAll('.social-video-player__volume-shell.is-volume-open').forEach((shell) => {
+      if (!(shell instanceof HTMLElement)) return;
+      if (exceptShell && shell === exceptShell) return;
+      shell.classList.remove('is-volume-open');
+    });
   }
 
   function pauseOtherSocialVideos(currentVideo) {
@@ -2668,13 +2796,68 @@
     activeSocialVideoElement = currentVideo;
   }
 
-  function toggleSocialVideoPlayback(video) {
+  async function toggleSocialVideoPlayback(video) {
     if (!(video instanceof HTMLVideoElement)) return;
     if (video.paused || video.ended) {
+      const needHydrate = !hasHydratedSocialVideoSource(video);
+      if (needHydrate) {
+        hydrateSocialVideoSource(video, { preload: 'auto' });
+      }
+      if (video.ended) {
+        try {
+          video.currentTime = 0;
+        } catch { }
+      }
       pauseOtherSocialVideos(video);
       video.play().catch(() => syncSocialVideoPlayerUi(video));
     } else {
       video.pause();
+    }
+    syncSocialVideoPlayerUi(video);
+  }
+
+  function waitForSocialVideoMetadata(video) {
+    if (!(video instanceof HTMLVideoElement)) {
+      return Promise.resolve();
+    }
+    if (Number.isFinite(video.duration) && video.duration > 0 && video.readyState >= 1) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        video.removeEventListener('loadedmetadata', finish);
+        video.removeEventListener('loadeddata', finish);
+        video.removeEventListener('durationchange', finish);
+        resolve();
+      };
+      video.addEventListener('loadedmetadata', finish, { once: true });
+      video.addEventListener('loadeddata', finish, { once: true });
+      video.addEventListener('durationchange', finish, { once: true });
+      window.setTimeout(finish, 900);
+    });
+  }
+
+  async function seekSocialVideoTo(video, nextTime) {
+    if (!(video instanceof HTMLVideoElement) || !Number.isFinite(nextTime)) {
+      return;
+    }
+    await hydrateSocialVideoSource(video, { preload: 'auto' });
+    await waitForSocialVideoMetadata(video);
+    const duration = Number(video.duration || 0);
+    const boundedTime = duration > 0
+      ? Math.max(0, Math.min(duration, nextTime))
+      : Math.max(0, nextTime);
+    try {
+      video.currentTime = boundedTime;
+    } catch {
+      video.addEventListener('loadedmetadata', () => {
+        try {
+          video.currentTime = boundedTime;
+        } catch { }
+      }, { once: true });
     }
     syncSocialVideoPlayerUi(video);
   }
@@ -2696,19 +2879,39 @@
       const target = event.target;
       if (!(target instanceof HTMLVideoElement) || target.dataset.socialVideoElement !== 'true') return;
       pauseOtherSocialVideos(target);
+      target.preload = 'auto';
       syncSocialVideoPlayerUi(target);
     }, true);
 
-    ['pause', 'volumechange', 'loadedmetadata', 'durationchange', 'timeupdate', 'ended'].forEach((eventName) => {
+    ['pause', 'volumechange', 'loadedmetadata', 'loadeddata', 'durationchange', 'timeupdate', 'ended'].forEach((eventName) => {
       document.addEventListener(eventName, (event) => {
         const target = event.target;
         if (!(target instanceof HTMLVideoElement) || target.dataset.socialVideoElement !== 'true') return;
-        if (eventName === 'ended' && activeSocialVideoElement === target) {
+        if (eventName === 'ended' && activeSocialVideoElement === target && !target.loop) {
           activeSocialVideoElement = null;
         }
         syncSocialVideoPlayerUi(target);
       }, true);
     });
+
+    document.addEventListener('fullscreenchange', () => {
+      document.querySelectorAll('video[data-social-video-element="true"]').forEach((target) => {
+        if (!(target instanceof HTMLVideoElement)) return;
+        syncSocialVideoPlayerUi(target);
+      });
+    }, true);
+
+    document.addEventListener('pointerdown', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        closeOpenSocialVideoVolumePopovers();
+        return;
+      }
+      if (target.closest('.social-video-player__volume-shell')) {
+        return;
+      }
+      closeOpenSocialVideoVolumePopovers();
+    }, true);
 
     window.__uptSocialVideoSurfaceClick = (surface, event) => {
       if (event?.target?.closest?.('[data-social-video-controls]')) return;
@@ -2727,31 +2930,30 @@
       toggleSocialVideoPlayback(video);
     };
 
-    window.__uptSocialVideoMuteClick = (button, event) => {
+    window.__uptSocialVideoVolumeToggleClick = (button, event) => {
       const { shell, video } = resolveSocialVideoContext(button);
       if (!shell || !video) return;
       event?.preventDefault?.();
       event?.stopPropagation?.();
-      const savedVolume = Number(shell.dataset.previousVolume || video.volume || 1);
-      if (video.muted || Number(video.volume || 0) <= 0.001) {
-        video.muted = false;
-        video.volume = Math.max(0.05, Math.min(1, savedVolume || 1));
-      } else {
-        shell.dataset.previousVolume = String(video.volume || 1);
-        video.muted = true;
-      }
-      syncSocialVideoPlayerUi(video);
+      closeOpenSocialVideoVolumePopovers(button.closest('.social-video-player__volume-shell'));
+      const volumeShell = button.closest('.social-video-player__volume-shell');
+      if (!(volumeShell instanceof HTMLElement)) return;
+      volumeShell.classList.toggle('is-volume-open');
     };
 
-    window.__uptSocialVideoSeekInput = (input, event) => {
+    window.__uptSocialVideoSeekInput = async (input, event) => {
       const { video } = resolveSocialVideoContext(input);
       if (!(input instanceof HTMLInputElement) || !video) return;
       event?.stopPropagation?.();
       const nextTime = Number(input.value);
-      if (Number.isFinite(nextTime)) {
-        video.currentTime = nextTime;
-        syncSocialVideoPlayerUi(video);
-      }
+      if (!Number.isFinite(nextTime)) return;
+      input.dataset.seeking = 'true';
+      await seekSocialVideoTo(video, nextTime);
+      window.setTimeout(() => {
+        if (input instanceof HTMLElement) {
+          delete input.dataset.seeking;
+        }
+      }, 120);
     };
 
     window.__uptSocialVideoVolumeInput = (input, event) => {
@@ -2773,52 +2975,235 @@
       if (!shell || !video) return;
       event?.preventDefault?.();
       event?.stopPropagation?.();
+      hydrateSocialVideoSource(video, { preload: 'auto' });
+      const fullscreenElement = document.fullscreenElement;
+      if (fullscreenElement === shell || fullscreenElement === video) {
+        document.exitFullscreen?.().catch?.(() => { });
+        return;
+      }
       const target = shell.requestFullscreen ? shell : video;
       target.requestFullscreen?.().catch?.(() => { });
     };
+
+    window.__uptSocialVideoPrime = (element) => {
+      const { video } = resolveSocialVideoContext(element);
+      if (!video) return;
+      hydrateSocialVideoSource(video, { preload: 'metadata' });
+    };
+  }
+
+  function resolveAdaptiveMediaRatio(element) {
+    if (element instanceof HTMLImageElement) {
+      const width = Number(element.naturalWidth || 0);
+      const height = Number(element.naturalHeight || 0);
+      if (width > 0 && height > 0) {
+        return width / height;
+      }
+      return 0;
+    }
+    if (element instanceof HTMLVideoElement) {
+      const width = Number(element.videoWidth || 0);
+      const height = Number(element.videoHeight || 0);
+      if (width > 0 && height > 0) {
+        return width / height;
+      }
+      return 0;
+    }
+    return 0;
+  }
+
+  function computeAdaptiveMediaHeight(frame, ratio) {
+    const width = Number(frame?.clientWidth || frame?.getBoundingClientRect?.().width || 0);
+    const viewportWidth = Number(window.innerWidth || 1280);
+    const viewportHeight = Number(window.innerHeight || 900);
+    const context = String(frame?.dataset?.adaptiveMediaContext || 'card');
+    const isMobile = viewportWidth < 768;
+
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(ratio) || ratio <= 0) {
+      return null;
+    }
+
+    let minHeight = isMobile ? 180 : 220;
+    let maxHeight = Math.min(680, Math.max(280, viewportHeight * (isMobile ? 0.58 : 0.8)));
+
+    if (context === 'card') {
+      minHeight = 0;
+    } else if (context === 'shared') {
+      minHeight = 0;
+      maxHeight = Math.min(720, Math.max(320, viewportHeight * (isMobile ? 0.62 : 0.82)));
+    } else if (context === 'modal') {
+      minHeight = isMobile ? 220 : 260;
+      maxHeight = Math.min(760, Math.max(360, viewportHeight * 0.82));
+    } else if (context === 'grid') {
+      minHeight = 170;
+      maxHeight = Math.min(420, Math.max(220, viewportHeight * 0.42));
+    }
+
+    let nextHeight = width / ratio;
+
+    if (ratio < 0.72) {
+      nextHeight = Math.min(nextHeight, maxHeight);
+    }
+    if (ratio > 2.1) {
+      minHeight = Math.min(minHeight, isMobile ? 165 : 185);
+    }
+
+    nextHeight = Math.max(minHeight, Math.min(maxHeight, nextHeight));
+
+    return {
+      height: Math.round(nextHeight),
+      maxHeight: Math.round(maxHeight),
+    };
+  }
+
+  function updateAdaptiveMediaFrame(frame) {
+    if (!(frame instanceof HTMLElement)) {
+      return;
+    }
+    const ratio = Number(frame.dataset.mediaRatio || 0);
+    const sizing = computeAdaptiveMediaHeight(frame, ratio);
+    if (!sizing) {
+      return;
+    }
+
+    frame.style.height = `${sizing.height}px`;
+    frame.style.maxHeight = `${sizing.maxHeight}px`;
+    frame.classList.remove('is-pending');
+    frame.classList.add('is-ready');
+  }
+
+  function bindAdaptiveMediaElement(element) {
+    const frame = element?.closest?.('[data-adaptive-media-frame="true"]');
+    if (!(frame instanceof HTMLElement)) {
+      return;
+    }
+
+    const sync = () => {
+      const ratio = resolveAdaptiveMediaRatio(element);
+      if (!Number.isFinite(ratio) || ratio <= 0) {
+        return;
+      }
+      frame.dataset.mediaRatio = String(ratio);
+      updateAdaptiveMediaFrame(frame);
+    };
+
+    if (element instanceof HTMLImageElement) {
+      if (element.complete && Number(element.naturalWidth || 0) > 0) {
+        sync();
+        return;
+      }
+      element.addEventListener('load', sync, { once: true });
+      return;
+    }
+
+    if (element instanceof HTMLVideoElement) {
+      registerSocialVideoElement(element);
+      if (Number(element.videoWidth || 0) > 0 && Number(element.videoHeight || 0) > 0) {
+        sync();
+        return;
+      }
+      element.addEventListener('loadedmetadata', sync, { once: true });
+      element.addEventListener('loadeddata', sync, { once: true });
+    }
+  }
+
+  function refreshAdaptiveMediaFrames() {
+    document.querySelectorAll('[data-adaptive-media-frame="true"]').forEach((frame) => {
+      if (!(frame instanceof HTMLElement)) {
+        return;
+      }
+      if (!Number.isFinite(Number(frame.dataset.mediaRatio || 0)) || Number(frame.dataset.mediaRatio || 0) <= 0) {
+        const element = frame.querySelector('img, video');
+        if (element instanceof HTMLImageElement || element instanceof HTMLVideoElement) {
+          bindAdaptiveMediaElement(element);
+        }
+      }
+      updateAdaptiveMediaFrame(frame);
+    });
+  }
+
+  function ensureAdaptivePostMediaBindings() {
+    if (adaptivePostMediaBindingsReady) {
+      return;
+    }
+    adaptivePostMediaBindingsReady = true;
+
+    window.__uptAdaptiveMediaLoad = (element) => {
+      bindAdaptiveMediaElement(element);
+    };
+
+    window.addEventListener('resize', () => {
+      if (adaptivePostMediaResizeFrame) {
+        window.cancelAnimationFrame(adaptivePostMediaResizeFrame);
+      }
+      adaptivePostMediaResizeFrame = window.requestAnimationFrame(() => {
+        adaptivePostMediaResizeFrame = 0;
+        refreshAdaptiveMediaFrames();
+      });
+    });
   }
 
   function renderInlineSocialVideo(media, options = {}) {
-    const heightClass = options.heightClass || 'h-64';
+    const heightClass = options.heightClass || '';
     const roundedClass = options.roundedClass || 'rounded-2xl';
     const shellClass = options.shellClass || '';
     const aspectStyle = options.aspectStyle ? ` style="${options.aspectStyle}"` : '';
     const tagLabel = options.tagLabel ? `<span class="social-video-player__tag">${escapeHtml(options.tagLabel)}</span>` : '';
+    const adaptiveFrameClass = options.adaptiveFrameClass || '';
+    const adaptiveContext = escapeHtml(options.adaptiveContext || 'card');
+    const posterAttr = media.posterUrl ? ` poster="${media.posterUrl}"` : '';
+    const preloadMode = media.posterUrl ? 'none' : 'metadata';
+    const eagerSrcAttr = media.posterUrl ? '' : ` src="${media.url}"`;
+    const lazySrcAttr = media.posterUrl ? ` data-social-video-src="${media.url}"` : '';
+    const inlinePoster = media.posterUrl
+      ? `<img class="social-video-player__poster" src="${media.posterUrl}" alt="" loading="lazy" decoding="async" aria-hidden="true" onload="window.__uptAdaptiveMediaLoad?.(this)"/>`
+      : '';
 
     return `
-      <div class="social-video-player ${roundedClass} ${heightClass} ${shellClass}" data-social-video-player="true" data-post-card-ignore="true"${aspectStyle}>
-        <div class="social-video-player__surface" data-social-video-surface="true" onclick="window.__uptSocialVideoSurfaceClick?.(this, event)">
+      <div class="social-video-player post-adaptive-media post-adaptive-media--video is-pending ${roundedClass} ${heightClass} ${shellClass} ${adaptiveFrameClass}" data-social-video-player="true" data-post-card-ignore="true" data-adaptive-media-frame="true" data-adaptive-media-context="${adaptiveContext}"${aspectStyle}>
+        <div class="social-video-player__surface" data-social-video-surface="true" onclick="window.__uptSocialVideoSurfaceClick?.(this, event)" onmouseenter="window.__uptSocialVideoPrime?.(this)">
+          ${inlinePoster}
           <video
             class="social-video-player__video"
-            src="${media.url}"
+            ${eagerSrcAttr}
             playsinline
-            preload="metadata"
+            loop
+            preload="${preloadMode}"
+            ${posterAttr}
+            ${lazySrcAttr}
             data-social-video-element="true"
+            onloadedmetadata="window.__uptAdaptiveMediaLoad?.(this)"
+            onloadeddata="window.__uptAdaptiveMediaLoad?.(this)"
             onerror="this.closest('[data-social-video-player]').style.display='none'"></video>
           <div class="social-video-player__top">
             ${tagLabel}
           </div>
           <div class="social-video-player__controls" data-social-video-controls="true">
-            <button type="button" class="social-video-player__icon-btn" data-social-video-toggle="true" aria-label="Reproducir o pausar" onclick="window.__uptSocialVideoToggleClick?.(this, event)">
-              <span class="material-symbols-outlined" data-social-video-toggle-icon="true">play_arrow</span>
-            </button>
             <div class="social-video-player__timeline">
               <input type="range" min="0" max="0" value="0" step="0.1" class="social-video-player__seek" data-social-video-seek="true" aria-label="Progreso del video" oninput="window.__uptSocialVideoSeekInput?.(this, event)"/>
-              <div class="social-video-player__time">
-                <span data-social-video-current="true">0:00</span>
-                <span>/</span>
-                <span data-social-video-duration="true">0:00</span>
-              </div>
             </div>
-            <div class="social-video-player__audio">
-              <button type="button" class="social-video-player__icon-btn" data-social-video-mute="true" aria-label="Silenciar o restaurar volumen" onclick="window.__uptSocialVideoMuteClick?.(this, event)">
-                <span class="material-symbols-outlined" data-social-video-mute-icon="true">volume_up</span>
+            <div class="social-video-player__control-row">
+              <button type="button" class="social-video-player__icon-btn" data-social-video-toggle="true" aria-label="Reproducir o pausar" onclick="window.__uptSocialVideoToggleClick?.(this, event)">
+                <span class="material-symbols-outlined" data-social-video-toggle-icon="true">play_arrow</span>
               </button>
-              <input type="range" min="0" max="1" value="1" step="0.05" class="social-video-player__volume" data-social-video-volume="true" aria-label="Volumen del video" oninput="window.__uptSocialVideoVolumeInput?.(this, event)"/>
+              <div class="social-video-player__time">
+                <span data-social-video-remaining="true">0:00 / 0:00</span>
+              </div>
+              <div class="social-video-player__control-spacer"></div>
+              <div class="social-video-player__audio">
+                <div class="social-video-player__volume-shell">
+                  <div class="social-video-player__volume-popover">
+                    <input type="range" min="0" max="1" value="1" step="0.05" class="social-video-player__volume" data-social-video-volume="true" aria-label="Volumen del video" oninput="window.__uptSocialVideoVolumeInput?.(this, event)"/>
+                  </div>
+                  <button type="button" class="social-video-player__icon-btn" data-social-video-volume-toggle="true" aria-label="Mostrar control de volumen" onclick="window.__uptSocialVideoVolumeToggleClick?.(this, event)">
+                    <span class="material-symbols-outlined" data-social-video-volume-icon="true">volume_up</span>
+                  </button>
+                </div>
+              </div>
+              <button type="button" class="social-video-player__icon-btn" data-social-video-fullscreen="true" aria-label="Pantalla completa" onclick="window.__uptSocialVideoFullscreenClick?.(this, event)">
+                <span class="material-symbols-outlined" data-social-video-fullscreen-icon="true">fullscreen</span>
+              </button>
             </div>
-            <button type="button" class="social-video-player__icon-btn" data-social-video-fullscreen="true" aria-label="Pantalla completa" onclick="window.__uptSocialVideoFullscreenClick?.(this, event)">
-              <span class="material-symbols-outlined">open_in_full</span>
-            </button>
           </div>
         </div>
       </div>
@@ -2829,15 +3214,40 @@
     const media = getPostMediaInfo(post);
     if (!media) return '';
 
-    const mediaHeightClass = options.mediaHeightClass || 'h-64';
+    const adaptiveContext = options.adaptiveContext || 'card';
+    const isCard = adaptiveContext === 'card';
+
+    if (isCard) {
+      // Card context: media with lateral padding + rounded corners (like ejemplos.html)
+      if (media.type === 'image') {
+        return `
+          <div class="px-3 pt-3">
+            <div class="post-adaptive-media post-adaptive-media--image is-pending rounded-xl" data-post-card-ignore="true" data-adaptive-media-frame="true" data-adaptive-media-context="${escapeHtml(adaptiveContext)}">
+              <img alt="Imagen de la publicacion" class="post-adaptive-media__asset" src="${media.url}" loading="lazy" decoding="async" fetchpriority="low" onload="window.__uptAdaptiveMediaLoad?.(this)" onerror="this.closest('.px-3').style.display='none'"/>
+            </div>
+          </div>
+        `;
+      }
+      return `<div class="px-3 pt-3">${renderInlineSocialVideo(media, {
+        roundedClass: 'rounded-xl',
+        shellClass: '',
+        adaptiveContext,
+      })}</div>`;
+    }
+
+    // Non-card context (modal, shared, etc.)
     if (media.type === 'image') {
-      return `<div class="w-full ${mediaHeightClass} bg-slate-100 overflow-hidden rounded-xl mb-3" data-post-card-ignore="true"><img alt="Imagen de la publicacion" class="w-full h-full object-cover" src="${media.url}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.parentElement.style.display='none'"/></div>`;
+      return `
+        <div class="post-adaptive-media post-adaptive-media--image is-pending rounded-xl mb-3" data-post-card-ignore="true" data-adaptive-media-frame="true" data-adaptive-media-context="${escapeHtml(adaptiveContext)}">
+          <img alt="Imagen de la publicacion" class="post-adaptive-media__asset" src="${media.url}" loading="lazy" decoding="async" fetchpriority="low" onload="window.__uptAdaptiveMediaLoad?.(this)" onerror="this.parentElement.style.display='none'"/>
+        </div>
+      `;
     }
 
     return renderInlineSocialVideo(media, {
-      heightClass: mediaHeightClass,
       roundedClass: 'rounded-xl',
       shellClass: 'mb-3',
+      adaptiveContext,
     });
   }
 
@@ -2849,8 +3259,8 @@
     const variant = options.variant || 'card';
     if (variant === 'modal') {
       return `
-        <button type="button" class="post-modal-preview-report" data-action="share-public-post" data-post-id="${post.id}">
-          <span class="material-symbols-outlined text-[15px]">share</span>
+        <button type="button" class="post-modal-preview-action-btn" data-action="share-public-post" data-post-id="${post.id}">
+          <span class="material-symbols-outlined text-[18px]">share</span>
           <span>Compartir</span>
         </button>
       `;
@@ -2914,7 +3324,7 @@
           </button>
         </div>
         ${post.content ? `<div class="guest-shared-post__copy"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
-        ${renderPostMediaBlock(post, { mediaHeightClass: 'min-h-[16rem] md:min-h-[22rem]' })}
+        ${renderPostMediaBlock(post, { adaptiveContext: 'shared' })}
         <div class="guest-shared-post__meta">
           <span>${escapeHtml(publishedDate)}</span>
           <span>·</span>
@@ -3003,16 +3413,16 @@
     if (media.type === 'image') {
       return `
         <div class="post-modal-preview-media">
-          <button type="button" class="post-modal-preview-media-button" data-action="open-post-image" data-image-url="${media.url}" data-image-alt="${escapeHtml(imageAlt)}">
-            <img src="${media.url}" alt="${escapeHtml(imageAlt)}" decoding="async" onerror="this.closest('.post-modal-preview-media').style.display='none'"/>
+          <button type="button" class="post-modal-preview-media-button post-adaptive-media post-adaptive-media--image is-pending" data-action="open-post-image" data-image-url="${media.url}" data-image-alt="${escapeHtml(imageAlt)}" data-adaptive-media-frame="true" data-adaptive-media-context="modal">
+            <img src="${media.url}" alt="${escapeHtml(imageAlt)}" class="post-adaptive-media__asset" decoding="async" onload="window.__uptAdaptiveMediaLoad?.(this)" onerror="this.closest('.post-modal-preview-media').style.display='none'"/>
           </button>
         </div>
       `;
     }
 
     return `<div class="post-modal-preview-media">${renderInlineSocialVideo(media, {
-      heightClass: 'min-h-[18rem] md:min-h-[24rem]',
       roundedClass: 'rounded-[1.35rem]',
+      adaptiveContext: 'modal',
     })}</div>`;
   }
 
@@ -3024,8 +3434,8 @@
     const interactive = options.interactive !== false;
     const clickable = options.clickable !== false;
     const canSharePublic = canSharePostPublicly(post);
-    const actionsClass = canSharePublic ? 'social-post-actions social-post-actions--four' : 'social-post-actions social-post-actions--three';
-    const mediaHeightClass = options.mediaHeightClass || 'h-64';
+    const actionsCount = 3 + (canSharePublic ? 1 : 0);
+    const actionsClass = `social-post-actions social-post-actions--${actionsCount}`;
     const hideAudienceBadge = options.hideAudienceBadge === true || (options.hideGroupBadge === true && Number(post.group_id) > 0);
     const author = resolveProfileData({
       id: post.user_id,
@@ -3037,12 +3447,12 @@
     const authorCareer = careerLabel(author);
     const visibilityMeta = getVisibilityMeta(post.visibility);
     const audienceMarkup = hideAudienceBadge ? '' : post.group_id ? `
-        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+        <span class="social-post-card__audience-badge social-post-card__audience-badge--group">
           <span class="material-symbols-outlined text-[14px]">diversity_3</span>
           ${escapeHtml(post.group_name || 'Grupo')}
         </span>
       ` : `
-        <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${visibilityMeta.tone}">
+        <span class="social-post-card__audience-badge">
           <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
           ${escapeHtml(visibilityMeta.label)}
         </span>
@@ -3050,52 +3460,55 @@
     const authorMeta = [
       authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
       `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
-    ].filter(Boolean).join('<span>&middot;</span>');
+    ].filter(Boolean).join('<span class="social-post-card__meta-separator">·</span>');
 
     return `
-      <article class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow ${clickable ? 'cursor-pointer' : ''}" ${clickable ? `data-post-card="true" data-post-id="${post.id}"` : ''}>
-        <div class="flex justify-between items-start mb-3">
-          <button type="button" class="flex items-center gap-3 text-left" data-action="open-profile" data-user-id="${post.user_id}">
-            ${renderAvatar(author, { sizeClass: 'w-10 h-10', textClass: 'text-white font-bold', showOnline: true })}
-            <div>
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="font-bold text-sm text-slate-900">${escapeHtml(displayName(author))}</span>
-                <span class="text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-1" style="background:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
+      <article class="social-post-card bg-white border border-slate-200 ${clickable ? 'cursor-pointer' : ''}" ${clickable ? `data-post-card="true" data-post-id="${post.id}"` : ''}>
+        <div class="social-post-card__header">
+          <button type="button" class="social-post-card__author" data-action="open-profile" data-user-id="${post.user_id}">
+            ${renderAvatar(author, { sizeClass: 'w-12 h-12', textClass: 'text-white font-bold text-sm', extraClass: 'social-post-card__avatar', showOnline: true })}
+            <div class="social-post-card__author-copy">
+              <div class="social-post-card__author-main">
+                <span class="social-post-card__author-name">${escapeHtml(displayName(author))}</span>
+                <span class="social-post-card__faculty-badge" style="background:${userColor(author)}">${escapeHtml(author.faculty || 'UPT')}</span>
                 ${audienceMarkup}
               </div>
-                <div class="text-slate-500 text-xs mt-0.5">${authorMeta}</div>
-              </div>
-            </button>
+              <div class="social-post-card__author-meta">${authorMeta}</div>
+            </div>
+          </button>
+          <div class="social-post-card__header-actions">
             ${canDelete ? `
-            <button type="button" data-action="delete-post" data-post-id="${post.id}" class="text-slate-400 hover:bg-slate-50 p-1 rounded-full shrink-0" aria-label="Eliminar publicacion">
+            <button type="button" data-action="delete-post" data-post-id="${post.id}" class="social-post-card__menu-btn" aria-label="Eliminar publicacion">
               <span class="material-symbols-outlined">delete</span>
             </button>
             ` : ''}
           </div>
-          ${post.content ? `<div class="text-sm text-slate-800 mb-4"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
-          ${renderPostMediaBlock(post, { mediaHeightClass })}
+        </div>
+          ${post.content ? `<div class="social-post-card__copy"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
+          ${renderPostMediaBlock(post, { adaptiveContext: 'card' })}
         ${interactive ? `
-          <div class="pt-3 border-t border-slate-100 space-y-3 text-slate-500">
-            <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="social-post-card__footer${getPostMediaInfo(post) ? ' has-media' : ''}">
+            <div class="social-post-card__stats">
               ${renderReactionSummary(post.reactions_count, post.reactions_total)}
-              <button type="button" data-action="comment-post" data-post-id="${post.id}" class="text-sm font-medium hover:text-slate-700 transition-colors">
+              <button type="button" data-action="comment-post" data-post-id="${post.id}" class="social-post-card__comments-link">
                 ${post.comments_count || 0} comentarios
               </button>
             </div>
             <div class="${actionsClass}">
               ${renderReactionTrigger('post', post.id, post.current_reaction, true)}
               <button type="button" data-action="comment-post" data-post-id="${post.id}" class="social-post-action">
-                <span class="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
+                <span class="material-symbols-outlined">chat_bubble_outline</span>
                 <span>Comentar</span>
               </button>
               <button type="button" data-action="report-post" data-post-id="${post.id}" class="social-post-action social-post-action--report">
-                <span class="material-symbols-outlined text-[18px]">flag</span>
+                <span class="material-symbols-outlined">flag</span>
                 <span>Reportar</span>
               </button>
               ${renderPublicShareActionButton(post)}
             </div>
           </div>
         ` : ''}
+        <div class="pb-2"></div>
       </article>
     `;
   }
@@ -3118,53 +3531,52 @@
     });
     const visibilityMeta = getVisibilityMeta(post.visibility);
     const hideAudienceBadge = options.hideAudienceBadge === true || (options.hideGroupBadge === true && Number(post.group_id) > 0);
-    const audienceLabel = hideAudienceBadge
-      ? ''
-      : (post.group_id
-        ? escapeHtml(post.group_name || 'Grupo')
-        : escapeHtml(visibilityMeta.label));
-    const audienceIcon = post.group_id ? 'groups' : 'public';
+    const audienceMarkup = hideAudienceBadge ? '' : post.group_id ? `
+        <span class="social-post-card__audience-badge social-post-card__audience-badge--group">
+          <span class="material-symbols-outlined text-[14px]">diversity_3</span>
+          ${escapeHtml(post.group_name || 'Grupo')}
+        </span>
+      ` : `
+        <span class="social-post-card__audience-badge">
+          <span class="material-symbols-outlined text-[14px]">${visibilityMeta.icon}</span>
+          ${escapeHtml(visibilityMeta.label)}
+        </span>
+      `;
+
+    const authorCareer = careerLabel(author);
     const authorMeta = [
-      careerLabel(author) ? `<span>${escapeHtml(careerLabel(author))}</span>` : '',
+      authorCareer ? `<span>${escapeHtml(authorCareer)}</span>` : '',
       `<span>${escapeHtml(timeAgo(post.created_at))}</span>`,
     ].filter(Boolean).join('<span class="post-modal-preview-author-dot">·</span>');
+
     const reactionTotal = Number(post.reactions_total || 0);
     const commentsTotal = Number(post.comments_count || 0);
-    const imageAlt = post.group_id
-      ? `Imagen de la publicacion del grupo ${post.group_name || ''}`.trim()
-      : 'Imagen de la publicacion';
+    const modalActionsCount = 3 + (canSharePostPublicly(post) ? 1 : 0);
+    const hasMedia = !!getPostMediaInfo(post);
 
     return `
       <article class="post-modal-preview-card">
         <div class="post-modal-preview-head">
           <div class="post-modal-preview-author-row">
             <button type="button" class="post-modal-preview-author post-modal-preview-author--button" data-action="open-profile" data-user-id="${post.user_id}">
-              ${renderAvatar(author, { sizeClass: 'w-10 h-10', textClass: 'text-white font-bold text-sm' })}
+              ${renderAvatar(author, { sizeClass: 'w-10 h-10', textClass: 'text-white font-bold text-sm', showOnline: true })}
               <div class="post-modal-preview-author-copy min-w-0">
                 <div class="post-modal-preview-author-main">
                   <span class="post-modal-preview-author-name">${escapeHtml(displayName(author))}</span>
                   <span class="post-modal-preview-author-faculty" style="background:${userColor(author)}">
                     ${escapeHtml(author.faculty || 'UPT')}
                   </span>
+                  ${audienceMarkup}
                 </div>
                 <div class="post-modal-preview-author-meta">${authorMeta}</div>
               </div>
             </button>
-            <button type="button" class="post-modal-preview-menu" data-action="report-post" data-post-id="${post.id}" aria-label="Reportar publicacion">
-              <span class="material-symbols-outlined text-[18px]">more_horiz</span>
-            </button>
           </div>
-          ${audienceLabel ? `
-            <div class="post-modal-preview-audience">
-              <span class="material-symbols-outlined text-[14px]">${audienceIcon}</span>
-              <span>${audienceLabel}</span>
-            </div>
-          ` : ''}
           ${post.content ? `
             <div class="post-modal-preview-copy content-break">${renderTextWithMentions(post.content)}</div>
           ` : ''}
         </div>
-        ${renderPostModalMedia(post, { imageAlt })}
+        ${hasMedia ? renderPostModalMedia(post, {}) : ''}
         <div class="post-modal-preview-stats">
           <div class="post-modal-preview-stat">
             ${renderReactionSummary(post.reactions_count, reactionTotal, 'Sin reacciones')}
@@ -3175,21 +3587,34 @@
             <span>${commentsTotal} ${commentsTotal === 1 ? 'comentario' : 'comentarios'}</span>
           </div>
         </div>
-        <div class="post-modal-preview-actions">
-          <div class="social-reaction-bar">
-            ${renderReactionTrigger('post', post.id, post.current_reaction, true)}
-          </div>
-          <div class="flex items-center gap-4">
-            ${renderPublicShareActionButton(post, { variant: 'modal' })}
-            <button type="button" class="post-modal-preview-report" data-action="report-post" data-post-id="${post.id}">
-              <span class="material-symbols-outlined text-[15px]">flag</span>
-              <span>Reportar</span>
-            </button>
-          </div>
+        <div class="post-modal-preview-actions post-modal-preview-actions--${modalActionsCount}">
+          ${renderReactionTrigger('post', post.id, post.current_reaction, true)}
+          <button type="button" class="post-modal-preview-action-btn" onclick="window.__uptFocusPostCommentInput?.(this, event)">
+            <span class="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
+            <span>Comentar</span>
+          </button>
+          ${renderPublicShareActionButton(post, { variant: 'modal' })}
+          <button type="button" class="post-modal-preview-action-btn post-modal-preview-action-btn--report" data-action="report-post" data-post-id="${post.id}">
+            <span class="material-symbols-outlined text-[18px]">flag</span>
+            <span>Reportar</span>
+          </button>
         </div>
       </article>
     `;
   }
+
+  window.__uptFocusPostCommentInput = (trigger, event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const scope = trigger?.closest?.('#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal');
+    if (!(scope instanceof Element)) return;
+    const input = scope.querySelector('#comment-input, #group-comment-input, #profile-comment-input, #admin-comment-input');
+    if (!(input instanceof HTMLElement)) return;
+    input.focus?.();
+    if (typeof input.scrollIntoView === 'function') {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
   let headerSearchCleanup = null;
   let headerMenusCleanup = null;
@@ -5863,7 +6288,16 @@
         };
       },
       mount({ container, user, params, router }) {
-        const selectedComposerMedia = { file: null, previewUrl: '', kind: null, previewReady: false, previewLoading: false, uploadInProgress: false, uploadProgress: 0 };
+        const selectedComposerMedia = {
+          file: null, previewUrl: '', kind: null,
+          previewReady: false, previewLoading: false,
+          uploadInProgress: false, uploadProgress: 0,
+          // Pre-upload state
+          preUploadAbortController: null,
+          preUploadResult: null,
+          preUploadInProgress: false,
+          preUploadProgress: 0,
+        };
         let pendingDeleteId = null;
         let pendingCommentId = null;
         let currentCommentSort = 'newest';
@@ -5925,7 +6359,24 @@
 
         setAvatarElement(composerAvatar, user);
 
+        function cancelPreUpload() {
+          if (selectedComposerMedia.preUploadAbortController) {
+            try { selectedComposerMedia.preUploadAbortController.abort(); } catch (_) {}
+            selectedComposerMedia.preUploadAbortController = null;
+          }
+          if (selectedComposerMedia.preUploadResult?.ok) {
+            const { image_url, video_url } = selectedComposerMedia.preUploadResult;
+            PostsAPI.cancelPreuploadedPostMedia({ imageUrl: image_url, videoUrl: video_url }).catch((err) => {
+              console.warn('Error al cancelar preupload en servidor:', err);
+            });
+          }
+          selectedComposerMedia.preUploadResult = null;
+          selectedComposerMedia.preUploadInProgress = false;
+          selectedComposerMedia.preUploadProgress = 0;
+        }
+
         function clearImage() {
+          cancelPreUpload();
           clearComposerMediaSelection(selectedComposerMedia, {
             fileInput,
             cameraInput,
@@ -5933,6 +6384,61 @@
             previewImage,
             previewVideo,
             onStateChange: () => syncComposerPublishButton(publishButton, postContent, selectedComposerMedia),
+          });
+        }
+
+        function startPreUpload(file) {
+          cancelPreUpload();
+          selectedComposerMedia.preUploadResult = null;
+          selectedComposerMedia.preUploadInProgress = true;
+          selectedComposerMedia.preUploadProgress = 0;
+
+          const controller = new AbortController();
+          selectedComposerMedia.preUploadAbortController = controller;
+
+          // Show subtle upload progress on the preview overlay
+          setComposerPreviewOverlay(previewWrap, {
+            visible: true,
+            progress: 0,
+            label: 'Subiendo...',
+          });
+          syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+
+          PostsAPI.preuploadPostMedia({
+            mediaFile: file,
+            onUploadProgress: ({ percent }) => {
+              if (controller.signal.aborted) return;
+              const p = Number.isFinite(Number(percent)) ? Number(percent) : 0;
+              selectedComposerMedia.preUploadProgress = p;
+              const isProcessing = p >= 99;
+              setComposerPreviewOverlay(previewWrap, {
+                visible: true,
+                progress: isProcessing ? null : p,
+                label: isProcessing ? 'Procesando archivo...' : 'Subiendo...',
+              });
+              syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+            },
+          }).then((result) => {
+            if (controller.signal.aborted) return;
+            selectedComposerMedia.preUploadInProgress = false;
+            selectedComposerMedia.preUploadAbortController = null;
+            if (result?.ok && result.data) {
+              selectedComposerMedia.preUploadResult = result.data;
+              setComposerPreviewOverlay(previewWrap, { visible: false });
+              syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+            } else {
+              // Pre-upload failed silently — will retry on publish
+              selectedComposerMedia.preUploadResult = null;
+              setComposerPreviewOverlay(previewWrap, { visible: false });
+              syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+            }
+          }).catch(() => {
+            if (controller.signal.aborted) return;
+            selectedComposerMedia.preUploadInProgress = false;
+            selectedComposerMedia.preUploadAbortController = null;
+            selectedComposerMedia.preUploadResult = null;
+            setComposerPreviewOverlay(previewWrap, { visible: false });
+            syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
           });
         }
 
@@ -5950,6 +6456,8 @@
             previewVideo,
             onStateChange: () => syncComposerPublishButton(publishButton, postContent, selectedComposerMedia),
           });
+          // Start uploading immediately after preview is ready
+          startPreUpload(file);
         }
 
         function setPostVisibility(value = 'all') {
@@ -6083,12 +6591,19 @@
           }
         }
 
-        function applyFeedPosts(posts) {
+        function applyFeedPosts(posts, options = {}) {
+          const isInitialLoad = options.isInitialLoad === true;
           feedPosts = posts;
           if (!posts.length) {
             postsContainer.innerHTML = '<p class="text-center text-slate-400 py-8">No hay publicaciones todavia. Se el primero.</p>';
             updateFeedLoadMoreState();
             return;
+          }
+
+          const feedRoot = postsContainer?.closest?.('#app-view') ?? postsContainer?.parentElement;
+          if (isInitialLoad && feedRoot) {
+            feedRoot.classList.add('feed-initial-load');
+            setTimeout(() => feedRoot.classList.remove('feed-initial-load'), 800);
           }
 
           postsContainer.innerHTML = posts.map((post) => renderPostCard(post, user.id)).join('');
@@ -6206,9 +6721,10 @@
               latestPendingFeedSignature = '';
               newPostsBanner?.classList.add('hidden');
               feedPagination = meta;
+              const isInitialLoad = feedPosts.length === 0;
               const nextPosts = feedPosts.length ? mergeFeedPages(posts) : posts;
               latestAppliedFeedSignature = buildFeedPageSignature(nextPosts);
-              applyFeedPosts(nextPosts);
+              applyFeedPosts(nextPosts, { isInitialLoad });
               return;
             }
 
@@ -6327,48 +6843,97 @@
             return;
           }
 
-          selectedComposerMedia.uploadInProgress = !!selectedComposerMedia.file;
-          selectedComposerMedia.uploadProgress = 0;
-          if (selectedComposerMedia.file) {
-            setComposerPreviewOverlay(previewWrap, {
-              visible: true,
-              progress: 0,
-              label: 'Subiendo archivo...',
-            });
-            syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
-          } else {
+          // --- If pre-upload is in progress, wait for it to finish ---
+          if (selectedComposerMedia.preUploadInProgress && selectedComposerMedia.file) {
             publishButton.disabled = true;
             publishButton.textContent = 'Publicando...';
+            const progress = selectedComposerMedia.preUploadProgress;
+            const isProcessing = progress >= 99;
+            setComposerPreviewOverlay(previewWrap, {
+              visible: true,
+              progress: isProcessing ? null : progress,
+              label: isProcessing ? 'Procesando archivo...' : 'Subiendo archivo...',
+            });
+            // Poll until pre-upload finishes
+            await new Promise((resolve) => {
+              const check = setInterval(() => {
+                if (!selectedComposerMedia.preUploadInProgress) {
+                  clearInterval(check);
+                  resolve();
+                } else {
+                  const curProgress = selectedComposerMedia.preUploadProgress;
+                  const curProcessing = curProgress >= 99;
+                  setComposerPreviewOverlay(previewWrap, {
+                    visible: true,
+                    progress: curProcessing ? null : curProgress,
+                    label: curProcessing ? 'Procesando archivo...' : 'Subiendo archivo...',
+                  });
+                }
+              }, 200);
+            });
+            setComposerPreviewOverlay(previewWrap, { visible: false });
           }
 
-          const result = await PostsAPI.createPost({
-            content,
-            mediaFile: selectedComposerMedia.file,
-            visibility,
-            mentionUserIds,
-            onUploadProgress: ({ percent }) => {
-              if (!selectedComposerMedia.file) return;
-              const numericPercent = Number(percent);
-              if (Number.isFinite(numericPercent)) {
-                selectedComposerMedia.uploadProgress = numericPercent;
-              }
+          // --- Publish ---
+          let result;
+          if (selectedComposerMedia.preUploadResult?.ok && selectedComposerMedia.file) {
+            publishButton.disabled = true;
+            publishButton.textContent = 'Publicando...';
+            const { image_url, video_url, video_mime_type } = selectedComposerMedia.preUploadResult;
+            result = await PostsAPI.createPost({
+              content,
+              visibility,
+              mentionUserIds,
+              imageUrl: image_url,
+              videoUrl: video_url,
+              videoMimeType: video_mime_type,
+            });
+          } else {
+            // Standard publish (no pre-upload or pre-upload failed)
+            selectedComposerMedia.uploadInProgress = !!selectedComposerMedia.file;
+            selectedComposerMedia.uploadProgress = 0;
+            if (selectedComposerMedia.file) {
               setComposerPreviewOverlay(previewWrap, {
                 visible: true,
-                progress: Number.isFinite(numericPercent) ? numericPercent : null,
+                progress: 0,
                 label: 'Subiendo archivo...',
               });
               syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
-            },
-          });
+            } else {
+              publishButton.disabled = true;
+              publishButton.textContent = 'Publicando...';
+            }
 
-          selectedComposerMedia.uploadInProgress = false;
-          selectedComposerMedia.uploadProgress = 0;
-          setComposerPreviewOverlay(previewWrap, { visible: false });
-          syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+            result = await PostsAPI.createPost({
+              content,
+              mediaFile: selectedComposerMedia.file,
+              visibility,
+              mentionUserIds,
+              onUploadProgress: ({ percent }) => {
+                if (!selectedComposerMedia.file) return;
+                const numericPercent = Number(percent);
+                if (Number.isFinite(numericPercent)) {
+                  selectedComposerMedia.uploadProgress = numericPercent;
+                }
+                setComposerPreviewOverlay(previewWrap, {
+                  visible: true,
+                  progress: Number.isFinite(numericPercent) ? numericPercent : null,
+                  label: 'Subiendo archivo...',
+                });
+                syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+              },
+            });
+
+            selectedComposerMedia.uploadInProgress = false;
+            selectedComposerMedia.uploadProgress = 0;
+            setComposerPreviewOverlay(previewWrap, { visible: false });
+            syncComposerPublishButton(publishButton, postContent, selectedComposerMedia);
+          }
 
           if (result?.ok) {
             postContent.value = '';
             setPostVisibility('all');
+            selectedComposerMedia.preUploadResult = null; // Evita que clearImage/cancelPreUpload borre el archivo recién publicado
             clearImage();
             postMentionController.clear();
             showToast('Publicacion creada', 'success');
@@ -6489,7 +7054,13 @@
         };
 
         container.querySelector('#pick-image-btn').addEventListener('click', () => fileInput.click());
-        container.querySelector('#pick-camera-btn')?.addEventListener('click', () => cameraInput?.click());
+        container.querySelector('#pick-camera-btn')?.addEventListener('click', () => {
+          if (!cameraInput) return;
+          cameraInput.value = '';
+          cameraInput.setAttribute('accept', 'image/*,video/*');
+          cameraInput.setAttribute('capture', 'environment');
+          cameraInput.click();
+        });
         container.querySelector('#clear-image-btn').addEventListener('click', clearImage);
         postVisibilityTrigger?.addEventListener('click', toggleVisibilityMenu);
         container.querySelector('#cancel-delete-btn').addEventListener('click', closeDeleteModal);
@@ -6595,8 +7166,13 @@
           }
 
           const postCard = event.target.closest('[data-post-card]');
-          if (postCard && !event.target.closest('[data-post-card-ignore="true"]')) {
-            openCommentModal(postCard.dataset.postId);
+          if (postCard) {
+            const ignoredEl = event.target.closest('[data-post-card-ignore="true"]');
+            // Images: clicking them should open the modal (only images, not videos)
+            const isImageMedia = ignoredEl?.classList.contains('post-adaptive-media--image');
+            if (!ignoredEl || isImageMedia) {
+              openCommentModal(postCard.dataset.postId);
+            }
           }
         });
 
@@ -6933,6 +7509,7 @@
 
           renderState(renderSharedReadonlyPost(result.data));
           renderAuthorCompanions(result.data);
+          refreshAdaptiveMediaFrames();
         };
 
         const handleClick = (event) => {
@@ -11513,8 +12090,8 @@
                 <div class="flex-1">
                   <textarea id="group-post-content" rows="3" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 focus:border-[#1B2A6B] focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none" placeholder="Comparte algo con tu grupo"></textarea>
                   <div id="group-image-preview-wrap" class="hidden mt-3 relative rounded-2xl overflow-hidden border border-slate-200">
-                    <img id="group-image-preview" class="w-full max-h-64 object-cover" alt="Vista previa de imagen del grupo"/>
-                    <video id="group-video-preview" class="hidden w-full max-h-64 object-contain bg-slate-950" playsinline controls preload="metadata"></video>
+                    <img id="group-image-preview" class="w-full max-h-64 object-contain bg-slate-950" alt="Vista previa de imagen del grupo"/>
+                    <video id="group-video-preview" class="hidden w-full max-h-64 object-contain bg-slate-950" playsinline muted autoplay loop preload="metadata"></video>
                     <div class="feed-composer-preview__overlay hidden" data-composer-upload-overlay="true" aria-hidden="true">
                       <div class="feed-composer-preview__progress is-indeterminate" data-composer-upload-progress-circle="true">
                         <span data-composer-upload-progress-value="true">...</span>
@@ -11526,7 +12103,7 @@
                 </div>
               </div>
               <input type="file" id="group-file-input" accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm" class="hidden"/>
-              <input type="file" id="group-camera-input" accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp" capture="environment" class="hidden"/>
+              <input type="file" id="group-camera-input" accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,image/*,video/*" capture="environment" class="hidden"/>
               <div class="mt-4 flex flex-wrap justify-between gap-3">
                 <div class="flex flex-wrap gap-3">
                   <button id="group-pick-image-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
@@ -11535,7 +12112,7 @@
                   </button>
                   <button id="group-pick-camera-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                     <span class="material-symbols-outlined text-[18px]">photo_camera</span>
-                    Tomar foto
+                    Capturar
                   </button>
                 </div>
                 <button id="group-publish-btn" type="button" class="px-5 py-2 rounded-xl bg-[#E5D59A] text-[#5A4A1A] text-sm font-bold hover:bg-[#d8c686] transition-colors">Publicar</button>
@@ -15240,7 +15817,9 @@
     startNotificationsPolling();
   }
   ensureSocialVideoBindings();
+  ensureAdaptivePostMediaBindings();
   AppRouter.render();
+  window.requestAnimationFrame(() => refreshAdaptiveMediaFrames());
   if (shouldBootAuthenticatedRuntime) {
     bootstrapGlobalCallManager().catch((error) => {
       console.error('Global call manager bootstrap error:', error);

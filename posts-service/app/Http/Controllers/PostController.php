@@ -36,12 +36,66 @@ class PostController extends BaseController
         $this->mentionNotificationService = new MentionNotificationService();
     }
 
+    public function preupload(Request $request): JsonResponse
+    {
+        $this->validate($request, [
+            'image' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
+            'video' => 'nullable|file|mimes:mp4,webm|max:30720',
+        ]);
+
+        if ($request->hasFile('image') && $request->hasFile('video')) {
+            return response()->json(['error' => 'Solo puedes adjuntar una imagen o un video'], 422);
+        }
+
+        if (!$request->hasFile('image') && !$request->hasFile('video')) {
+            return response()->json(['error' => 'Se requiere un archivo multimedia'], 422);
+        }
+
+        $mediaPayload = $this->storeUploadedMedia($request);
+        return response()->json(array_merge(['ok' => true], $mediaPayload), 200);
+    }
+
+    public function cancelPreupload(Request $request): JsonResponse
+    {
+        $this->validate($request, [
+            'image_url' => 'nullable|string',
+            'video_url' => 'nullable|string',
+        ]);
+
+        $imageUrl = $request->input('image_url');
+        $videoUrl = $request->input('video_url');
+
+        if (!empty($imageUrl)) {
+            $this->deleteUploadedFile($imageUrl);
+        }
+
+        if (!empty($videoUrl)) {
+            $this->deleteUploadedFile($videoUrl);
+        }
+
+        return response()->json(['ok' => true], 200);
+    }
+
+    private function deleteUploadedFile(string $url): void
+    {
+        $path = trim($url, '/');
+        if (str_starts_with($path, 'uploads/')) {
+            $fullPath = app()->basePath('public/' . $path);
+            if (file_exists($fullPath) && is_file($fullPath)) {
+                @unlink($fullPath);
+            }
+        }
+    }
+
     public function store(Request $request): JsonResponse
     {
         $this->validate($request, [
             'content' => 'nullable|string|max:2000',
             'image' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
             'video' => 'nullable|file|mimes:mp4,webm|max:30720',
+            'image_url' => 'nullable|string',
+            'video_url' => 'nullable|string',
+            'video_mime_type' => 'nullable|string',
             'visibility' => 'nullable|in:all,friends,faculty',
             'mention_user_ids' => 'nullable|array|max:20',
             'mention_user_ids.*' => 'integer|min:1',
@@ -51,11 +105,22 @@ class PostController extends BaseController
             return response()->json(['error' => 'Solo puedes adjuntar una imagen o un video por publicacion'], 422);
         }
 
-        if (empty($request->input('content')) && !$request->hasFile('image') && !$request->hasFile('video')) {
+        $hasPreuploaded = !empty($request->input('image_url')) || !empty($request->input('video_url'));
+
+        if (empty($request->input('content')) && !$request->hasFile('image') && !$request->hasFile('video') && !$hasPreuploaded) {
             return response()->json(['error' => 'Se requiere contenido o archivo multimedia'], 422);
         }
 
-        $mediaPayload = $this->storeUploadedMedia($request);
+        if ($hasPreuploaded) {
+            $mediaPayload = [
+                'media_type' => !empty($request->input('video_url')) ? 'video' : 'image',
+                'image_url' => $request->input('image_url') ?: null,
+                'video_url' => $request->input('video_url') ?: null,
+                'video_mime_type' => $request->input('video_mime_type') ?: null,
+            ];
+        } else {
+            $mediaPayload = $this->storeUploadedMedia($request);
+        }
 
         try {
             $post = $this->postService->create(
@@ -89,6 +154,9 @@ class PostController extends BaseController
             'content' => 'nullable|string|max:2000',
             'image' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
             'video' => 'nullable|file|mimes:mp4,webm|max:30720',
+            'image_url' => 'nullable|string',
+            'video_url' => 'nullable|string',
+            'video_mime_type' => 'nullable|string',
             'mention_user_ids' => 'nullable|array|max:20',
             'mention_user_ids.*' => 'integer|min:1',
         ]);
@@ -97,11 +165,22 @@ class PostController extends BaseController
             return response()->json(['error' => 'Solo puedes adjuntar una imagen o un video por publicacion'], 422);
         }
 
-        if (empty($request->input('content')) && !$request->hasFile('image') && !$request->hasFile('video')) {
+        $hasPreuploaded = !empty($request->input('image_url')) || !empty($request->input('video_url'));
+
+        if (empty($request->input('content')) && !$request->hasFile('image') && !$request->hasFile('video') && !$hasPreuploaded) {
             return response()->json(['error' => 'Se requiere contenido o archivo multimedia'], 422);
         }
 
-        $mediaPayload = $this->storeUploadedMedia($request);
+        if ($hasPreuploaded) {
+            $mediaPayload = [
+                'media_type' => !empty($request->input('video_url')) ? 'video' : 'image',
+                'image_url' => $request->input('image_url') ?: null,
+                'video_url' => $request->input('video_url') ?: null,
+                'video_mime_type' => $request->input('video_mime_type') ?: null,
+            ];
+        } else {
+            $mediaPayload = $this->storeUploadedMedia($request);
+        }
 
         try {
             $post = $this->postService->createGroupPost(
@@ -340,7 +419,7 @@ class PostController extends BaseController
     {
         if ($request->hasFile('video') && $request->file('video')->isValid()) {
             $uploadDir = $this->publicUploadsPath('uploads');
-            $stored = VideoOptimizer::store($request->file('video'), $uploadDir, 'post_video', 1280, 720, 1800);
+            $stored = VideoOptimizer::store($request->file('video'), $uploadDir, 'post_video', 1280, 1280, 3500);
 
             return [
                 'media_type' => 'video',

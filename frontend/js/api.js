@@ -444,7 +444,7 @@ const PostsAPI = {
   getPublicPost: (hash) => apiFetchPublic(`/api/public/posts/${encodeURIComponent(String(hash || '').trim())}`),
 
   // Crea un post. Si mediaFile es un File, usa multipart; si no, usa JSON.
-  createPost: ({ content, mediaFile, visibility = 'all', mentionUserIds = [], onUploadProgress = null }) => {
+  createPost: ({ content, mediaFile, imageUrl = null, videoUrl = null, videoMimeType = null, visibility = 'all', mentionUserIds = [], onUploadProgress = null }) => {
     if (mediaFile) {
       const fd = new FormData();
       if (content) fd.append('content', content);
@@ -455,7 +455,28 @@ const PostsAPI = {
     }
     return apiFetch(`${API.posts}`, {
       method: 'POST',
-      body: JSON.stringify({ content, visibility, mention_user_ids: mentionUserIds }),
+      body: JSON.stringify({
+        content,
+        visibility,
+        mention_user_ids: mentionUserIds,
+        image_url: imageUrl,
+        video_url: videoUrl,
+        video_mime_type: videoMimeType,
+      }),
+    });
+  },
+  preuploadPostMedia: ({ mediaFile, onUploadProgress = null }) => {
+    const fd = new FormData();
+    fd.append(resolvePostMediaFieldName(mediaFile), mediaFile);
+    return apiFetchForm(`${API.posts}/preupload`, fd, { onUploadProgress });
+  },
+  cancelPreuploadedPostMedia: ({ imageUrl = null, videoUrl = null }) => {
+    return apiFetch(`${API.posts}/preupload`, {
+      method: 'DELETE',
+      body: JSON.stringify({
+        image_url: imageUrl,
+        video_url: videoUrl,
+      }),
     });
   },
   getPost: (id) => apiFetch(`${API.posts}/${id}`),
@@ -532,7 +553,7 @@ const PostsAPI = {
     body: JSON.stringify(payload),
   }),
   getGroupPosts: (groupId) => apiFetch(`/api/group-posts/${groupId}`),
-  createGroupPost: (groupId, { content, mediaFile, mentionUserIds = [], onUploadProgress = null }) => {
+  createGroupPost: (groupId, { content, mediaFile, imageUrl = null, videoUrl = null, videoMimeType = null, mentionUserIds = [], onUploadProgress = null }) => {
     if (mediaFile) {
       const fd = new FormData();
       if (content) fd.append('content', content);
@@ -543,7 +564,13 @@ const PostsAPI = {
 
     return apiFetch(`/api/group-posts/${groupId}`, {
       method: 'POST',
-      body: JSON.stringify({ content, mention_user_ids: mentionUserIds }),
+      body: JSON.stringify({
+        content,
+        mention_user_ids: mentionUserIds,
+        image_url: imageUrl,
+        video_url: videoUrl,
+        video_mime_type: videoMimeType,
+      }),
     });
   },
   getGroupMedia: (groupId) => apiFetch(`/api/group-posts/${groupId}/media`),
