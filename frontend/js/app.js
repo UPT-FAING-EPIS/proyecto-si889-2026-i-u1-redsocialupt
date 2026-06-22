@@ -1543,6 +1543,30 @@
     reactionPickerState = { element: picker, outsideHandler, trigger };
   }
 
+  function renderCommentReactionTrigger(commentId, currentReaction, interactive = true) {
+    const hasReaction = Boolean(currentReaction && REACTION_META[currentReaction]);
+    const label = currentReaction ? REACTION_META[currentReaction].label : 'Me gusta';
+    if (!interactive) {
+      return `
+        <span class="comment-reaction-trigger ${currentReaction ? 'is-active' : ''}">
+          ${escapeHtml(label)}
+        </span>
+      `;
+    }
+    return `
+      <button
+        type="button"
+        data-action="open-reaction-picker"
+        data-target-type="comment"
+        data-target-id="${commentId}"
+        data-current-reaction="${currentReaction || ''}"
+        class="comment-reaction-trigger ${currentReaction ? 'is-active' : ''}"
+      >
+        ${escapeHtml(label)}
+      </button>
+    `;
+  }
+
   function renderCommentCard(comment, options = {}) {
     const interactive = options.interactive !== false;
     const compact = options.compact !== false;
@@ -1558,48 +1582,40 @@
 
     return `
       <article class="post-comment-card ${compact ? 'post-comment-card--compact' : ''} ${deleteAction ? 'post-comment-card--deletable' : ''}">
-        <div class="post-comment-card__inner ${compact ? 'gap-2.5' : 'gap-3'}">
+        <div class="post-comment-card__inner">
           ${renderAvatar(author, { sizeClass: compact ? 'w-8 h-8 md:w-9 md:h-9' : 'w-10 h-10', textClass: 'text-white font-bold text-sm' })}
-          <div class="post-comment-card__thread min-w-0 flex-1">
-            <div class="post-comment-card__bubble">
-              ${deleteAction ? `
-                <button
-                  type="button"
-                  data-action="${escapeHtml(deleteAction)}"
-                  data-comment-id="${escapeHtml(deleteId)}"
-                  class="post-comment-card__delete"
-                  aria-label="${escapeHtml(deleteLabel)}"
-                  title="${escapeHtml(deleteLabel)}"
-                >
-                  <span class="material-symbols-outlined text-[16px]">delete</span>
-                </button>
+          <div class="post-comment-card__content min-w-0 flex-1">
+            ${deleteAction ? `
+              <button
+                type="button"
+                data-action="${escapeHtml(deleteAction)}"
+                data-comment-id="${escapeHtml(deleteId)}"
+                class="float-right ml-2 text-slate-400 hover:text-red-500 transition-colors"
+                aria-label="${escapeHtml(deleteLabel)}"
+                title="${escapeHtml(deleteLabel)}"
+              >
+                <span class="material-symbols-outlined" style="font-size:16px">delete</span>
+              </button>
+            ` : ''}
+            <div class="post-comment-card__meta">
+              <span class="post-comment-card__name">${escapeHtml(displayName(author))}</span>
+              ${author.faculty ? `
+                <span class="post-comment-card__faculty" style="background:${userColor(author)}">
+                  ${escapeHtml(author.faculty)}
+                </span>
               ` : ''}
-              <div class="post-comment-card__meta">
-                <div class="post-comment-card__meta-main">
-                  <span class="post-comment-card__name">${escapeHtml(displayName(author))}</span>
-                  ${author.faculty ? `
-                    <span class="post-comment-card__faculty" style="background:${userColor(author)}">
-                      ${escapeHtml(author.faculty)}
-                    </span>
-                  ` : ''}
-                </div>
-                <span class="post-comment-card__time">${escapeHtml(timeAgo(comment.created_at))}</span>
-              </div>
-              <p class="post-comment-card__text content-break ${compact ? 'leading-5' : 'leading-6'}">${renderTextWithMentions(comment.content || '')}</p>
+              <span class="post-comment-card__time">${escapeHtml(timeAgo(comment.created_at))}</span>
             </div>
+            <p class="post-comment-card__text content-break ${compact ? 'leading-5' : 'leading-6'}">${renderTextWithMentions(comment.content || '')}</p>
             <div class="post-comment-card__actions">
-              <div class="post-comment-card__actions-left">
-                <div class="social-reaction-bar">
-                  ${renderReactionTrigger('comment', comment.id, comment.current_reaction, interactive)}
-                </div>
-                ${renderReactionSummary(comment.reactions_count, comment.reactions_total)}
-              </div>
+              ${renderCommentReactionTrigger(comment.id, comment.current_reaction, interactive)}
               ${interactive ? `
                 <button type="button" data-action="report-comment" data-comment-id="${comment.id}" class="post-comment-card__report">
-                  <span class="material-symbols-outlined text-[14px]">flag</span>
-                  Reportar
+                  <span class="material-symbols-outlined" style="font-size:13px">flag</span>
+                  <span>Reportar</span>
                 </button>
               ` : ''}
+              ${renderReactionSummary(comment.reactions_count, comment.reactions_total)}
             </div>
           </div>
         </div>
@@ -2643,6 +2659,7 @@
   let socialVideoViewportObserver = null;
   let adaptivePostMediaBindingsReady = false;
   let adaptivePostMediaResizeFrame = 0;
+  let adaptiveMediaResizeObserver = null;
 
   function hasHydratedSocialVideoSource(video) {
     if (!(video instanceof HTMLVideoElement)) return false;
@@ -2976,13 +2993,29 @@
       event?.preventDefault?.();
       event?.stopPropagation?.();
       hydrateSocialVideoSource(video, { preload: 'auto' });
-      const fullscreenElement = document.fullscreenElement;
+
+      // Exit fullscreen if already active
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
       if (fullscreenElement === shell || fullscreenElement === video) {
-        document.exitFullscreen?.().catch?.(() => { });
+        (document.exitFullscreen || document.webkitExitFullscreen)?.call(document)?.catch?.(() => { });
         return;
       }
-      const target = shell.requestFullscreen ? shell : video;
-      target.requestFullscreen?.().catch?.(() => { });
+
+      // Detect if inside a modal — if so, fullscreen the VIDEO directly.
+      // This bypasses the shell's high-specificity modal CSS overrides
+      // (overflow:hidden, border-radius, max-height) that survive :fullscreen.
+      const isInModal = Boolean(shell.closest(
+        '#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal'
+      ));
+
+      const target = isInModal ? video : (shell.requestFullscreen ? shell : video);
+      const requestFs = (target.requestFullscreen || target.webkitRequestFullscreen)?.bind(target);
+
+      requestFs?.()?.catch?.(() => {
+        // Final fallback: try the other element
+        const other = target === video ? shell : video;
+        (other.requestFullscreen || other.webkitRequestFullscreen)?.call(other)?.catch?.(() => { });
+      });
     };
 
     window.__uptSocialVideoPrime = (element) => {
@@ -3032,7 +3065,7 @@
       minHeight = 0;
       maxHeight = Math.min(720, Math.max(320, viewportHeight * (isMobile ? 0.62 : 0.82)));
     } else if (context === 'modal') {
-      minHeight = isMobile ? 220 : 260;
+      minHeight = 0;
       maxHeight = Math.min(760, Math.max(360, viewportHeight * 0.82));
     } else if (context === 'grid') {
       minHeight = 170;
@@ -3070,6 +3103,10 @@
     frame.style.maxHeight = `${sizing.maxHeight}px`;
     frame.classList.remove('is-pending');
     frame.classList.add('is-ready');
+
+    if (adaptiveMediaResizeObserver) {
+      adaptiveMediaResizeObserver.observe(frame);
+    }
   }
 
   function bindAdaptiveMediaElement(element) {
@@ -3141,6 +3178,21 @@
         refreshAdaptiveMediaFrames();
       });
     });
+
+    if (typeof ResizeObserver === 'function' && !adaptiveMediaResizeObserver) {
+      adaptiveMediaResizeObserver = new ResizeObserver((entries) => {
+        entries.forEach((entry) => {
+          const frame = entry.target;
+          if (!(frame instanceof HTMLElement)) return;
+          const ratio = Number(frame.dataset.mediaRatio || 0);
+          if (!Number.isFinite(ratio) || ratio <= 0) return;
+          const sizing = computeAdaptiveMediaHeight(frame, ratio);
+          if (!sizing) return;
+          frame.style.height = `${sizing.height}px`;
+          frame.style.maxHeight = `${sizing.maxHeight}px`;
+        });
+      });
+    }
   }
 
   function renderInlineSocialVideo(media, options = {}) {
@@ -3551,7 +3603,7 @@
 
     const reactionTotal = Number(post.reactions_total || 0);
     const commentsTotal = Number(post.comments_count || 0);
-    const modalActionsCount = 3 + (canSharePostPublicly(post) ? 1 : 0);
+    const modalActionsCount = 2 + (canSharePostPublicly(post) ? 1 : 0);
     const hasMedia = !!getPostMediaInfo(post);
 
     return `
@@ -3589,10 +3641,6 @@
         </div>
         <div class="post-modal-preview-actions post-modal-preview-actions--${modalActionsCount}">
           ${renderReactionTrigger('post', post.id, post.current_reaction, true)}
-          <button type="button" class="post-modal-preview-action-btn" onclick="window.__uptFocusPostCommentInput?.(this, event)">
-            <span class="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
-            <span>Comentar</span>
-          </button>
           ${renderPublicShareActionButton(post, { variant: 'modal' })}
           <button type="button" class="post-modal-preview-action-btn post-modal-preview-action-btn--report" data-action="report-post" data-post-id="${post.id}">
             <span class="material-symbols-outlined text-[18px]">flag</span>
@@ -4175,10 +4223,14 @@
 
     function ensureCallAudioContext() {
       if (callState.audioContext) {
-        if (callState.audioContext.state === 'suspended') {
-          callState.audioContext.resume().catch(() => { });
+        if (callState.audioContext.state === 'closed') {
+          callState.audioContext = null;
+        } else {
+          if (callState.audioContext.state === 'suspended') {
+            callState.audioContext.resume().catch(() => { });
+          }
+          return callState.audioContext;
         }
-        return callState.audioContext;
       }
 
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -6510,6 +6562,9 @@
             loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true }).catch(() => { });
           }, 2500);
           setTimeout(() => commentInput.focus(), 60);
+          // Re-sync adaptive video heights once modal layout has settled
+          setTimeout(() => refreshAdaptiveMediaFrames(), 80);
+          setTimeout(() => refreshAdaptiveMediaFrames(), 320);
         }
 
         function canDeleteFeedComment(comment) {
@@ -12150,6 +12205,9 @@
           commentModal.classList.add('flex');
           commentPostPreview.innerHTML = renderPostModalPreview(findGroupPost(postId), user.id, { hideGroupBadge: true });
           loadComments(postId, currentCommentSort);
+          // Re-sync adaptive video heights once modal layout has settled
+          setTimeout(() => refreshAdaptiveMediaFrames(), 80);
+          setTimeout(() => refreshAdaptiveMediaFrames(), 320);
         }
 
         function closeCommentModal() {
@@ -13468,6 +13526,9 @@
           renderProfileCommentModalPost(pendingProfileCommentId);
           loadProfileComments(pendingProfileCommentId, currentProfileCommentSort);
           setTimeout(() => profileCommentInput.focus(), 60);
+          // Re-sync adaptive video heights once modal layout has settled
+          setTimeout(() => refreshAdaptiveMediaFrames(), 80);
+          setTimeout(() => refreshAdaptiveMediaFrames(), 320);
         }
 
         function closeProfileCommentModal() {
@@ -15413,6 +15474,9 @@
           openCommentsModal();
           const selectedPost = allPosts.find((post) => Number(post.id) === currentCommentsPostId);
           commentPostPreview.innerHTML = renderPostModalPreview(selectedPost, appState.user?.id);
+          // Re-sync adaptive video heights once modal layout has settled
+          setTimeout(() => refreshAdaptiveMediaFrames(), 80);
+          setTimeout(() => refreshAdaptiveMediaFrames(), 320);
           commentsList.innerHTML = '<p class="text-slate-400 text-sm text-center">Cargando comentarios...</p>';
 
           await ensurePublicUsersLoaded();

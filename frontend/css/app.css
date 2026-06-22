@@ -203,6 +203,9 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: .4rem;
   padding-top: .5rem;
+  /* Container queries: each button detects available width */
+  container-type: inline-size;
+  container-name: post-actions;
 }
 
 .social-post-actions--two {
@@ -244,6 +247,17 @@ body {
   letter-spacing: .01em;
 }
 
+/* Text label inside action buttons: truncate with ellipsis when too narrow */
+.social-post-action > span:not(.material-symbols-outlined),
+.social-post-actions .social-reaction-trigger > span:not(.material-symbols-outlined):not(.reaction-asset) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 1;
+}
+
 .social-post-action:hover {
   background: #f1f5f9;
   color: #0f172a;
@@ -252,6 +266,7 @@ body {
 
 .social-post-action .material-symbols-outlined {
   font-size: 22px;
+  flex-shrink: 0;
 }
 
 .social-post-actions .social-reaction-trigger {
@@ -259,11 +274,13 @@ body {
   justify-content: center;
   min-height: 2.6rem;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .social-reaction-trigger .material-symbols-outlined {
   font-size: 22px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .social-post-action--report {
@@ -275,43 +292,26 @@ body {
   background: #fef2f2;
 }
 
-/* Responsive: smaller action labels on medium-small screens */
-@media (max-width: 768px) {
-  .social-post-action {
-    font-size: .78rem;
-    gap: .4rem;
-  }
-  .social-post-action .material-symbols-outlined,
-  .social-post-actions .social-reaction-trigger .material-symbols-outlined {
-    font-size: 20px;
-  }
-  .social-post-actions .social-reaction-trigger {
-    font-size: .78rem;
-    gap: .4rem;
+/* Container query: hide text labels when actions area is too narrow for 4 buttons */
+@container post-actions (max-width: 360px) {
+  .social-post-action > span:not(.material-symbols-outlined),
+  .social-reaction-trigger > span:not(.material-symbols-outlined):not(.reaction-asset) {
+    display: none;
   }
 }
 
-@media (max-width: 540px) {
-  .social-post-action {
-    font-size: .72rem;
-    gap: .3rem;
+/* Container query: reduce font when actions area is narrow (3-4 buttons) */
+@container post-actions (max-width: 480px) {
+  .social-post-action,
+  .social-post-actions .social-reaction-trigger {
+    font-size: .72rem !important;
+    gap: .22rem;
+    padding-left: .4rem;
+    padding-right: .4rem;
   }
   .social-post-action .material-symbols-outlined,
   .social-post-actions .social-reaction-trigger .material-symbols-outlined {
-    font-size: 18px;
-  }
-  .social-post-actions .social-reaction-trigger {
-    font-size: .72rem;
-    gap: .3rem;
-  }
-}
-
-@media (max-width: 440px) {
-  .social-post-action span:not(.material-symbols-outlined) {
-    display: none;
-  }
-  .social-post-actions .social-reaction-trigger > span:not(.material-symbols-outlined):not(.reaction-asset) {
-    display: none;
+    font-size: 17px;
   }
 }
 
@@ -7911,13 +7911,12 @@ body #comment-modal .post-modal-preview-media video,
 body #group-comment-modal .post-modal-preview-media video,
 body #profile-comment-modal .post-modal-preview-media video {
   display: block !important;
-  width: auto !important;
-  max-width: 100% !important;
-  max-height: min(420px, 52vh) !important;
+  width: 100% !important;
   border-radius: 1rem !important;
   object-fit: contain !important;
   background: #020617 !important;
-  border: 1px solid rgba(15, 23, 42, 0.18) !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 body #comment-modal .post-modal-preview-stats,
@@ -7993,636 +7992,6 @@ body #profile-comment-modal .post-comment-card__actions {
   margin-top: 0.55rem !important;
   gap: 0.45rem !important;
   font-size: 0.74rem !important;
-}
-
-/* ===== Publication modal faithful pass ===== */
-body #comment-modal .post-comments-modal,
-body #group-comment-modal .post-comments-modal,
-body #profile-comment-modal .post-comments-modal {
-  width: min(100%, 500px) !important;
-  max-width: min(500px, calc(100vw - 1rem)) !important;
-  max-height: min(92vh, 980px) !important;
-  border-radius: 1rem !important;
-  border: 1px solid #e2e8f0 !important;
-  background: #ffffff !important;
-  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.18) !important;
-}
-
-body #comment-modal .post-comments-topbar,
-body #group-comment-modal .post-comments-topbar,
-body #profile-comment-modal .post-comments-topbar {
-  display: grid !important;
-  grid-template-columns: 2rem 1fr 2rem !important;
-  align-items: center !important;
-  gap: 0.5rem !important;
-  min-height: 3.5rem !important;
-  padding: 0.8rem 0.9rem !important;
-  border-bottom: 1px solid #e2e8f0 !important;
-}
-
-body #comment-modal .post-comments-topbar-spacer,
-body #group-comment-modal .post-comments-topbar-spacer,
-body #profile-comment-modal .post-comments-topbar-spacer {
-  width: 2rem !important;
-  height: 2rem !important;
-}
-
-body #comment-modal .post-comments-topbar-title,
-body #group-comment-modal .post-comments-topbar-title,
-body #profile-comment-modal .post-comments-topbar-title {
-  text-align: center !important;
-  font-size: 1rem !important;
-  font-weight: 600 !important;
-  color: #1e293b !important;
-}
-
-body #comment-modal .post-comments-topbar-close,
-body #group-comment-modal .post-comments-topbar-close,
-body #profile-comment-modal .post-comments-topbar-close {
-  position: static !important;
-  justify-self: end !important;
-  width: 2rem !important;
-  height: 2rem !important;
-  border-radius: 999px !important;
-  border: 1px solid #e2e8f0 !important;
-  background: #f8fafc !important;
-  color: #64748b !important;
-}
-
-body #comment-modal .post-comments-body,
-body #group-comment-modal .post-comments-body,
-body #profile-comment-modal .post-comments-body {
-  display: flex !important;
-  flex-direction: column !important;
-  min-height: 0 !important;
-  background: #ffffff !important;
-}
-
-body #comment-modal .post-comments-scroll,
-body #group-comment-modal .post-comments-scroll,
-body #profile-comment-modal .post-comments-scroll {
-  display: flex !important;
-  flex-direction: column !important;
-  overflow-y: auto !important;
-  min-height: 0 !important;
-  max-height: calc(92vh - 7.75rem) !important;
-  background: #ffffff !important;
-}
-
-body #comment-modal .post-comments-preview,
-body #group-comment-modal .post-comments-preview,
-body #profile-comment-modal .post-comments-preview {
-  padding: 0 !important;
-  border-bottom: 1px solid #e2e8f0 !important;
-  background: #ffffff !important;
-}
-
-body #comment-modal .post-modal-preview-card,
-body #group-comment-modal .post-modal-preview-card,
-body #profile-comment-modal .post-modal-preview-card {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: #ffffff !important;
-  box-shadow: none !important;
-}
-
-body #comment-modal .post-modal-preview-head,
-body #group-comment-modal .post-modal-preview-head,
-body #profile-comment-modal .post-modal-preview-head {
-  padding: 1rem 1rem 0.8rem !important;
-}
-
-body #comment-modal .post-modal-preview-author-row,
-body #group-comment-modal .post-modal-preview-author-row,
-body #profile-comment-modal .post-modal-preview-author-row {
-  display: flex !important;
-  align-items: flex-start !important;
-  justify-content: space-between !important;
-  gap: 0.75rem !important;
-}
-
-body #comment-modal .post-modal-preview-author,
-body #group-comment-modal .post-modal-preview-author,
-body #profile-comment-modal .post-modal-preview-author {
-  display: flex !important;
-  align-items: center !important;
-  gap: 0.75rem !important;
-  min-width: 0 !important;
-  flex: 1 !important;
-}
-
-body #comment-modal .post-modal-preview-author--button,
-body #group-comment-modal .post-modal-preview-author--button,
-body #profile-comment-modal .post-modal-preview-author--button {
-  border: 0 !important;
-  background: transparent !important;
-  padding: 0 !important;
-  text-align: left !important;
-}
-
-body #comment-modal .post-modal-preview-author-copy,
-body #group-comment-modal .post-modal-preview-author-copy,
-body #profile-comment-modal .post-modal-preview-author-copy {
-  min-width: 0 !important;
-  flex: 1 !important;
-}
-
-body #comment-modal .post-modal-preview-author-main,
-body #group-comment-modal .post-modal-preview-author-main,
-body #profile-comment-modal .post-modal-preview-author-main {
-  display: flex !important;
-  align-items: center !important;
-  gap: 0.4rem !important;
-  flex-wrap: wrap !important;
-}
-
-body #comment-modal .post-modal-preview-author-name,
-body #group-comment-modal .post-modal-preview-author-name,
-body #profile-comment-modal .post-modal-preview-author-name {
-  font-size: 0.9rem !important;
-  font-weight: 700 !important;
-  color: #1e293b !important;
-}
-
-body #comment-modal .post-modal-preview-author-faculty,
-body #group-comment-modal .post-modal-preview-author-faculty,
-body #profile-comment-modal .post-modal-preview-author-faculty {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 0.18rem 0.42rem !important;
-  border-radius: 999px !important;
-  color: #ffffff !important;
-  font-size: 0.58rem !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.04em !important;
-  text-transform: uppercase !important;
-}
-
-body #comment-modal .post-modal-preview-author-meta,
-body #group-comment-modal .post-modal-preview-author-meta,
-body #profile-comment-modal .post-modal-preview-author-meta {
-  display: flex !important;
-  align-items: center !important;
-  flex-wrap: wrap !important;
-  gap: 0.28rem !important;
-  margin-top: 0.18rem !important;
-  font-size: 0.72rem !important;
-  color: #64748b !important;
-}
-
-body #comment-modal .post-modal-preview-author-dot,
-body #group-comment-modal .post-modal-preview-author-dot,
-body #profile-comment-modal .post-modal-preview-author-dot {
-  color: #94a3b8 !important;
-}
-
-body #comment-modal .post-modal-preview-menu,
-body #group-comment-modal .post-modal-preview-menu,
-body #profile-comment-modal .post-modal-preview-menu {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 2rem !important;
-  height: 2rem !important;
-  border-radius: 999px !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: #64748b !important;
-  pointer-events: none !important;
-}
-
-body #comment-modal .post-modal-preview-audience,
-body #group-comment-modal .post-modal-preview-audience,
-body #profile-comment-modal .post-modal-preview-audience {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.35rem !important;
-  margin-top: 0.7rem !important;
-  padding: 0.28rem 0.65rem !important;
-  border-radius: 999px !important;
-  border: 1px solid #e2e8f0 !important;
-  background: #f8fafc !important;
-  color: #64748b !important;
-  font-size: 0.73rem !important;
-  font-weight: 600 !important;
-}
-
-body #comment-modal .post-modal-preview-copy,
-body #group-comment-modal .post-modal-preview-copy,
-body #profile-comment-modal .post-modal-preview-copy {
-  margin-top: 0.9rem !important;
-  color: #1f2937 !important;
-  font-size: 0.9rem !important;
-  line-height: 1.6 !important;
-}
-
-body #comment-modal .post-modal-preview-media,
-body #group-comment-modal .post-modal-preview-media,
-body #profile-comment-modal .post-modal-preview-media {
-  padding: 0 1rem 0.95rem !important;
-  background: #ffffff !important;
-}
-
-body #comment-modal .post-modal-preview-media-button,
-body #group-comment-modal .post-modal-preview-media-button,
-body #profile-comment-modal .post-modal-preview-media-button {
-  position: relative !important;
-  display: block !important;
-  width: 100% !important;
-  border: 0 !important;
-  padding: 0 !important;
-  background: transparent !important;
-  border-radius: 0.85rem !important;
-  overflow: hidden !important;
-  cursor: zoom-in !important;
-}
-
-body #comment-modal .post-modal-preview-media img,
-body #group-comment-modal .post-modal-preview-media img,
-body #profile-comment-modal .post-modal-preview-media img {
-  width: 100% !important;
-  max-height: 300px !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 0.85rem !important;
-  object-fit: contain !important;
-}
-
-body #comment-modal .post-modal-preview-media-hint,
-body #group-comment-modal .post-modal-preview-media-hint,
-body #profile-comment-modal .post-modal-preview-media-hint {
-  display: none !important;
-}
-
-body #comment-modal .post-modal-preview-stats,
-body #group-comment-modal .post-modal-preview-stats,
-body #profile-comment-modal .post-modal-preview-stats {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 0.9rem !important;
-  padding: 0.75rem 1rem !important;
-  border-top: 1px solid #e2e8f0 !important;
-  border-bottom: 1px solid #e2e8f0 !important;
-  color: #64748b !important;
-  font-size: 0.77rem !important;
-}
-
-body #comment-modal .post-modal-preview-actions,
-body #group-comment-modal .post-modal-preview-actions,
-body #profile-comment-modal .post-modal-preview-actions {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 0.8rem !important;
-  padding: 0.75rem 1rem 0.9rem !important;
-}
-
-body #comment-modal .post-modal-preview-actions .social-reaction-trigger,
-body #group-comment-modal .post-modal-preview-actions .social-reaction-trigger,
-body #profile-comment-modal .post-modal-preview-actions .social-reaction-trigger {
-  height: 2.3rem !important;
-  padding: 0 0.9rem !important;
-  border-radius: 999px !important;
-  border: 1px solid #dbe3ef !important;
-  background: #ffffff !important;
-  color: #475569 !important;
-  font-size: 0.78rem !important;
-  font-weight: 700 !important;
-  box-shadow: none !important;
-}
-
-body #comment-modal .post-modal-preview-actions .social-reaction-trigger.is-active,
-body #group-comment-modal .post-modal-preview-actions .social-reaction-trigger.is-active,
-body #profile-comment-modal .post-modal-preview-actions .social-reaction-trigger.is-active {
-  color: #0e66c2 !important;
-  border-color: #bfdbfe !important;
-  background: #eff6ff !important;
-}
-
-body #comment-modal .post-modal-preview-report,
-body #group-comment-modal .post-modal-preview-report,
-body #profile-comment-modal .post-modal-preview-report {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.3rem !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: #94a3b8 !important;
-  font-size: 0.76rem !important;
-  font-weight: 500 !important;
-  padding: 0 !important;
-}
-
-body #comment-modal .post-modal-preview-stat,
-body #group-comment-modal .post-modal-preview-stat,
-body #profile-comment-modal .post-modal-preview-stat {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.35rem !important;
-}
-
-body #comment-modal .post-modal-preview-stat-icon,
-body #group-comment-modal .post-modal-preview-stat-icon,
-body #profile-comment-modal .post-modal-preview-stat-icon {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 1.15rem !important;
-  height: 1.15rem !important;
-  border-radius: 999px !important;
-  background: #2563eb !important;
-  color: #ffffff !important;
-}
-
-body #comment-modal .post-comments-side,
-body #group-comment-modal .post-comments-side,
-body #profile-comment-modal .post-comments-side {
-  background: #ffffff !important;
-}
-
-body #comment-modal .post-comments-section-head,
-body #group-comment-modal .post-comments-section-head,
-body #profile-comment-modal .post-comments-section-head {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 0.8rem !important;
-  padding: 0.95rem 1rem 0.8rem !important;
-  background: #ffffff !important;
-  border: 0 !important;
-}
-
-body #comment-modal .post-comments-section-title,
-body #group-comment-modal .post-comments-section-title,
-body #profile-comment-modal .post-comments-section-title {
-  font-size: 0.9rem !important;
-  font-weight: 700 !important;
-  color: #1e293b !important;
-}
-
-body #comment-modal .post-comments-sort-pills,
-body #group-comment-modal .post-comments-sort-pills,
-body #profile-comment-modal .post-comments-sort-pills {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.15rem !important;
-  padding: 0.15rem !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 999px !important;
-  background: #f8fafc !important;
-}
-
-body #comment-modal .post-comments-sort-pill,
-body #group-comment-modal .post-comments-sort-pill,
-body #profile-comment-modal .post-comments-sort-pill {
-  border: 0 !important;
-  border-radius: 999px !important;
-  background: transparent !important;
-  color: #64748b !important;
-  padding: 0.3rem 0.7rem !important;
-  font-size: 0.68rem !important;
-  font-weight: 700 !important;
-  transition: all 0.2s ease !important;
-}
-
-body #comment-modal .post-comments-sort-pill.is-active,
-body #group-comment-modal .post-comments-sort-pill.is-active,
-body #profile-comment-modal .post-comments-sort-pill.is-active {
-  background: #1e293b !important;
-  color: #ffffff !important;
-}
-
-body #comment-modal .post-comments-list,
-body #group-comment-modal .post-comments-list,
-body #profile-comment-modal .post-comments-list {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 1rem !important;
-  padding: 0 1rem 1rem !important;
-}
-
-body #comment-modal .post-comment-card,
-body #group-comment-modal .post-comment-card,
-body #profile-comment-modal .post-comment-card {
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
-
-body #comment-modal .post-comment-card__inner,
-body #group-comment-modal .post-comment-card__inner,
-body #profile-comment-modal .post-comment-card__inner {
-  display: flex !important;
-  align-items: flex-start !important;
-}
-
-body #comment-modal .post-comment-card__thread,
-body #group-comment-modal .post-comment-card__thread,
-body #profile-comment-modal .post-comment-card__thread {
-  display: flex !important;
-  flex: 1 !important;
-  min-width: 0 !important;
-  flex-direction: column !important;
-  gap: 0.28rem !important;
-}
-
-body #comment-modal .post-comment-card__bubble,
-body #group-comment-modal .post-comment-card__bubble,
-body #profile-comment-modal .post-comment-card__bubble {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 1rem 1rem 1rem 0.28rem !important;
-  padding: 0.75rem 0.85rem !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05) !important;
-}
-
-body #comment-modal .post-comment-card__meta,
-body #group-comment-modal .post-comment-card__meta,
-body #profile-comment-modal .post-comment-card__meta {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 0.6rem !important;
-  margin-bottom: 0.28rem !important;
-}
-
-body #comment-modal .post-comment-card__meta-main,
-body #group-comment-modal .post-comment-card__meta-main,
-body #profile-comment-modal .post-comment-card__meta-main {
-  display: flex !important;
-  align-items: center !important;
-  gap: 0.38rem !important;
-  flex-wrap: wrap !important;
-  min-width: 0 !important;
-}
-
-body #comment-modal .post-comment-card__name,
-body #group-comment-modal .post-comment-card__name,
-body #profile-comment-modal .post-comment-card__name {
-  font-size: 0.83rem !important;
-  font-weight: 700 !important;
-  color: #1e293b !important;
-}
-
-body #comment-modal .post-comment-card__faculty,
-body #group-comment-modal .post-comment-card__faculty,
-body #profile-comment-modal .post-comment-card__faculty {
-  color: #ffffff !important;
-  font-size: 0.56rem !important;
-  font-weight: 800 !important;
-  padding: 0.16rem 0.4rem !important;
-  border-radius: 999px !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.03em !important;
-}
-
-body #comment-modal .post-comment-card__time,
-body #group-comment-modal .post-comment-card__time,
-body #profile-comment-modal .post-comment-card__time {
-  font-size: 0.68rem !important;
-  color: #94a3b8 !important;
-  white-space: nowrap !important;
-}
-
-body #comment-modal .post-comment-card__text,
-body #group-comment-modal .post-comment-card__text,
-body #profile-comment-modal .post-comment-card__text {
-  margin: 0 !important;
-  color: #334155 !important;
-  font-size: 0.84rem !important;
-  line-height: 1.5 !important;
-}
-
-body #comment-modal .post-comment-card__actions,
-body #group-comment-modal .post-comment-card__actions,
-body #profile-comment-modal .post-comment-card__actions {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 0.5rem !important;
-  padding: 0 0.3rem !important;
-  margin-top: 0.05rem !important;
-}
-
-body #comment-modal .post-comment-card__actions-left,
-body #group-comment-modal .post-comment-card__actions-left,
-body #profile-comment-modal .post-comment-card__actions-left {
-  display: flex !important;
-  align-items: center !important;
-  gap: 0.5rem !important;
-  flex-wrap: wrap !important;
-}
-
-body #comment-modal .post-comment-card__actions .social-reaction-bar,
-body #group-comment-modal .post-comment-card__actions .social-reaction-bar,
-body #profile-comment-modal .post-comment-card__actions .social-reaction-bar {
-  margin: 0 !important;
-}
-
-body #comment-modal .post-comment-card__actions .social-reaction-trigger,
-body #group-comment-modal .post-comment-card__actions .social-reaction-trigger,
-body #profile-comment-modal .post-comment-card__actions .social-reaction-trigger {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.25rem !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: #64748b !important;
-  font-size: 0.72rem !important;
-  font-weight: 600 !important;
-  box-shadow: none !important;
-}
-
-body #comment-modal .post-comment-card__actions .social-reaction-summary,
-body #group-comment-modal .post-comment-card__actions .social-reaction-summary,
-body #profile-comment-modal .post-comment-card__actions .social-reaction-summary {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.25rem !important;
-  border-radius: 999px !important;
-  background: #f1f5f9 !important;
-  padding: 0.15rem 0.38rem !important;
-}
-
-body #comment-modal .post-comment-card__actions .social-reaction-count,
-body #group-comment-modal .post-comment-card__actions .social-reaction-count,
-body #profile-comment-modal .post-comment-card__actions .social-reaction-count {
-  font-size: 0.64rem !important;
-  font-weight: 700 !important;
-  color: #1e293b !important;
-}
-
-body #comment-modal .post-comment-card__report,
-body #group-comment-modal .post-comment-card__report,
-body #profile-comment-modal .post-comment-card__report {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.2rem !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: #94a3b8 !important;
-  font-size: 0.72rem !important;
-  font-weight: 500 !important;
-}
-
-body #comment-modal .post-comments-compose,
-body #group-comment-modal .post-comments-compose,
-body #profile-comment-modal .post-comments-compose {
-  padding: 0.9rem 0.85rem !important;
-  border-top: 1px solid #e2e8f0 !important;
-  background: #ffffff !important;
-}
-
-body #comment-modal .post-comments-compose-row,
-body #group-comment-modal .post-comments-compose-row,
-body #profile-comment-modal .post-comments-compose-row {
-  position: relative !important;
-  display: flex !important;
-  align-items: center !important;
-}
-
-body #comment-modal .post-comments-compose-input,
-body #group-comment-modal .post-comments-compose-input,
-body #profile-comment-modal .post-comments-compose-input {
-  width: 100% !important;
-  min-height: 2.85rem !important;
-  max-height: 6rem !important;
-  border-radius: 999px !important;
-  border: 1px solid #e2e8f0 !important;
-  background: #ffffff !important;
-  color: #1e293b !important;
-  padding: 0.82rem 3rem 0.82rem 0.95rem !important;
-  line-height: 1.35 !important;
-  resize: none !important;
-}
-
-body #comment-modal .post-comments-compose-send,
-body #group-comment-modal .post-comments-compose-send,
-body #profile-comment-modal .post-comments-compose-send {
-  position: absolute !important;
-  right: 0.45rem !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  width: 2rem !important;
-  height: 2rem !important;
-  border-radius: 999px !important;
-  border: 0 !important;
-  background: #f1f5f9 !important;
-  color: #64748b !important;
-}
-
-body #comment-modal .post-comments-compose-send .material-symbols-outlined,
-body #group-comment-modal .post-comments-compose-send .material-symbols-outlined,
-body #profile-comment-modal .post-comments-compose-send .material-symbols-outlined {
-  transform: rotate(-20deg) !important;
 }
 
 .post-image-lightbox {
@@ -9576,11 +8945,20 @@ body #admin-comments-modal .post-modal-preview-media img {
 
 body #admin-comments-modal .post-modal-preview-media video {
   width: 100% !important;
-  max-height: 300px !important;
-  border: 1px solid #e2e8f0 !important;
+  border: 0 !important;
   border-radius: 0.85rem !important;
   object-fit: contain !important;
   background: #020617 !important;
+  box-shadow: none !important;
+}
+body #admin-comments-modal .post-modal-preview-media .post-adaptive-media,
+body #admin-comments-modal .post-modal-preview-media .social-video-player {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 0 !important;
+  border-radius: 0.85rem !important;
+  overflow: hidden !important;
+  margin: 0 !important;
 }
 
 body #admin-comments-modal .post-modal-preview-stats {
@@ -9682,154 +9060,8 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-co
   justify-content: space-between !important;
 }
 
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__bubble {
-  position: relative !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 1rem 1rem 1rem 0.28rem !important;
-  background: #ffffff !important;
-  padding: 0.75rem 0.85rem !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05) !important;
-}
+/* Removed duplicate legacy comments styling block to avoid conflicts */
 
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card--deletable .post-comment-card__meta {
-  padding-right: 2.35rem !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__meta {
-  display: flex !important;
-  align-items: flex-start !important;
-  justify-content: space-between !important;
-  flex-wrap: nowrap !important;
-  gap: 0.6rem !important;
-  margin-bottom: 0.28rem !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__meta-main {
-  display: flex !important;
-  align-items: center !important;
-  gap: 0.38rem !important;
-  flex-wrap: wrap !important;
-  flex: 1 1 auto !important;
-  min-width: 0 !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__name {
-  color: #1e293b !important;
-  font-size: 0.83rem !important;
-  font-weight: 700 !important;
-  line-height: 1.15 !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__faculty {
-  color: #ffffff !important;
-  font-size: 0.56rem !important;
-  font-weight: 800 !important;
-  padding: 0.16rem 0.4rem !important;
-  border-radius: 999px !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.03em !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__time {
-  flex: 0 0 auto !important;
-  color: #94a3b8 !important;
-  font-size: 0.68rem !important;
-  line-height: 1 !important;
-  margin-top: 0.18rem !important;
-  white-space: nowrap !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__text {
-  margin: 0 !important;
-  color: #334155 !important;
-  font-size: 0.84rem !important;
-  line-height: 1.5 !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 0.5rem !important;
-  padding: 0 0.3rem !important;
-  margin-top: 0.05rem !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions-left {
-  display: flex !important;
-  align-items: center !important;
-  gap: 0.5rem !important;
-  flex-wrap: wrap !important;
-  min-width: 0 !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-bar {
-  margin: 0 !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-trigger {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.25rem !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: #64748b !important;
-  font-size: 0.72rem !important;
-  font-weight: 600 !important;
-  box-shadow: none !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-summary {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.25rem !important;
-  border-radius: 999px !important;
-  background: #f1f5f9 !important;
-  padding: 0.15rem 0.38rem !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-count {
-  color: #1e293b !important;
-  font-size: 0.64rem !important;
-  font-weight: 700 !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__report {
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 0.2rem !important;
-  margin-left: auto !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  color: #94a3b8 !important;
-  font-size: 0.72rem !important;
-  font-weight: 500 !important;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__delete {
-  position: absolute;
-  top: 0.48rem;
-  right: 0.52rem;
-  display: inline-flex;
-  width: 1.85rem;
-  height: 1.85rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  border: 1px solid rgba(220, 38, 38, 0.16);
-  background: rgba(254, 242, 242, 0.72);
-  color: #dc2626;
-  opacity: 0.82;
-  transition: opacity 0.16s ease, background 0.16s ease, transform 0.16s ease;
-}
-
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__delete:hover {
-  background: #fee2e2;
-  opacity: 1;
-  transform: translateY(-1px);
-}
 
 /* Admin publication modal parity: keep it visually identical to feed/group/profile modals. */
 body #admin-comments-modal .post-comments-body {
@@ -10565,7 +9797,6 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media video {
   display: block !important;
   width: 100% !important;
-  max-height: 260px !important;
   border-radius: 1rem !important;
   object-fit: contain !important;
   background: #020617 !important;
@@ -10576,7 +9807,6 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media .social-video-player {
   width: 100% !important;
   max-width: 100% !important;
-  max-height: 280px !important;
   min-height: 0 !important;
   border-radius: 1rem !important;
   overflow: hidden !important;
@@ -10611,15 +9841,17 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
   gap: .32rem !important;
 }
 
-/* Actions (grid de celdas) */
+/* Actions (grid de celdas con container queries y diseño de pills) */
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions {
   display: grid !important;
   align-items: stretch !important;
-  gap: 0 !important;
-  padding: 0 !important;
+  gap: 0.4rem !important;
+  padding: 0.45rem !important;
   border-top: 1px solid #f1f5f9 !important;
   border-bottom: 1px solid #eef2f7 !important;
   background: #fff !important;
+  container-type: inline-size !important;
+  container-name: modal-actions !important;
 }
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions--2 { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions--3 { grid-template-columns: repeat(3, minmax(0,1fr)) !important; }
@@ -10628,33 +9860,44 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .social-reaction-trigger,
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-action-btn {
   min-width: 0 !important;
-  min-height: 2.75rem !important;
+  min-height: 2.6rem !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: .4rem !important;
-  padding: .6rem .4rem !important;
+  gap: 0.48rem !important;
+  padding: 0 1rem !important;
   border: 0 !important;
-  border-radius: 0 !important;
+  border-radius: 999px !important;
   background: transparent !important;
-  color: #52627a !important;
-  font-size: .8rem !important;
-  font-weight: 600 !important;
+  color: #64748b !important;
+  font-size: 0.84rem !important;
+  font-weight: 700 !important;
   line-height: 1.1 !important;
   box-shadow: none !important;
   white-space: nowrap !important;
-  transition: background .15s, color .15s !important;
+  overflow: hidden !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .social-reaction-trigger > span:not(.material-symbols-outlined):not(.reaction-asset),
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-action-btn > span:not(.material-symbols-outlined) {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  flex-shrink: 1 !important;
 }
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .material-symbols-outlined {
-  font-size: 20px !important;
+  font-size: 22px !important;
+  flex-shrink: 0 !important;
 }
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions > * + * {
-  border-left: 1px solid #eef2f7 !important;
+  border-left: 0 !important;
 }
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .social-reaction-trigger:hover,
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-action-btn:hover {
-  background: #f8fafc !important;
-  color: #1e3a8a !important;
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
 }
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-action-btn--report:hover {
   background: #fef2f2 !important;
@@ -10663,6 +9906,26 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .social-reaction-trigger.is-active {
   background: #eff6ff !important;
   color: #0e66c2 !important;
+}
+
+@container modal-actions (max-width: 480px) {
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .social-reaction-trigger,
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-action-btn {
+    font-size: 0.72rem !important;
+    gap: 0.22rem !important;
+    padding-left: 0.35rem !important;
+    padding-right: 0.35rem !important;
+  }
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .material-symbols-outlined {
+    font-size: 18px !important;
+  }
+}
+
+@container modal-actions (max-width: 360px) {
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .social-reaction-trigger > span:not(.material-symbols-outlined):not(.reaction-asset),
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-action-btn > span:not(.material-symbols-outlined) {
+    display: none !important;
+  }
 }
 
 /* Comments list */
@@ -10789,12 +10052,5 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-com
   body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-head { padding: .85rem .85rem .65rem !important; }
   body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media { padding: 0 .7rem .75rem !important; }
   body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media img { max-height: 240px !important; border-radius: .85rem !important; }
-  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-actions .social-reaction-trigger,
-  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-action-btn {
-    font-size: .72rem !important;
-    gap: .25rem !important;
-    padding-left: .3rem !important;
-    padding-right: .3rem !important;
-    min-height: 2.5rem !important;
-  }
+
 }

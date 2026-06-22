@@ -110,6 +110,13 @@
         } catch (_error) {}
       }
 
+      if (audioContext.state === 'closed') {
+        try {
+          audioContext.close().catch(() => {});
+        } catch (_error) {}
+        return null;
+      }
+
       if (audioContext.state === 'suspended') {
         audioContext.resume().catch(() => {});
       }
