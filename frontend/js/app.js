@@ -4377,15 +4377,16 @@
       root.style.setProperty('right', '0', 'important');
       root.style.setProperty('bottom', '0', 'important');
       root.style.setProperty('z-index', '9999', 'important');
-      root.style.setProperty('width', '100vw', 'important');
-      root.style.setProperty('max-width', '100vw', 'important');
-      root.style.setProperty('flex-basis', '100vw', 'important');
+      root.style.setProperty('width', '100%', 'important');
+      root.style.setProperty('max-width', 'none', 'important');
+      root.style.setProperty('flex-basis', 'auto', 'important');
       root.style.setProperty('min-height', '100dvh', 'important');
       root.style.setProperty('height', '100dvh', 'important');
       root.style.setProperty('max-height', '100dvh', 'important');
       root.style.setProperty('border-radius', '0', 'important');
       root.style.setProperty('transform', 'none', 'important');
       root.style.setProperty('margin', '0', 'important');
+      root.style.setProperty('box-sizing', 'border-box', 'important');
     }
 
     function applyDefaultCallWindowPosition(root = ensureCallWindow()) {
