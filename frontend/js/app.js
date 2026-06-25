@@ -1991,6 +1991,11 @@
     state.uploadProgress = 0;
     if (elements.fileInput) elements.fileInput.value = '';
     if (elements.cameraInput) elements.cameraInput.value = '';
+    if (Array.isArray(elements.extraInputs)) {
+      elements.extraInputs.forEach((input) => {
+        if (input) input.value = '';
+      });
+    }
     if (state.previewUrl) {
       URL.revokeObjectURL(state.previewUrl);
       state.previewUrl = '';
@@ -2744,6 +2749,45 @@
     return !!String(video.getAttribute('src') || '').trim() || video.dataset.socialVideoHydrated === '1';
   }
 
+  function isMobileFeedVideoPlaybackMode() {
+    return window.innerWidth <= 767 || window.matchMedia?.('(pointer: coarse)')?.matches;
+  }
+
+  function dehydrateSocialVideoSource(video, { resetTime = true } = {}) {
+    if (!(video instanceof HTMLVideoElement)) return;
+    if (document.fullscreenElement === video || document.fullscreenElement === video.closest('[data-social-video-player]')) {
+      return;
+    }
+    try {
+      video.pause();
+    } catch (_) { }
+    if (resetTime) {
+      try {
+        video.currentTime = 0;
+      } catch (_) { }
+    }
+    video.removeAttribute('src');
+    video.preload = 'none';
+    delete video.dataset.socialVideoHydrated;
+    try {
+      video.load?.();
+    } catch (_) { }
+    syncSocialVideoPosterState(video);
+  }
+
+  function shouldHydrateSocialVideoOnViewport(video, entry) {
+    if (!(video instanceof HTMLVideoElement)) return false;
+    if (hasHydratedSocialVideoSource(video)) return true;
+    if (!isMobileFeedVideoPlaybackMode()) return true;
+    if (video === activeSocialVideoElement) return true;
+    if (video.closest('#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal')) return true;
+    const hasPoster = Boolean(String(video.getAttribute('poster') || '').trim());
+    if (!hasPoster) {
+      return Boolean(entry?.intersectionRatio >= 0.35);
+    }
+    return false;
+  }
+
   function syncSocialVideoPosterState(video) {
     if (!(video instanceof HTMLVideoElement)) return;
     const shell = video.closest('[data-social-video-player]');
@@ -2762,7 +2806,9 @@
         const target = entry.target;
         if (!(target instanceof HTMLVideoElement)) return;
         if (entry.isIntersecting) {
-          hydrateSocialVideoSource(target, { preload: 'metadata' });
+          if (shouldHydrateSocialVideoOnViewport(target, entry)) {
+            hydrateSocialVideoSource(target, { preload: isMobileFeedVideoPlaybackMode() ? 'metadata' : 'metadata' });
+          }
           return;
         }
         if (!target.paused) {
@@ -2771,10 +2817,13 @@
         if (activeSocialVideoElement === target) {
           activeSocialVideoElement = null;
         }
+        if (isMobileFeedVideoPlaybackMode()) {
+          dehydrateSocialVideoSource(target);
+        }
       });
     }, {
-      rootMargin: '90px 0px',
-      threshold: 0.08,
+      rootMargin: isMobileFeedVideoPlaybackMode() ? '0px 0px' : '90px 0px',
+      threshold: isMobileFeedVideoPlaybackMode() ? 0.32 : 0.08,
     });
 
     return socialVideoViewportObserver;
@@ -2886,6 +2935,9 @@
       if (candidate === currentVideo) return;
       if (!candidate.paused) {
         candidate.pause();
+      }
+      if (isMobileFeedVideoPlaybackMode()) {
+        dehydrateSocialVideoSource(candidate);
       }
     });
     activeSocialVideoElement = currentVideo;
@@ -3099,6 +3151,7 @@
     window.__uptSocialVideoPrime = (element) => {
       const { video } = resolveSocialVideoContext(element);
       if (!video) return;
+      if (isMobileFeedVideoPlaybackMode()) return;
       hydrateSocialVideoSource(video, { preload: 'metadata' });
     };
   }
@@ -4085,6 +4138,7 @@
       windowWidth: null,
       minimized: false,
       mobileExpanded: false,
+      mobileExpandedUsingFullscreen: false,
       mobileExpandSnapshot: null,
       resizing: null,
       outgoingOfferSent: false,
@@ -4141,6 +4195,51 @@
 
     function isMobileCallViewport() {
       return window.innerWidth <= 767;
+    }
+
+    function getCallWindowFullscreenElement() {
+      return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    function isCallWindowFullscreen(root = ensureCallWindow()) {
+      if (!root) return false;
+      const fullscreenElement = getCallWindowFullscreenElement();
+      return fullscreenElement === root;
+    }
+
+    async function requestCallWindowFullscreen(root = ensureCallWindow()) {
+      if (!root) return false;
+      const requestFullscreen = root.requestFullscreen || root.webkitRequestFullscreen;
+      if (typeof requestFullscreen !== 'function') return false;
+      try {
+        const maybePromise = requestFullscreen.call(root, { navigationUI: 'hide' });
+        if (maybePromise?.then) {
+          await maybePromise;
+        }
+        return isCallWindowFullscreen(root);
+      } catch (_) {
+        try {
+          const fallback = requestFullscreen.call(root);
+          if (fallback?.then) {
+            await fallback;
+          }
+        } catch (_) {
+          return false;
+        }
+        return isCallWindowFullscreen(root);
+      }
+    }
+
+    async function exitCallWindowFullscreen(root = ensureCallWindow()) {
+      if (!isCallWindowFullscreen(root)) return;
+      const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
+      if (typeof exitFullscreen !== 'function') return;
+      try {
+        const maybePromise = exitFullscreen.call(document);
+        if (maybePromise?.then) {
+          await maybePromise;
+        }
+      } catch (_) { }
     }
 
     function clearActiveConversationState() {
@@ -4242,6 +4341,7 @@
 
     function clearCallWindowExpandedStyles(root = ensureCallWindow()) {
       if (!root) return;
+      callState.mobileExpandedUsingFullscreen = false;
       root.classList.remove('call-window--mobile-expanded');
       document.body.classList.remove('call-window-mobile-expanded-active');
       document.documentElement.classList.remove('call-window-mobile-expanded-active');
@@ -4265,41 +4365,8 @@
       ].forEach((prop) => root.style.removeProperty(prop));
     }
 
-    function applyDefaultCallWindowPosition(root = ensureCallWindow()) {
+    function applyMobileExpandedCallWindowStyles(root = ensureCallWindow()) {
       if (!root) return;
-      root.style.removeProperty('bottom');
-      root.style.removeProperty('margin');
-      root.style.removeProperty('transform');
-      root.style.setProperty('left', 'auto');
-      if (isMobileCallViewport()) {
-        root.style.setProperty('top', '8px');
-        root.style.setProperty('right', '8px');
-      } else {
-        root.style.setProperty('top', '96px');
-        root.style.setProperty('right', '24px');
-      }
-    }
-
-    function exitMobileExpandedCallWindow(root = ensureCallWindow(), { restoreSnapshot = true } = {}) {
-      if (!root || !callState.mobileExpanded) return;
-      root.classList.remove('call-window--mobile-expanded');
-      document.body.classList.remove('call-window-mobile-expanded-active');
-      document.documentElement.classList.remove('call-window-mobile-expanded-active');
-      if (restoreSnapshot) {
-        restoreMobileExpandedSnapshot(root, callState.mobileExpandSnapshot || {});
-      } else {
-        clearCallWindowExpandedStyles(root);
-      }
-      callState.mobileExpanded = false;
-      callState.mobileExpandSnapshot = null;
-      syncMinimizedCallWindowLayout(root);
-      clampCallWindow(root);
-    }
-
-    function enterMobileExpandedCallWindow(root = ensureCallWindow()) {
-      if (!root || callState.mobileExpanded || !isMobileCallViewport()) return;
-      callState.mobileExpandSnapshot = captureMobileExpandedSnapshot(root);
-      callState.mobileExpanded = true;
       document.body.classList.add('call-window-mobile-expanded-active');
       document.documentElement.classList.add('call-window-mobile-expanded-active');
       root.classList.add('call-window--mobile-expanded');
@@ -4321,12 +4388,61 @@
       root.style.setProperty('margin', '0', 'important');
     }
 
-    function toggleMobileExpandedCallWindow(root = ensureCallWindow()) {
+    function applyDefaultCallWindowPosition(root = ensureCallWindow()) {
+      if (!root) return;
+      root.style.removeProperty('bottom');
+      root.style.removeProperty('margin');
+      root.style.removeProperty('transform');
+      root.style.setProperty('left', 'auto');
+      if (isMobileCallViewport()) {
+        root.style.setProperty('top', '8px');
+        root.style.setProperty('right', '8px');
+      } else {
+        root.style.setProperty('top', '96px');
+        root.style.setProperty('right', '24px');
+      }
+    }
+
+    function finalizeMobileExpandedCallWindowExit(root = ensureCallWindow(), { restoreSnapshot = true } = {}) {
+      if (!root || !callState.mobileExpanded) return;
+      root.classList.remove('call-window--mobile-expanded');
+      document.body.classList.remove('call-window-mobile-expanded-active');
+      document.documentElement.classList.remove('call-window-mobile-expanded-active');
+      if (restoreSnapshot) {
+        restoreMobileExpandedSnapshot(root, callState.mobileExpandSnapshot || {});
+      } else {
+        clearCallWindowExpandedStyles(root);
+      }
+      callState.mobileExpanded = false;
+      callState.mobileExpandedUsingFullscreen = false;
+      callState.mobileExpandSnapshot = null;
+      syncMinimizedCallWindowLayout(root);
+      clampCallWindow(root);
+    }
+
+    async function exitMobileExpandedCallWindow(root = ensureCallWindow(), { restoreSnapshot = true } = {}) {
+      if (!root || !callState.mobileExpanded) return;
+      if (callState.mobileExpandedUsingFullscreen || isCallWindowFullscreen(root)) {
+        await exitCallWindowFullscreen(root);
+      }
+      finalizeMobileExpandedCallWindowExit(root, { restoreSnapshot });
+    }
+
+    async function enterMobileExpandedCallWindow(root = ensureCallWindow()) {
+      if (!root || callState.mobileExpanded || !isMobileCallViewport()) return;
+      callState.mobileExpandSnapshot = captureMobileExpandedSnapshot(root);
+      callState.mobileExpanded = true;
+      callState.mobileExpandedUsingFullscreen = false;
+      applyMobileExpandedCallWindowStyles(root);
+      callState.mobileExpandedUsingFullscreen = await requestCallWindowFullscreen(root);
+    }
+
+    async function toggleMobileExpandedCallWindow(root = ensureCallWindow()) {
       if (!isMobileCallViewport() || !root || root.classList.contains('hidden')) return;
       if (callState.mobileExpanded) {
-        exitMobileExpandedCallWindow(root);
+        await exitMobileExpandedCallWindow(root);
       } else {
-        enterMobileExpandedCallWindow(root);
+        await enterMobileExpandedCallWindow(root);
       }
     }
 
@@ -4786,9 +4902,9 @@
 
       const minimizeButton = root.querySelector('#call-minimize-btn');
       const expandButton = root.querySelector('#call-expand-btn');
-      const onMinimize = () => {
+      const onMinimize = async () => {
         if (callState.mobileExpanded) {
-          exitMobileExpandedCallWindow(root);
+          await exitMobileExpandedCallWindow(root);
         }
         callState.minimized = !callState.minimized;
         root.querySelector('#call-video-stage').classList.toggle('hidden', callState.minimized);
@@ -4806,13 +4922,31 @@
       minimizeButton.addEventListener('click', onMinimize);
       cleanups.push(() => minimizeButton.removeEventListener('click', onMinimize));
 
-      const onExpand = () => {
+      const onExpand = async () => {
         if (!isMobileCallViewport() || callState.minimized) return;
-        toggleMobileExpandedCallWindow(root);
+        await toggleMobileExpandedCallWindow(root);
         updateCallWindow();
       };
       expandButton?.addEventListener('click', onExpand);
       cleanups.push(() => expandButton?.removeEventListener('click', onExpand));
+
+      const onCallWindowFullscreenChange = () => {
+        if (!callState.mobileExpanded) return;
+        if (isCallWindowFullscreen(root)) {
+          callState.mobileExpandedUsingFullscreen = true;
+          applyMobileExpandedCallWindowStyles(root);
+          updateCallWindow();
+          return;
+        }
+        if (callState.mobileExpandedUsingFullscreen) {
+          finalizeMobileExpandedCallWindowExit(root);
+          updateCallWindow();
+        }
+      };
+      document.addEventListener('fullscreenchange', onCallWindowFullscreenChange);
+      document.addEventListener('webkitfullscreenchange', onCallWindowFullscreenChange);
+      cleanups.push(() => document.removeEventListener('fullscreenchange', onCallWindowFullscreenChange));
+      cleanups.push(() => document.removeEventListener('webkitfullscreenchange', onCallWindowFullscreenChange));
 
       cleanups.push(bindControlClick(root.querySelector('#call-toggle-mic-btn'), toggleMicrophone));
       cleanups.push(bindControlClick(root.querySelector('#call-toggle-video-btn'), toggleCamera));
@@ -4852,7 +4986,7 @@
 
       const onResize = () => {
         if (callState.mobileExpanded && !isMobileCallViewport()) {
-          exitMobileExpandedCallWindow(root);
+          exitMobileExpandedCallWindow(root).catch(() => { });
         }
         if (!callState.mobileExpanded && !callState.drag && !callState.resizing) {
           applyDefaultCallWindowPosition(root);
@@ -5611,6 +5745,7 @@
       callState.windowWidth = null;
       callState.minimized = false;
       callState.mobileExpanded = false;
+      callState.mobileExpandedUsingFullscreen = false;
       callState.mobileExpandSnapshot = null;
       clearCallWindowExpandedStyles();
       applyDefaultCallWindowPosition();
@@ -5717,6 +5852,7 @@
       callState.windowWidth = null;
       callState.minimized = false;
       callState.mobileExpanded = false;
+      callState.mobileExpandedUsingFullscreen = false;
       callState.mobileExpandSnapshot = null;
       clearCallWindowExpandedStyles();
       applyDefaultCallWindowPosition();
@@ -5818,6 +5954,7 @@
       stopCallTimers();
 
       const root = ensureCallWindow();
+      await exitCallWindowFullscreen(root);
       clearCallWindowExpandedStyles(root);
       root.classList.add('hidden');
       root.querySelector('#call-video-stage').classList.remove('hidden');
@@ -5842,6 +5979,7 @@
       callState.drag = null;
       callState.minimized = false;
       callState.mobileExpanded = false;
+      callState.mobileExpandedUsingFullscreen = false;
       callState.mobileExpandSnapshot = null;
       callState.windowWidth = null;
       callState.isFinalizing = false;
@@ -6682,7 +6820,9 @@
         const applyNewPostsButton = container.querySelector('#feed-apply-new-posts-btn');
         const onlineFriends = container.querySelector('#online-friends');
         const fileInput = container.querySelector('#file-input');
-        const cameraInput = container.querySelector('#camera-input');
+        const cameraPhotoInput = container.querySelector('#camera-photo-input');
+        const cameraVideoInput = container.querySelector('#camera-video-input');
+        const cameraCaptureMenu = container.querySelector('#camera-capture-menu');
         const previewWrap = container.querySelector('#img-preview-wrap');
         const previewImage = container.querySelector('#img-preview');
         const previewVideo = container.querySelector('#video-preview');
@@ -6738,7 +6878,8 @@
           cancelPreUpload();
           clearComposerMediaSelection(selectedComposerMedia, {
             fileInput,
-            cameraInput,
+            cameraInput: cameraPhotoInput,
+            extraInputs: [cameraPhotoInput, cameraVideoInput],
             previewWrap,
             previewImage,
             previewVideo,
@@ -7412,15 +7553,27 @@
           if (!insideVisibility) {
             closeVisibilityMenu();
           }
+          const insideCameraCapture = event.target.closest('#pick-camera-btn, #camera-capture-menu');
+          if (!insideCameraCapture) {
+            cameraCaptureMenu?.classList.add('hidden');
+          }
         };
 
         container.querySelector('#pick-image-btn').addEventListener('click', () => fileInput.click());
         container.querySelector('#pick-camera-btn')?.addEventListener('click', () => {
-          if (!cameraInput) return;
-          cameraInput.value = '';
-          cameraInput.setAttribute('accept', 'image/*,video/*');
-          cameraInput.setAttribute('capture', 'environment');
-          cameraInput.click();
+          cameraCaptureMenu?.classList.toggle('hidden');
+        });
+        container.querySelector('#camera-capture-photo-btn')?.addEventListener('click', () => {
+          if (!cameraPhotoInput) return;
+          cameraCaptureMenu?.classList.add('hidden');
+          cameraPhotoInput.value = '';
+          cameraPhotoInput.click();
+        });
+        container.querySelector('#camera-capture-video-btn')?.addEventListener('click', () => {
+          if (!cameraVideoInput) return;
+          cameraCaptureMenu?.classList.add('hidden');
+          cameraVideoInput.value = '';
+          cameraVideoInput.click();
         });
         container.querySelector('#clear-image-btn').addEventListener('click', clearImage);
         postVisibilityTrigger?.addEventListener('click', toggleVisibilityMenu);
@@ -7446,7 +7599,11 @@
           const [file] = event.target.files || [];
           handleComposerImageFile(file);
         });
-        cameraInput?.addEventListener('change', (event) => {
+        cameraPhotoInput?.addEventListener('change', (event) => {
+          const [file] = event.target.files || [];
+          handleComposerImageFile(file);
+        });
+        cameraVideoInput?.addEventListener('change', (event) => {
           const [file] = event.target.files || [];
           handleComposerImageFile(file);
         });
@@ -12464,9 +12621,10 @@
                 </div>
               </div>
               <input type="file" id="group-file-input" accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm" class="hidden"/>
-              <input type="file" id="group-camera-input" accept=".jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,image/*,video/*" capture="environment" class="hidden"/>
+              <input type="file" id="group-camera-photo-input" accept="image/*" capture="environment" class="hidden"/>
+              <input type="file" id="group-camera-video-input" accept="video/*" capture="environment" class="hidden"/>
               <div class="mt-4 flex flex-wrap justify-between gap-3">
-                <div class="flex flex-wrap gap-3">
+                <div class="relative flex flex-wrap gap-3">
                   <button id="group-pick-image-btn" type="button" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                     <span class="material-symbols-outlined text-[18px]">image</span>
                     Agregar archivo
@@ -12475,6 +12633,16 @@
                     <span class="material-symbols-outlined text-[18px]">photo_camera</span>
                     Capturar
                   </button>
+                  <div id="group-camera-capture-menu" class="hidden absolute left-0 top-full z-30 mt-2 min-w-[210px] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                    <button id="group-camera-capture-photo-btn" type="button" class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                      <span class="material-symbols-outlined text-[18px]">photo_camera</span>
+                      <span>Tomar foto</span>
+                    </button>
+                    <button id="group-camera-capture-video-btn" type="button" class="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                      <span class="material-symbols-outlined text-[18px]">videocam</span>
+                      <span>Grabar video</span>
+                    </button>
+                  </div>
                 </div>
                 <button id="group-publish-btn" type="button" class="px-5 py-2 rounded-xl bg-[#E5D59A] text-[#5A4A1A] text-sm font-bold hover:bg-[#d8c686] transition-colors">Publicar</button>
               </div>
@@ -12561,7 +12729,9 @@
 
           const composerAvatar = conversationTab.querySelector('#group-composer-avatar');
           const fileInput = conversationTab.querySelector('#group-file-input');
-          const cameraInput = conversationTab.querySelector('#group-camera-input');
+          const cameraPhotoInput = conversationTab.querySelector('#group-camera-photo-input');
+          const cameraVideoInput = conversationTab.querySelector('#group-camera-video-input');
+          const cameraCaptureMenu = conversationTab.querySelector('#group-camera-capture-menu');
           const previewWrap = conversationTab.querySelector('#group-image-preview-wrap');
           const previewImage = conversationTab.querySelector('#group-image-preview');
           const previewVideo = conversationTab.querySelector('#group-video-preview');
@@ -12580,7 +12750,8 @@
           function clearImage() {
             clearComposerMediaSelection(selectedGroupComposerMedia, {
               fileInput,
-              cameraInput,
+              cameraInput: cameraPhotoInput,
+              extraInputs: [cameraPhotoInput, cameraVideoInput],
               previewWrap,
               previewImage,
               previewVideo,
@@ -12638,15 +12809,39 @@
 
           if (groupData.can_post && fileInput && previewWrap && previewImage && contentInput && publishButton) {
             conversationTab.querySelector('#group-pick-image-btn').addEventListener('click', () => fileInput.click());
-            conversationTab.querySelector('#group-pick-camera-btn')?.addEventListener('click', () => cameraInput?.click());
+            conversationTab.querySelector('#group-pick-camera-btn')?.addEventListener('click', () => {
+              cameraCaptureMenu?.classList.toggle('hidden');
+            });
+            conversationTab.querySelector('#group-camera-capture-photo-btn')?.addEventListener('click', () => {
+              if (!cameraPhotoInput) return;
+              cameraCaptureMenu?.classList.add('hidden');
+              cameraPhotoInput.value = '';
+              cameraPhotoInput.click();
+            });
+            conversationTab.querySelector('#group-camera-capture-video-btn')?.addEventListener('click', () => {
+              if (!cameraVideoInput) return;
+              cameraCaptureMenu?.classList.add('hidden');
+              cameraVideoInput.value = '';
+              cameraVideoInput.click();
+            });
             conversationTab.querySelector('#group-clear-image-btn').addEventListener('click', clearImage);
             fileInput.addEventListener('change', (event) => {
               const [file] = event.target.files || [];
               setComposerImage(file);
             });
-            cameraInput?.addEventListener('change', (event) => {
+            cameraPhotoInput?.addEventListener('change', (event) => {
               const [file] = event.target.files || [];
               setComposerImage(file);
+            });
+            cameraVideoInput?.addEventListener('change', (event) => {
+              const [file] = event.target.files || [];
+              setComposerImage(file);
+            });
+            conversationTab.addEventListener('click', (event) => {
+              const insideCameraCapture = event.target.closest('#group-pick-camera-btn, #group-camera-capture-menu');
+              if (!insideCameraCapture) {
+                cameraCaptureMenu?.classList.add('hidden');
+              }
             });
             contentInput.addEventListener('input', () => syncComposerPublishButton(publishButton, contentInput, selectedGroupComposerMedia));
 
