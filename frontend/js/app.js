@@ -970,14 +970,16 @@
     }
   }
 
-  function renderReactionSummary(reactionsCount = {}, fallbackTotal = 0, emptyLabel = 'Sé el primero en reaccionar') {
+  function renderReactionSummary(reactionsCount = {}, fallbackTotal = 0, emptyLabel = '') {
     const entries = reactionCountSummary(reactionsCount);
     const topEntries = entries
       .sort((left, right) => right.total - left.total)
       .slice(0, 3);
     const total = entries.reduce((sum, entry) => sum + entry.total, 0) || Number(fallbackTotal || 0);
     if (!total) {
-      return `<span class="social-reaction-count">${escapeHtml(emptyLabel)}</span>`;
+      return emptyLabel
+        ? `<span class="social-reaction-summary social-reaction-summary--empty"><span class="social-reaction-count">${escapeHtml(emptyLabel)}</span></span>`
+        : '';
     }
     return `
       <span class="social-reaction-summary">
@@ -1582,40 +1584,47 @@
 
     return `
       <article class="post-comment-card ${compact ? 'post-comment-card--compact' : ''} ${deleteAction ? 'post-comment-card--deletable' : ''}">
-        <div class="post-comment-card__inner">
-          ${renderAvatar(author, { sizeClass: compact ? 'w-8 h-8 md:w-9 md:h-9' : 'w-10 h-10', textClass: 'text-white font-bold text-sm' })}
-          <div class="post-comment-card__content min-w-0 flex-1">
-            ${deleteAction ? `
-              <button
-                type="button"
-                data-action="${escapeHtml(deleteAction)}"
-                data-comment-id="${escapeHtml(deleteId)}"
-                class="float-right ml-2 text-slate-400 hover:text-red-500 transition-colors"
-                aria-label="${escapeHtml(deleteLabel)}"
-                title="${escapeHtml(deleteLabel)}"
-              >
-                <span class="material-symbols-outlined" style="font-size:16px">delete</span>
-              </button>
-            ` : ''}
-            <div class="post-comment-card__meta">
-              <span class="post-comment-card__name">${escapeHtml(displayName(author))}</span>
-              ${author.faculty ? `
-                <span class="post-comment-card__faculty" style="background:${userColor(author)}">
-                  ${escapeHtml(author.faculty)}
-                </span>
+        <div class="post-comment-card__wrapper">
+          ${renderAvatar(author, { sizeClass: compact ? 'w-8 h-8 md:w-9 md:h-9' : 'w-9 h-9', textClass: 'text-white font-bold text-sm' })}
+          <div class="post-comment-card__body">
+            <div class="post-comment-card__bubble">
+              ${deleteAction ? `
+                <button
+                  type="button"
+                  data-action="${escapeHtml(deleteAction)}"
+                  data-comment-id="${escapeHtml(deleteId)}"
+                  class="post-comment-card__delete"
+                  aria-label="${escapeHtml(deleteLabel)}"
+                  title="${escapeHtml(deleteLabel)}"
+                >
+                  <span class="material-symbols-outlined">delete</span>
+                  <span class="post-comment-card__delete-text">Eliminar</span>
+                </button>
               ` : ''}
-              <span class="post-comment-card__time">${escapeHtml(timeAgo(comment.created_at))}</span>
+              <div class="post-comment-card__meta">
+                <span class="post-comment-card__name">${escapeHtml(displayName(author))}</span>
+                ${author.faculty ? `
+                  <span class="post-comment-card__faculty" style="background:${userColor(author)}">
+                    ${escapeHtml(author.faculty)}
+                  </span>
+                ` : ''}
+              </div>
+              <p class="post-comment-card__text content-break content-rich">${renderTextWithMentions(comment.content || '')}</p>
+              ${Number(comment.reactions_total || 0) > 0 ? `
+                <div class="post-comment-card__bubble-reactions">
+                  ${renderReactionSummary(comment.reactions_count, comment.reactions_total)}
+                </div>
+              ` : ''}
             </div>
-            <p class="post-comment-card__text content-break ${compact ? 'leading-5' : 'leading-6'}">${renderTextWithMentions(comment.content || '')}</p>
             <div class="post-comment-card__actions">
-              ${renderCommentReactionTrigger(comment.id, comment.current_reaction, interactive)}
+              <span class="post-comment-card__time">${escapeHtml(timeAgo(comment.created_at))}</span>
+              ${renderReactionTrigger('comment', comment.id, comment.current_reaction, interactive)}
               ${interactive ? `
-                <button type="button" data-action="report-comment" data-comment-id="${comment.id}" class="post-comment-card__report">
-                  <span class="material-symbols-outlined" style="font-size:13px">flag</span>
+                <button type="button" data-action="report-comment" data-comment-id="${comment.id}" class="post-comment-card__action-btn post-comment-card__action-report">
+                  <span class="material-symbols-outlined text-[14px]">flag</span>
                   <span>Reportar</span>
                 </button>
               ` : ''}
-              ${renderReactionSummary(comment.reactions_count, comment.reactions_total)}
             </div>
           </div>
         </div>
@@ -1708,6 +1717,40 @@
     return escapeHtml(value).replace(/\n/g, '<br>');
   }
 
+  function normalizeRenderableUrl(rawUrl) {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value)) return value;
+    if (/^www\./i.test(value)) return `https://${value}`;
+    return '';
+  }
+
+  function renderPlainTextWithLinks(value) {
+    const text = String(value || '');
+    if (!text) return '';
+
+    const urlRegex = /(?:https?:\/\/|www\.)[^\s<]+/giu;
+    let html = '';
+    let cursor = 0;
+    let match = urlRegex.exec(text);
+
+    while (match) {
+      const matchedUrl = match[0];
+      const start = match.index;
+      const end = start + matchedUrl.length;
+      const normalizedUrl = normalizeRenderableUrl(matchedUrl);
+      html += escapeHtmlWithBreaks(text.slice(cursor, start));
+      html += normalizedUrl
+        ? `<a href="${escapeHtml(normalizedUrl)}" class="content-link" target="_blank" rel="noopener noreferrer">${escapeHtml(matchedUrl)}</a>`
+        : escapeHtmlWithBreaks(matchedUrl);
+      cursor = end;
+      match = urlRegex.exec(text);
+    }
+
+    html += escapeHtmlWithBreaks(text.slice(cursor));
+    return html;
+  }
+
   function getMentionRenderableUsers() {
     return Array.from(publicUsersState.map.values())
       .map((entry) => resolveProfileData(entry))
@@ -1771,7 +1814,7 @@
 
     const users = getMentionRenderableUsers();
     if (!users.length) {
-      return escapeHtmlWithBreaks(text);
+      return renderPlainTextWithLinks(text);
     }
 
     let cursor = 0;
@@ -1780,18 +1823,18 @@
     while (cursor < text.length) {
       const atIndex = text.indexOf('@', cursor);
       if (atIndex === -1) {
-        html += escapeHtmlWithBreaks(text.slice(cursor));
+        html += renderPlainTextWithLinks(text.slice(cursor));
         break;
       }
 
       const match = findMentionUserAt(text, atIndex, users);
       if (!match) {
-        html += escapeHtmlWithBreaks(text.slice(cursor, atIndex + 1));
+        html += renderPlainTextWithLinks(text.slice(cursor, atIndex + 1));
         cursor = atIndex + 1;
         continue;
       }
 
-      html += escapeHtmlWithBreaks(text.slice(cursor, atIndex));
+      html += renderPlainTextWithLinks(text.slice(cursor, atIndex));
       html += renderMentionLink(match.user);
       cursor = match.end;
     }
@@ -3093,6 +3136,15 @@
     if (!(frame instanceof HTMLElement)) {
       return;
     }
+    const context = String(frame.dataset.adaptiveMediaContext || 'card');
+    const imageAsset = frame.querySelector('img.post-adaptive-media__asset');
+    if (context === 'modal' && imageAsset instanceof HTMLImageElement) {
+      frame.style.height = 'auto';
+      frame.style.maxHeight = 'none';
+      frame.classList.remove('is-pending');
+      frame.classList.add('is-ready');
+      return;
+    }
     const ratio = Number(frame.dataset.mediaRatio || 0);
     const sizing = computeAdaptiveMediaHeight(frame, ratio);
     if (!sizing) {
@@ -3375,7 +3427,7 @@
             </div>
           </button>
         </div>
-        ${post.content ? `<div class="guest-shared-post__copy"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
+        ${post.content ? `<div class="guest-shared-post__copy"><p class="content-break content-rich">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
         ${renderPostMediaBlock(post, { adaptiveContext: 'shared' })}
         <div class="guest-shared-post__meta">
           <span>${escapeHtml(publishedDate)}</span>
@@ -3536,12 +3588,12 @@
             ` : ''}
           </div>
         </div>
-          ${post.content ? `<div class="social-post-card__copy"><p class="content-break">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
+          ${post.content ? `<div class="social-post-card__copy"><p class="content-break content-rich">${renderTextWithMentions(post.content || '')}</p></div>` : ''}
           ${renderPostMediaBlock(post, { adaptiveContext: 'card' })}
         ${interactive ? `
           <div class="social-post-card__footer${getPostMediaInfo(post) ? ' has-media' : ''}">
             <div class="social-post-card__stats">
-              ${renderReactionSummary(post.reactions_count, post.reactions_total)}
+              ${renderReactionSummary(post.reactions_count, post.reactions_total, 'Sin reacciones')}
               <button type="button" data-action="comment-post" data-post-id="${post.id}" class="social-post-card__comments-link">
                 ${post.comments_count || 0} comentarios
               </button>
@@ -3625,7 +3677,7 @@
             </button>
           </div>
           ${post.content ? `
-            <div class="post-modal-preview-copy content-break">${renderTextWithMentions(post.content)}</div>
+            <div class="post-modal-preview-copy content-break content-rich">${renderTextWithMentions(post.content)}</div>
           ` : ''}
         </div>
         ${hasMedia ? renderPostModalMedia(post, {}) : ''}
@@ -5831,8 +5883,8 @@
                   <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" loading="lazy" decoding="async" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
                 ` : ''}
                 ${hasContent ? `
-                  <div class="${hasImage ? 'px-4 py-3 text-sm leading-6 text-slate-800' : 'text-sm leading-6'}">
-                    ${nl2br(message.content || '')}
+                  <div class="${hasImage ? 'px-4 py-3 text-sm leading-6 text-slate-800 content-rich' : `text-sm leading-6 content-rich ${isMine ? 'content-rich--inverse' : ''}` }">
+                    ${renderTextWithMentions(message.content || '')}
                   </div>
                 ` : ''}
               </div>
@@ -5855,24 +5907,25 @@
       }
     }
 
-    function renderMessageBubble(message) {
+    function renderMessageBubble(message, options = {}) {
       const isMine = Number(message.sender_id) === Number(user.id);
       const hasImage = Boolean(message.image_url);
       const hasContent = Boolean(String(message.content || '').trim());
+      const enterClass = options.enterAnimation ? ' message-bubble-enter' : '';
       const bubbleClass = hasImage
         ? `${isMine ? 'bg-[#1B2A6B]/6 border border-[#1B2A6B]/10' : 'bg-white border border-slate-200'} overflow-hidden`
         : `${isMine ? 'bg-[#1B2A6B] text-white' : 'bg-white text-slate-800 border border-slate-200'} px-4 py-3`;
 
       return `
-        <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
+        <div class="flex ${isMine ? 'justify-end' : 'justify-start'}${enterClass}">
           <div class="max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}">
             <div class="rounded-2xl ${isMine ? 'rounded-br-sm' : 'rounded-bl-sm'} shadow-sm ${bubbleClass}">
               ${hasImage ? `
                 <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" loading="lazy" decoding="async" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
               ` : ''}
               ${hasContent ? `
-                <div class="${hasImage ? 'px-4 py-3 text-sm leading-6 text-slate-800' : 'text-sm leading-6'}">
-                  ${nl2br(message.content || '')}
+                <div class="${hasImage ? 'px-4 py-3 text-sm leading-6 text-slate-800 content-rich' : `text-sm leading-6 content-rich ${isMine ? 'content-rich--inverse' : ''}` }">
+                  ${renderTextWithMentions(message.content || '')}
                 </div>
               ` : ''}
             </div>
@@ -5896,7 +5949,7 @@
       const fragment = document.createDocumentFragment();
       messages.forEach((message) => {
         const wrapper = document.createElement('div');
-        wrapper.innerHTML = renderMessageBubble(message).trim();
+        wrapper.innerHTML = renderMessageBubble(message, { enterAnimation: true }).trim();
         fragment.appendChild(wrapper.firstElementChild);
       });
       area.appendChild(fragment);
@@ -6044,14 +6097,21 @@
 
         if (!result?.ok) {
           showToast(result?.data?.error || 'Error al enviar el mensaje', 'error');
+          setTimeout(() => input.focus(), 0);
           return;
         }
 
         input.value = '';
+        input.style.height = 'auto';
         await Promise.all([
           loadConversation(activeChat, friendProfile),
           loadInbox(false),
         ]);
+        setTimeout(() => {
+          input.focus();
+          input.style.height = 'auto';
+          input.style.height = `${Math.min(input.scrollHeight, 144)}px`;
+        }, 0);
         startChatPolling();
       }
       sendButton.addEventListener('click', sendMessage);
@@ -6553,14 +6613,11 @@
           commentModal.classList.remove('hidden');
           commentModal.classList.add('flex');
           renderCommentModalPost(pendingCommentId);
-          loadComments(pendingCommentId, currentCommentSort);
           if (commentPollTimer) {
             window.clearInterval(commentPollTimer);
+            commentPollTimer = null;
           }
-          commentPollTimer = window.setInterval(() => {
-            if (!pendingCommentId || document.hidden) return;
-            loadComments(pendingCommentId, currentCommentSort, { preserveScroll: true }).catch(() => { });
-          }, 2500);
+          loadComments(pendingCommentId, currentCommentSort, { preserveScroll: false });
           setTimeout(() => commentInput.focus(), 60);
           // Re-sync adaptive video heights once modal layout has settled
           setTimeout(() => refreshAdaptiveMediaFrames(), 80);
@@ -6641,6 +6698,7 @@
           commentList.innerHTML = comments.map((comment) => renderCommentCard(comment, {
             deleteAction: canDeleteFeedComment(comment) ? 'delete-comment' : '',
           })).join('');
+
           if (preserveScroll) {
             commentList.scrollTop = previousScroll;
           }
