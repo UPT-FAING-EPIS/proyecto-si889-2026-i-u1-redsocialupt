@@ -7583,6 +7583,8 @@ body.live-immersive-active #app-view {
   align-items: center;
   gap: 0.55rem;
   margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .call-window {
@@ -7599,11 +7601,19 @@ body.live-immersive-active #app-view {
   align-items: flex-start !important;
   background: transparent !important;
   border-bottom: none !important;
+  min-width: 0 !important;
+}
+
+.call-window .call-window__identity {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
 }
 
 .call-window .call-window__avatar {
   width: 2.95rem !important;
   height: 2.95rem !important;
+  flex: 0 0 auto !important;
 }
 
 .call-window .call-window__avatar::after {
@@ -7613,6 +7623,12 @@ body.live-immersive-active #app-view {
 .call-window .call-window__name {
   font-size: 1rem !important;
   line-height: 1.15 !important;
+  display: block !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  max-width: 100% !important;
 }
 
 .call-window .call-window__meta {
