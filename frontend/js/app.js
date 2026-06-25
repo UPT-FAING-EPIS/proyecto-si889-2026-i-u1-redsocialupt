@@ -654,12 +654,38 @@
 
   function timeAgo(dateStr) {
     if (!dateStr) return '';
-    const diff = Math.max(0, (Date.now() - new Date(dateStr).getTime()) / 1000);
-    if (diff < 60) return 'ahora';
+    const timeMs = new Date(dateStr).getTime();
+    if (!Number.isFinite(timeMs)) return '';
+    const diff = Math.max(0, (Date.now() - timeMs) / 1000);
+    if (diff < 60) return 'hace 1 min';
     if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
     if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`;
     return `hace ${Math.floor(diff / 86400)} d`;
   }
+
+  function refreshRelativeTimeLabels(root = document) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('[data-time-ago]').forEach((node) => {
+      const sourceTs = Number(node.getAttribute('data-time-ago-ts') || '');
+      const source = node.getAttribute('data-time-ago');
+      if (Number.isFinite(sourceTs) && sourceTs > 0) {
+        node.textContent = timeAgo(new Date(sourceTs).toISOString());
+        return;
+      }
+      if (!source) return;
+      node.textContent = timeAgo(source);
+    });
+  }
+
+  let relativeTimeTickerStarted = false;
+  function ensureRelativeTimeTicker() {
+    if (relativeTimeTickerStarted) return;
+    relativeTimeTickerStarted = true;
+    window.setInterval(() => {
+      refreshRelativeTimeLabels(document);
+    }, 10000);
+  }
+  ensureRelativeTimeTicker();
 
   function formatBlockedUntilLabel(blockedUntil, isIndefinite = false) {
     if (isIndefinite || !blockedUntil) {
@@ -1587,29 +1613,39 @@
         <div class="post-comment-card__wrapper">
           ${renderAvatar(author, { sizeClass: compact ? 'w-8 h-8 md:w-9 md:h-9' : 'w-9 h-9', textClass: 'text-white font-bold text-sm' })}
           <div class="post-comment-card__body">
-            <div class="post-comment-card__bubble">
-              ${deleteAction ? `
-                <button
-                  type="button"
-                  data-action="${escapeHtml(deleteAction)}"
-                  data-comment-id="${escapeHtml(deleteId)}"
-                  class="post-comment-card__delete"
-                  aria-label="${escapeHtml(deleteLabel)}"
-                  title="${escapeHtml(deleteLabel)}"
-                >
-                  <span class="material-symbols-outlined">delete</span>
-                  <span class="post-comment-card__delete-text">Eliminar</span>
-                </button>
-              ` : ''}
-              <div class="post-comment-card__meta">
-                <span class="post-comment-card__name">${escapeHtml(displayName(author))}</span>
-                ${author.faculty ? `
-                  <span class="post-comment-card__faculty" style="background:${userColor(author)}">
-                    ${escapeHtml(author.faculty)}
-                  </span>
+            <div class="post-comment-card__bubble-stack">
+              <div class="post-comment-card__bubble">
+                ${deleteAction ? `
+                  <button
+                    type="button"
+                    data-action="${escapeHtml(deleteAction)}"
+                    data-comment-id="${escapeHtml(deleteId)}"
+                    class="post-comment-card__delete"
+                    aria-label="${escapeHtml(deleteLabel)}"
+                    title="${escapeHtml(deleteLabel)}"
+                  >
+                    <span class="material-symbols-outlined">delete</span>
+                    <span class="post-comment-card__delete-text">Eliminar</span>
+                  </button>
                 ` : ''}
+                <div class="post-comment-card__meta">
+                  <span class="post-comment-card__name">${escapeHtml(displayName(author))}</span>
+                  ${author.faculty ? `
+                    <span class="post-comment-card__faculty" style="background:${userColor(author)}">
+                      ${escapeHtml(author.faculty)}
+                    </span>
+                  ` : ''}
+                  ${comment.created_at ? `
+                    <span class="post-comment-card__dot">·</span>
+                    <span
+                      class="post-comment-card__time"
+                      data-time-ago="${escapeHtml(comment.created_at)}"
+                      data-time-ago-ts="${escapeHtml(String(new Date(comment.created_at).getTime() || ''))}"
+                    >${escapeHtml(timeAgo(comment.created_at))}</span>
+                  ` : ''}
+                </div>
+                <p class="post-comment-card__text content-break content-rich">${renderTextWithMentions(comment.content || '')}</p>
               </div>
-              <p class="post-comment-card__text content-break content-rich">${renderTextWithMentions(comment.content || '')}</p>
               ${Number(comment.reactions_total || 0) > 0 ? `
                 <div class="post-comment-card__bubble-reactions">
                   ${renderReactionSummary(comment.reactions_count, comment.reactions_total)}
@@ -1617,7 +1653,6 @@
               ` : ''}
             </div>
             <div class="post-comment-card__actions">
-              <span class="post-comment-card__time">${escapeHtml(timeAgo(comment.created_at))}</span>
               ${renderReactionTrigger('comment', comment.id, comment.current_reaction, interactive)}
               ${interactive ? `
                 <button type="button" data-action="report-comment" data-comment-id="${comment.id}" class="post-comment-card__action-btn post-comment-card__action-report">
@@ -6097,20 +6132,35 @@
 
         if (!result?.ok) {
           showToast(result?.data?.error || 'Error al enviar el mensaje', 'error');
-          setTimeout(() => input.focus(), 0);
+          setTimeout(() => {
+            const nextInput = chatPanel.querySelector('#msg-input');
+            nextInput?.focus();
+          }, 0);
           return;
         }
 
+        const createdMessage = result?.data && typeof result.data === 'object'
+          ? result.data
+          : {
+            sender_id: Number(user.id),
+            receiver_id: Number(activeChat),
+            content,
+            image_url: null,
+            created_at: new Date().toISOString(),
+          };
+
         input.value = '';
         input.style.height = 'auto';
-        await Promise.all([
-          loadConversation(activeChat, friendProfile),
-          loadInbox(false),
-        ]);
+        appendNewMessages([createdMessage]);
+        updateConversationPreview(currentMessages);
+        loadInbox(false).catch(() => {});
         setTimeout(() => {
-          input.focus();
-          input.style.height = 'auto';
-          input.style.height = `${Math.min(input.scrollHeight, 144)}px`;
+          const nextInput = chatPanel.querySelector('#msg-input');
+          nextInput?.focus();
+          if (nextInput) {
+            nextInput.style.height = 'auto';
+            nextInput.style.height = `${Math.min(nextInput.scrollHeight, 144)}px`;
+          }
         }, 0);
         startChatPolling();
       }
@@ -6698,6 +6748,7 @@
           commentList.innerHTML = comments.map((comment) => renderCommentCard(comment, {
             deleteAction: canDeleteFeedComment(comment) ? 'delete-comment' : '',
           })).join('');
+          refreshRelativeTimeLabels(commentList);
 
           if (preserveScroll) {
             commentList.scrollTop = previousScroll;
@@ -12302,6 +12353,7 @@
               deleteAction: canDelete ? 'group-delete-comment' : '',
             });
           }).join('');
+          refreshRelativeTimeLabels(commentList);
         }
 
         async function loadConversation() {
@@ -15554,6 +15606,7 @@
           commentsList.innerHTML = comments.map((comment) => renderCommentCard(comment, {
             deleteAction: 'delete-admin-comment',
           })).join('');
+          refreshRelativeTimeLabels(commentsList);
         }
 
         async function confirmAdminComment() {

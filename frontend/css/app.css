@@ -165,14 +165,14 @@ body {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: .5rem;
-  height: 2.5rem;
+  gap: .42rem;
+  height: 2.38rem;
   border-radius: 999px;
   border: 0;
   background: transparent;
   color: #64748b;
-  padding: 0 1rem;
-  font-size: .85rem;
+  padding: 0 .9rem;
+  font-size: .8rem;
   font-weight: 700;
   transition: all .18s cubic-bezier(.4,0,.2,1);
   letter-spacing: .01em;
@@ -190,8 +190,8 @@ body {
 }
 
 .social-reaction-trigger .reaction-asset {
-  width: 1.2rem;
-  height: 1.2rem;
+  width: 1.05rem;
+  height: 1.05rem;
   border-radius: 9999px;
   object-fit: cover;
   flex-shrink: 0;
@@ -2140,8 +2140,8 @@ body.guest-shared-post-page > div.max-w-7xl {
   z-index: 140;
   display: flex;
   align-items: center;
-  gap: .55rem;
-  padding: .55rem .7rem;
+  gap: .45rem;
+  padding: .48rem .62rem;
   border-radius: 9999px;
   border: 1px solid rgba(226, 232, 240, .9);
   background: rgba(255, 255, 255, .98);
@@ -2152,8 +2152,8 @@ body.guest-shared-post-page > div.max-w-7xl {
 }
 
 .reaction-picker-option {
-  width: 2.45rem;
-  height: 2.45rem;
+  width: 2.2rem;
+  height: 2.2rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2162,8 +2162,8 @@ body.guest-shared-post-page > div.max-w-7xl {
 }
 
 .reaction-picker-option .reaction-asset {
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 1.68rem;
+  height: 1.68rem;
   border-radius: 9999px;
   object-fit: cover;
 }
@@ -4894,6 +4894,14 @@ body.guest-shared-post-page > div.max-w-7xl {
   gap: 0.42rem;
 }
 
+.post-comment-card__bubble-stack {
+  position: relative;
+  align-self: flex-start;
+  width: min(100%, max-content);
+  max-width: 100%;
+  padding-bottom: 0.26rem;
+}
+
 .post-comment-card__bubble {
   position: relative;
   background: #f8fafc;
@@ -4971,28 +4979,30 @@ body.guest-shared-post-page > div.max-w-7xl {
 }
 
 .post-comment-card__bubble-reactions {
+  position: absolute;
+  right: 0.6rem;
+  bottom: -0.2rem;
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  width: 100%;
-  margin-top: 0.38rem;
+  justify-content: center;
+  z-index: 2;
 }
 
 .post-comment-card__bubble-reactions .social-reaction-summary {
   gap: 0.3rem;
-  font-size: 0.86rem;
+  font-size: 0.78rem;
   color: #64748b;
 }
 
 .post-comment-card__bubble-reactions .social-reaction-count {
-  font-size: 0.92rem;
+  font-size: 0.8rem;
   font-weight: 700;
   color: #64748b;
 }
 
 .post-comment-card__bubble-reactions .social-reaction-icon {
-  width: 1rem;
-  height: 1rem;
+  width: 0.9rem;
+  height: 0.9rem;
 }
 
 .post-comment-card__actions {
@@ -5000,7 +5010,7 @@ body.guest-shared-post-page > div.max-w-7xl {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.65rem;
-  margin-top: 0.1rem;
+  margin-top: -0.05rem;
   font-size: 0.74rem;
   color: #64748b;
 }
@@ -7935,7 +7945,7 @@ body #profile-comment-modal .post-comments-section-head {
   border-bottom: 1px solid #e6edf6 !important;
 }
 
-body #comment-modal .post-comments-list,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-list,
 body #group-comment-modal .post-comments-list,
 body #profile-comment-modal .post-comments-list {
   padding: 0.88rem 0.95rem 1rem !important;
@@ -7998,7 +8008,7 @@ body #profile-comment-modal .post-modal-preview-copy {
   line-height: 1.64 !important;
 }
 
-body #comment-modal .post-modal-preview-media,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media,
 body #group-comment-modal .post-modal-preview-media,
 body #profile-comment-modal .post-modal-preview-media {
   padding: 0 0.9rem 0.72rem !important;
@@ -8008,7 +8018,7 @@ body #profile-comment-modal .post-modal-preview-media {
   background: #fff !important;
 }
 
-body #comment-modal .post-modal-preview-media img,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media img,
 body #group-comment-modal .post-modal-preview-media img,
 body #profile-comment-modal .post-modal-preview-media img {
   display: block !important;
@@ -8021,7 +8031,7 @@ body #profile-comment-modal .post-modal-preview-media img {
   border: 1px solid rgba(15, 23, 42, 0.18) !important;
 }
 
-body #comment-modal .post-modal-preview-media video,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media video,
 body #group-comment-modal .post-modal-preview-media video,
 body #profile-comment-modal .post-modal-preview-media video {
   display: block !important;
@@ -8077,7 +8087,7 @@ body #profile-comment-modal .post-modal-preview-stats .social-reaction-count {
   color: #475569 !important;
 }
 
-body #comment-modal .post-comment-card,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card,
 body #group-comment-modal .post-comment-card,
 body #profile-comment-modal .post-comment-card {
   border: 1px solid #e2e8f0 !important;
@@ -8086,21 +8096,21 @@ body #profile-comment-modal .post-comment-card {
   padding: 0.72rem 0.82rem !important;
 }
 
-body #comment-modal .post-comment-card__name,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__name,
 body #group-comment-modal .post-comment-card__name,
 body #profile-comment-modal .post-comment-card__name {
   font-size: 0.9rem !important;
   font-weight: 500 !important;
 }
 
-body #comment-modal .post-comment-card__text,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__text,
 body #group-comment-modal .post-comment-card__text,
 body #profile-comment-modal .post-comment-card__text {
   font-size: 0.84rem !important;
   color: #334155 !important;
 }
 
-body #comment-modal .post-comment-card__actions,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions,
 body #group-comment-modal .post-comment-card__actions,
 body #profile-comment-modal .post-comment-card__actions {
   margin-top: 0.55rem !important;
@@ -9722,7 +9732,7 @@ body #admin-comments-modal .post-comments-compose-send .material-symbols-outline
 }
 
 /* Modal panel — animación de entrada */
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-modal {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-modal {
   width: min(100%, 560px) !important;
   max-width: min(560px, calc(100vw - 1rem)) !important;
   max-height: min(92vh, 980px) !important;
@@ -9779,7 +9789,7 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-com
   background: #fff !important;
   overflow: hidden !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-scroll {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-scroll {
   display: flex !important;
   flex-direction: column !important;
   overflow-y: auto !important;
@@ -9808,7 +9818,7 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
 }
 
 /* Head */
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-head {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-head {
   padding: 1rem 1rem .75rem !important;
 }
 body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-author-row {
@@ -9892,14 +9902,14 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
 }
 
 /* Media — lateral padding, rounded, sin barras negras */
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media {
   padding: 0 .85rem .85rem !important;
   background: #fff !important;
   border-top: 0 !important;
   border-bottom: 0 !important;
   display: block !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media img {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media img {
   display: block !important;
   width: 100% !important;
   max-height: 320px !important;
@@ -9908,7 +9918,7 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
   border: 0 !important;
   box-shadow: none !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media video {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media video {
   display: block !important;
   width: 100% !important;
   border-radius: 1rem !important;
@@ -9917,8 +9927,8 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
   border: 0 !important;
   box-shadow: none !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media .post-adaptive-media,
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media .social-video-player {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media .post-adaptive-media,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media .social-video-player {
   width: 100% !important;
   max-width: 100% !important;
   min-height: 0 !important;
@@ -9926,7 +9936,7 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-mod
   overflow: hidden !important;
   margin: 0 !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media-button {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media-button {
   display: block !important;
   width: 100% !important;
   border: 0 !important;
@@ -10112,20 +10122,20 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-com
   padding: .65rem .85rem .8rem !important;
   box-shadow: 0 -5px 16px rgba(15,23,42,.05) !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-compose-row {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-compose-row {
   display: flex !important;
   align-items: center !important;
   gap: .35rem !important;
   width: 100% !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-compose .mention-textarea-shell {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-compose .mention-textarea-shell {
   flex: 1 1 auto !important;
   display: block !important;
   width: auto !important;
   max-width: calc(100% - 2.95rem) !important;
   min-width: 0 !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-compose-input {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-compose-input {
   flex: 1 !important;
   width: 100% !important;
   display: block !important;
@@ -10141,24 +10151,24 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-com
   resize: none !important;
   transition: border-color .18s, background .18s, box-shadow .18s !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-compose-input.mention-textarea-enabled {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-compose-input.mention-textarea-enabled {
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
   text-shadow: 0 0 0 #0f172a !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-compose .mention-textarea-mirror {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-compose .mention-textarea-mirror {
   color: #0f172a !important;
   font-size: 0.95rem !important;
   line-height: 1.45 !important;
   width: 100% !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-compose-input:focus {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-compose-input:focus {
   border-color: #93c5fd !important;
   background: #fff !important;
   box-shadow: 0 0 0 3px rgba(59,130,246,.1) !important;
   outline: none !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-compose-send {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-compose-send {
   flex-shrink: 0 !important;
   width: 2.45rem !important;
   height: 2.45rem !important;
@@ -10172,25 +10182,25 @@ body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-com
   box-shadow: 0 2px 8px rgba(27,42,107,.3) !important;
   transition: transform .18s, box-shadow .18s !important;
 }
-body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-compose-send:hover {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-compose-send:hover {
   transform: scale(1.06) !important;
   box-shadow: 0 4px 14px rgba(27,42,107,.38) !important;
 }
 
 /* Responsive */
 @media (max-width: 520px) {
-  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-modal {
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-modal {
     width: calc(100vw - .5rem) !important;
     max-width: calc(100vw - .5rem) !important;
     max-height: calc(100dvh - .5rem) !important;
     border-radius: 1.1rem !important;
   }
-  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-comments-scroll {
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-scroll {
     max-height: calc(100dvh - 7.75rem) !important;
   }
-  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-head { padding: .85rem .85rem .65rem !important; }
-  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media { padding: 0 .7rem .75rem !important; }
-  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal) .post-modal-preview-media img { max-height: 240px !important; border-radius: .85rem !important; }
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-head { padding: .85rem .85rem .65rem !important; }
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media { padding: 0 .7rem .75rem !important; }
+  body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media img { max-height: 240px !important; border-radius: .85rem !important; }
 
 }
 
@@ -10204,7 +10214,7 @@ body:has(.fixed.inset-0:not(.hidden)) {
 }
 
 /* Feed post modal final polish */
-body #comment-modal .post-modal-preview-media {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media {
   padding: 0 .9rem .4rem !important;
   display: flex !important;
   align-items: center !important;
@@ -10212,9 +10222,9 @@ body #comment-modal .post-modal-preview-media {
   background: #ffffff !important;
 }
 
-body #comment-modal .post-modal-preview-media .post-adaptive-media,
-body #comment-modal .post-modal-preview-media .social-video-player,
-body #comment-modal .post-modal-preview-media .post-modal-preview-media-button.post-adaptive-media--image {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media .post-adaptive-media,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media .social-video-player,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media .post-modal-preview-media-button.post-adaptive-media--image {
   width: min(100%, 42rem) !important;
   max-width: min(100%, 42rem) !important;
   aspect-ratio: 16 / 9 !important;
@@ -10224,21 +10234,21 @@ body #comment-modal .post-modal-preview-media .post-modal-preview-media-button.p
   margin-inline: auto !important;
 }
 
-body #comment-modal .post-modal-preview-media .social-video-player,
-body #comment-modal .post-modal-preview-media .post-modal-preview-media-button.post-adaptive-media--image {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media .social-video-player,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media .post-modal-preview-media-button.post-adaptive-media--image {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
 }
 
-body #comment-modal .post-modal-preview-media .social-video-player__surface {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media .social-video-player__surface {
   min-height: 0 !important;
   height: 100% !important;
   background: #000000 !important;
 }
 
-body #comment-modal .post-modal-preview-media img,
-body #comment-modal .post-modal-preview-media video {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media img,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-modal-preview-media video {
   width: 100% !important;
   height: 100% !important;
   max-height: none !important;
@@ -10246,7 +10256,7 @@ body #comment-modal .post-modal-preview-media video {
   background: #000000 !important;
 }
 
-body #comment-modal .post-comments-list {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comments-list {
   display: flex !important;
   flex-direction: column !important;
   gap: .9rem !important;
@@ -10254,34 +10264,40 @@ body #comment-modal .post-comments-list {
   overflow: visible !important;
 }
 
-body #comment-modal .post-comment-card {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card {
   border: none !important;
   background: transparent !important;
   padding: 0 !important;
   animation: comment-pop-in .2s ease both !important;
 }
 
-body #comment-modal .post-comment-card__wrapper {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__wrapper {
   display: flex !important;
   gap: 0.62rem !important;
   width: 100% !important;
   align-items: flex-start !important;
 }
 
-body #comment-modal .post-comment-card__body {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__body {
   flex: 1 1 auto !important;
   min-width: 0 !important;
   width: max-content !important;
   max-width: calc(100% - 0.5rem) !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 0.14rem !important;
+  gap: 0 !important;
   align-items: flex-start !important;
 }
 
-body #comment-modal .post-comment-card__bubble {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__bubble-stack {
   position: relative !important;
   align-self: flex-start !important;
+  width: min(100%, max-content) !important;
+  max-width: 100% !important;
+  padding-bottom: 0.28rem !important;
+}
+
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__bubble {
   width: fit-content !important;
   max-width: 100% !important;
   background: #f8fafc !important;
@@ -10291,7 +10307,7 @@ body #comment-modal .post-comment-card__bubble {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
 }
 
-body #comment-modal .post-comment-card__meta {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__meta {
   display: flex !important;
   align-items: center !important;
   flex-wrap: wrap !important;
@@ -10299,97 +10315,107 @@ body #comment-modal .post-comment-card__meta {
   margin: 0 1.8rem 0.14rem 0 !important;
 }
 
-body #comment-modal .post-comment-card__name {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__name {
   font-size: 0.8rem !important;
   font-weight: 700 !important;
   color: #0f172a !important;
 }
 
-body #comment-modal .post-comment-card__time {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__time {
   color: #64748b !important;
-  font-size: 0.73rem !important;
+  font-size: 0.68rem !important;
   line-height: 1 !important;
 }
 
-body #comment-modal .post-comment-card__dot {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__dot {
   color: #cbd5e1 !important;
 }
 
-body #comment-modal .post-comment-card__text {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__text {
   margin: 0 !important;
   font-size: 0.83rem !important;
   line-height: 1.34 !important;
   color: #334155 !important;
 }
 
-body #comment-modal .post-comment-card__bubble-reactions {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__bubble-reactions {
+  position: absolute !important;
+  right: 0.55rem !important;
+  bottom: -0.16rem !important;
   display: inline-flex !important;
   align-items: center !important;
-  justify-content: flex-end !important;
-  width: 100% !important;
-  margin-top: 0.32rem !important;
+  justify-content: center !important;
+  max-width: calc(100% - 1.1rem) !important;
+  margin: 0 !important;
+  padding: 0.14rem 0.38rem !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1) !important;
+  z-index: 2 !important;
 }
 
-body #comment-modal .post-comment-card__actions {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions {
   display: flex !important;
   align-items: center !important;
   flex-wrap: wrap !important;
   gap: 0.75rem !important;
   width: 100% !important;
-  margin-top: 0 !important;
+  margin-top: -0.08rem !important;
+  padding-top: 0.05rem !important;
   padding: 0 0.08rem !important;
 }
 
-body #comment-modal .post-comment-card__actions .social-reaction-trigger,
-body #comment-modal .post-comment-card__action-btn {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-trigger,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__action-btn {
   border: none !important;
   background: transparent !important;
   padding: 0.04rem 0 !important;
   min-height: auto !important;
   color: #64748b !important;
-  font-size: 0.68rem !important;
+  font-size: 0.64rem !important;
   font-weight: 500 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
 
-body #comment-modal .post-comment-card__actions .social-reaction-trigger {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-trigger {
   display: inline-flex !important;
   align-items: center !important;
-  gap: 0.16rem !important;
+  gap: 0.12rem !important;
 }
 
-body #comment-modal .post-comment-card__actions .social-reaction-summary {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-summary {
   display: inline-flex !important;
   align-items: center !important;
   gap: 0.28rem !important;
-  font-size: 0.96rem !important;
+  font-size: 0.8rem !important;
   color: #64748b !important;
   margin-left: 0 !important;
 }
 
-body #comment-modal .post-comment-card__bubble-reactions .social-reaction-count {
-  font-size: 0.98rem !important;
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__bubble-reactions .social-reaction-count {
+  font-size: 0.82rem !important;
   font-weight: 700 !important;
   color: #64748b !important;
 }
 
-body #comment-modal .post-comment-card__bubble-reactions .social-reaction-icon {
-  width: 1.02rem !important;
-  height: 1.02rem !important;
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__bubble-reactions .social-reaction-icon {
+  width: 0.9rem !important;
+  height: 0.9rem !important;
 }
 
-body #comment-modal .post-comment-card__actions .social-reaction-trigger:hover,
-body #comment-modal .post-comment-card__actions .social-reaction-trigger.is-active,
-body #comment-modal .post-comment-card__action-btn:hover {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-trigger:hover,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__actions .social-reaction-trigger.is-active,
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__action-btn:hover {
   color: #1e3a8a !important;
 }
 
-body #comment-modal .post-comment-card__action-report:hover {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__action-report:hover {
   color: #ef4444 !important;
 }
 
-body #comment-modal .post-comment-card__delete {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__delete {
   position: absolute !important;
   top: 0.42rem !important;
   right: 0.42rem !important;
@@ -10404,11 +10430,11 @@ body #comment-modal .post-comment-card__delete {
   color: #94a3b8 !important;
 }
 
-body #comment-modal .post-comment-card__delete .material-symbols-outlined {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__delete .material-symbols-outlined {
   font-size: 0.95rem !important;
 }
 
-body #comment-modal .post-comment-card__delete:hover {
+body :is(#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal) .post-comment-card__delete:hover {
   background: #fff1f2 !important;
   color: #ef4444 !important;
 }
