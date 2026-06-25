@@ -1024,7 +1024,7 @@
     if (!interactive) {
       return `
         <span class="social-reaction-trigger ${currentReaction ? 'is-active' : ''}">
-          ${hasReaction ? renderReactionAsset(activeType) : '<span class="material-symbols-outlined">thumb_up</span>'}
+          ${hasReaction ? renderReactionAsset(activeType) : '<span class="material-symbols-outlined social-reaction-trigger__thumb-icon">thumb_up</span>'}
           <span>${escapeHtml(currentReaction ? meta.label : 'Reaccionar')}</span>
         </span>
       `;
@@ -1038,7 +1038,7 @@
         data-current-reaction="${currentReaction || ''}"
         class="social-reaction-trigger ${currentReaction ? 'is-active' : ''}"
       >
-        ${hasReaction ? renderReactionAsset(activeType) : '<span class="material-symbols-outlined">thumb_up</span>'}
+        ${hasReaction ? renderReactionAsset(activeType) : '<span class="material-symbols-outlined social-reaction-trigger__thumb-icon">thumb_up</span>'}
         <span>${escapeHtml(currentReaction ? meta.label : 'Reaccionar')}</span>
       </button>
     `;
@@ -3479,7 +3479,7 @@
           </div>
           <div class="social-post-actions social-post-actions--four guest-shared-post__actions">
             <button type="button" class="social-reaction-trigger" data-guest-login-required="true" aria-label="Reaccionar">
-              <span class="material-symbols-outlined">thumb_up</span>
+              <span class="material-symbols-outlined social-reaction-trigger__thumb-icon">thumb_up</span>
               <span>Reaccionar</span>
             </button>
             <button type="button" class="social-post-action" data-guest-login-required="true" aria-label="Comentar">
@@ -4084,6 +4084,8 @@
       remoteVideoAspect: null,
       windowWidth: null,
       minimized: false,
+      mobileExpanded: false,
+      mobileExpandSnapshot: null,
       resizing: null,
       outgoingOfferSent: false,
       isFinalizing: false,
@@ -4137,6 +4139,10 @@
       return window.innerWidth < 1024;
     }
 
+    function isMobileCallViewport() {
+      return window.innerWidth <= 767;
+    }
+
     function clearActiveConversationState() {
       activeConversationToken += 1;
       activeChat = null;
@@ -4170,12 +4176,158 @@
 
     function clampCallWindow(root = ensureCallWindow()) {
       if (!root || root.classList.contains('hidden')) return;
+      if (callState.mobileExpanded) {
+        root.style.setProperty('position', 'fixed', 'important');
+        root.style.setProperty('inset', '0', 'important');
+        root.style.setProperty('left', '0', 'important');
+        root.style.setProperty('top', '0', 'important');
+        root.style.setProperty('right', '0', 'important');
+        root.style.setProperty('bottom', '0', 'important');
+        return;
+      }
       const rect = root.getBoundingClientRect();
       const maxLeft = Math.max(8, window.innerWidth - root.offsetWidth - 8);
       const maxTop = Math.max(8, window.innerHeight - root.offsetHeight - 8);
       root.style.left = `${Math.min(Math.max(8, rect.left), maxLeft)}px`;
       root.style.top = `${Math.min(Math.max(8, rect.top), maxTop)}px`;
       root.style.right = 'auto';
+    }
+
+    function captureMobileExpandedSnapshot(root) {
+      return {
+        position: root.style.position || '',
+        inset: root.style.inset || '',
+        left: root.style.left || '',
+        top: root.style.top || '',
+        right: root.style.right || '',
+        bottom: root.style.bottom || '',
+        zIndex: root.style.zIndex || '',
+        width: root.style.width || '',
+        maxWidth: root.style.maxWidth || '',
+        flexBasis: root.style.flexBasis || '',
+        minHeight: root.style.minHeight || '',
+        height: root.style.height || '',
+        maxHeight: root.style.maxHeight || '',
+        borderRadius: root.style.borderRadius || '',
+        transform: root.style.transform || '',
+        margin: root.style.margin || '',
+      };
+    }
+
+    function restoreMobileExpandedSnapshot(root, snapshot) {
+      const apply = (prop, value) => {
+        if (value) {
+          root.style.setProperty(prop, value);
+        } else {
+          root.style.removeProperty(prop);
+        }
+      };
+      apply('position', snapshot?.position || '');
+      apply('inset', snapshot?.inset || '');
+      apply('left', snapshot?.left || '');
+      apply('top', snapshot?.top || '');
+      apply('right', snapshot?.right || '');
+      apply('bottom', snapshot?.bottom || '');
+      apply('z-index', snapshot?.zIndex || '');
+      apply('width', snapshot?.width || '');
+      apply('max-width', snapshot?.maxWidth || '');
+      apply('flex-basis', snapshot?.flexBasis || '');
+      apply('min-height', snapshot?.minHeight || '');
+      apply('height', snapshot?.height || '');
+      apply('max-height', snapshot?.maxHeight || '');
+      apply('border-radius', snapshot?.borderRadius || '');
+      apply('transform', snapshot?.transform || '');
+      apply('margin', snapshot?.margin || '');
+    }
+
+    function clearCallWindowExpandedStyles(root = ensureCallWindow()) {
+      if (!root) return;
+      root.classList.remove('call-window--mobile-expanded');
+      document.body.classList.remove('call-window-mobile-expanded-active');
+      document.documentElement.classList.remove('call-window-mobile-expanded-active');
+      [
+        'position',
+        'inset',
+        'left',
+        'top',
+        'right',
+        'bottom',
+        'z-index',
+        'width',
+        'max-width',
+        'flex-basis',
+        'min-height',
+        'height',
+        'max-height',
+        'border-radius',
+        'transform',
+        'margin',
+      ].forEach((prop) => root.style.removeProperty(prop));
+    }
+
+    function applyDefaultCallWindowPosition(root = ensureCallWindow()) {
+      if (!root) return;
+      root.style.removeProperty('bottom');
+      root.style.removeProperty('margin');
+      root.style.removeProperty('transform');
+      root.style.setProperty('left', 'auto');
+      if (isMobileCallViewport()) {
+        root.style.setProperty('top', '8px');
+        root.style.setProperty('right', '8px');
+      } else {
+        root.style.setProperty('top', '96px');
+        root.style.setProperty('right', '24px');
+      }
+    }
+
+    function exitMobileExpandedCallWindow(root = ensureCallWindow(), { restoreSnapshot = true } = {}) {
+      if (!root || !callState.mobileExpanded) return;
+      root.classList.remove('call-window--mobile-expanded');
+      document.body.classList.remove('call-window-mobile-expanded-active');
+      document.documentElement.classList.remove('call-window-mobile-expanded-active');
+      if (restoreSnapshot) {
+        restoreMobileExpandedSnapshot(root, callState.mobileExpandSnapshot || {});
+      } else {
+        clearCallWindowExpandedStyles(root);
+      }
+      callState.mobileExpanded = false;
+      callState.mobileExpandSnapshot = null;
+      syncMinimizedCallWindowLayout(root);
+      clampCallWindow(root);
+    }
+
+    function enterMobileExpandedCallWindow(root = ensureCallWindow()) {
+      if (!root || callState.mobileExpanded || !isMobileCallViewport()) return;
+      callState.mobileExpandSnapshot = captureMobileExpandedSnapshot(root);
+      callState.mobileExpanded = true;
+      document.body.classList.add('call-window-mobile-expanded-active');
+      document.documentElement.classList.add('call-window-mobile-expanded-active');
+      root.classList.add('call-window--mobile-expanded');
+      root.style.setProperty('position', 'fixed', 'important');
+      root.style.setProperty('inset', '0', 'important');
+      root.style.setProperty('left', '0', 'important');
+      root.style.setProperty('top', '0', 'important');
+      root.style.setProperty('right', '0', 'important');
+      root.style.setProperty('bottom', '0', 'important');
+      root.style.setProperty('z-index', '9999', 'important');
+      root.style.setProperty('width', '100vw', 'important');
+      root.style.setProperty('max-width', '100vw', 'important');
+      root.style.setProperty('flex-basis', '100vw', 'important');
+      root.style.setProperty('min-height', '100dvh', 'important');
+      root.style.setProperty('height', '100dvh', 'important');
+      root.style.setProperty('max-height', '100dvh', 'important');
+      root.style.setProperty('border-radius', '0', 'important');
+      root.style.setProperty('transform', 'none', 'important');
+      root.style.setProperty('margin', '0', 'important');
+    }
+
+    function toggleMobileExpandedCallWindow(root = ensureCallWindow()) {
+      if (!isMobileCallViewport() || !root || root.classList.contains('hidden')) return;
+      if (callState.mobileExpanded) {
+        exitMobileExpandedCallWindow(root);
+      } else {
+        enterMobileExpandedCallWindow(root);
+      }
     }
 
     function stopRingTone() {
@@ -4370,8 +4522,7 @@
         root = document.createElement('div');
         root.id = 'floating-call-window';
         root.className = 'call-window hidden fixed z-[70] flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] sm:w-[400px] sm:max-w-[calc(100vw-1rem)] flex-col overflow-hidden text-white';
-        root.style.top = '96px';
-        root.style.right = '24px';
+        applyDefaultCallWindowPosition(root);
         root.innerHTML = `
           <div class="call-window__header cursor-move select-none" data-call-drag-handle="true">
             <div class="call-window__avatar" id="call-avatar-badge">
@@ -4387,6 +4538,9 @@
             <div class="call-window__header-actions">
               <button type="button" id="call-minimize-btn" class="call-window__icon-btn" aria-label="Minimizar llamada" title="Minimizar">
                 <span class="material-symbols-outlined text-[16px]">remove</span>
+              </button>
+              <button type="button" id="call-expand-btn" class="call-window__icon-btn hidden" aria-label="Maximizar llamada" title="Maximizar">
+                <span class="call-window__window-glyph" aria-hidden="true">□</span>
               </button>
               <button type="button" id="call-close-btn" class="call-window__icon-btn" aria-label="Cerrar llamada" title="Cerrar">
                 <span class="material-symbols-outlined text-[16px]">close</span>
@@ -4506,6 +4660,7 @@
       };
       handle.style.touchAction = 'none';
       const onPointerDown = (event) => {
+        if (callState.mobileExpanded) return;
         if (event.target.closest('button')) return;
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         const rect = root.getBoundingClientRect();
@@ -4560,6 +4715,7 @@
           };
         };
         const onResizePointerDown = (event) => {
+          if (callState.mobileExpanded) return;
           if (event.pointerType === 'mouse' && event.button !== 0) return;
           beginResize(event.pointerId, event.clientX, event.clientY);
           if (typeof resizeHandle.setPointerCapture === 'function') {
@@ -4589,6 +4745,7 @@
           document.body.classList.remove('select-none');
         };
         const onResizeMouseDown = (event) => {
+          if (callState.mobileExpanded) return;
           if (event.button !== 0) return;
           beginResize('mouse', event.clientX, event.clientY);
           document.body.classList.add('select-none');
@@ -4628,7 +4785,11 @@
       }
 
       const minimizeButton = root.querySelector('#call-minimize-btn');
+      const expandButton = root.querySelector('#call-expand-btn');
       const onMinimize = () => {
+        if (callState.mobileExpanded) {
+          exitMobileExpandedCallWindow(root);
+        }
         callState.minimized = !callState.minimized;
         root.querySelector('#call-video-stage').classList.toggle('hidden', callState.minimized);
         root.querySelector('#call-actions-row').classList.toggle('hidden', callState.minimized);
@@ -4644,6 +4805,14 @@
       };
       minimizeButton.addEventListener('click', onMinimize);
       cleanups.push(() => minimizeButton.removeEventListener('click', onMinimize));
+
+      const onExpand = () => {
+        if (!isMobileCallViewport() || callState.minimized) return;
+        toggleMobileExpandedCallWindow(root);
+        updateCallWindow();
+      };
+      expandButton?.addEventListener('click', onExpand);
+      cleanups.push(() => expandButton?.removeEventListener('click', onExpand));
 
       cleanups.push(bindControlClick(root.querySelector('#call-toggle-mic-btn'), toggleMicrophone));
       cleanups.push(bindControlClick(root.querySelector('#call-toggle-video-btn'), toggleCamera));
@@ -4681,7 +4850,15 @@
       cleanups.push(() => volumeInput.removeEventListener('change', onVolumeChange));
       cleanups.push(() => volumeInput.removeEventListener('input', onVolumeInput));
 
-      const onResize = () => clampCallWindow(root);
+      const onResize = () => {
+        if (callState.mobileExpanded && !isMobileCallViewport()) {
+          exitMobileExpandedCallWindow(root);
+        }
+        if (!callState.mobileExpanded && !callState.drag && !callState.resizing) {
+          applyDefaultCallWindowPosition(root);
+        }
+        clampCallWindow(root);
+      };
       window.addEventListener('resize', onResize);
       cleanups.push(() => window.removeEventListener('resize', onResize));
 
@@ -4764,7 +4941,7 @@
         root.style.removeProperty('min-height');
         root.style.removeProperty('height');
         root.style.removeProperty('max-height');
-        if (callState.windowWidth) {
+        if (callState.windowWidth && !callState.mobileExpanded) {
           root.style.setProperty('--call-window-width', `${callState.windowWidth}px`);
           root.style.setProperty('width', `${callState.windowWidth}px`, 'important');
           root.style.setProperty('max-width', 'calc(100vw - 1rem)', 'important');
@@ -4889,6 +5066,8 @@
       const modeBadge = root.querySelector('#call-mode-badge');
       const volumePill = root.querySelector('#call-volume-pill');
       const resizeHandle = root.querySelector('#call-resize-handle');
+      const expandButton = root.querySelector('#call-expand-btn');
+      const expandIcon = expandButton?.querySelector('.call-window__window-glyph');
 
       root.classList.toggle('hidden', !session);
       if (!session) {
@@ -4904,16 +5083,17 @@
       root.classList.toggle('call-window--video', isVideoMode);
       root.classList.toggle('call-window--audio', !isVideoMode);
       root.classList.toggle('call-window--minimized', callState.minimized);
+      root.classList.toggle('call-window--mobile-expanded', callState.mobileExpanded);
       root.classList.toggle('call-window--ringing', session.status === 'ringing');
       root.classList.toggle('call-window--accepted', session.status === 'accepted');
       root.classList.toggle('call-window--incoming', isIncomingRinging);
       root.classList.toggle('call-window--outgoing', isOutgoingRinging);
-      if (callState.windowWidth && !callState.minimized) {
+      if (callState.windowWidth && !callState.minimized && !callState.mobileExpanded) {
         root.style.setProperty('--call-window-width', `${callState.windowWidth}px`);
         root.style.setProperty('width', `${callState.windowWidth}px`, 'important');
         root.style.setProperty('max-width', 'calc(100vw - 1rem)', 'important');
         root.style.setProperty('flex-basis', `${callState.windowWidth}px`, 'important');
-      } else if (!callState.minimized) {
+      } else if (!callState.minimized && !callState.mobileExpanded) {
         root.style.removeProperty('--call-window-width');
         root.style.removeProperty('width');
         root.style.removeProperty('max-width');
@@ -4930,6 +5110,7 @@
       root.querySelector('#call-toggle-mic-btn').classList.toggle('hidden', !showMicControl);
       volumePill.classList.toggle('hidden', !showVolumeControl);
       root.querySelector('#call-minimize-btn').classList.toggle('hidden', !showVideoStage);
+      expandButton?.classList.toggle('hidden', !isMobileCallViewport() || callState.minimized);
 
       const micIcon = root.querySelector('#call-toggle-mic-btn .material-symbols-outlined');
       const videoIcon = root.querySelector('#call-toggle-video-btn .material-symbols-outlined');
@@ -4938,6 +5119,11 @@
       videoIcon.textContent = callState.localVideoEnabled ? 'videocam' : 'videocam_off';
       if (minimizeIcon) {
         minimizeIcon.textContent = callState.minimized ? 'open_in_full' : 'remove';
+      }
+      if (expandButton && expandIcon) {
+        expandIcon.textContent = callState.mobileExpanded ? '❐' : '□';
+        expandButton.setAttribute('aria-label', callState.mobileExpanded ? 'Restaurar llamada' : 'Maximizar llamada');
+        expandButton.setAttribute('title', callState.mobileExpanded ? 'Restaurar' : 'Maximizar');
       }
 
       const remoteVideo = root.querySelector('#call-remote-video');
@@ -4957,7 +5143,7 @@
         localPreviewPlaceholder.classList.toggle('hidden', Boolean(callState.localVideoEnabled && callState.localStream));
       }
       if (resizeHandle) {
-        const canResize = isVideoMode && !callState.minimized;
+        const canResize = isVideoMode && !callState.minimized && !callState.mobileExpanded;
         resizeHandle.classList.toggle('hidden', !canResize);
       }
 
@@ -5424,6 +5610,10 @@
       callState.status = incoming.status || 'ringing';
       callState.windowWidth = null;
       callState.minimized = false;
+      callState.mobileExpanded = false;
+      callState.mobileExpandSnapshot = null;
+      clearCallWindowExpandedStyles();
+      applyDefaultCallWindowPosition();
       resetCallNegotiationState();
       updateCallWindow();
       keepRingTonePlaying();
@@ -5526,6 +5716,10 @@
       callState.initialMode = callState.mode;
       callState.windowWidth = null;
       callState.minimized = false;
+      callState.mobileExpanded = false;
+      callState.mobileExpandSnapshot = null;
+      clearCallWindowExpandedStyles();
+      applyDefaultCallWindowPosition();
       resetCallNegotiationState();
       tryPlayRemoteMedia();
       updateCallWindow();
@@ -5624,6 +5818,7 @@
       stopCallTimers();
 
       const root = ensureCallWindow();
+      clearCallWindowExpandedStyles(root);
       root.classList.add('hidden');
       root.querySelector('#call-video-stage').classList.remove('hidden');
       root.querySelector('#call-window-status').textContent = 'Esperando...';
@@ -5646,6 +5841,8 @@
       callState.lastSignalId = 0;
       callState.drag = null;
       callState.minimized = false;
+      callState.mobileExpanded = false;
+      callState.mobileExpandSnapshot = null;
       callState.windowWidth = null;
       callState.isFinalizing = false;
       callState.remoteVideoAspect = null;
