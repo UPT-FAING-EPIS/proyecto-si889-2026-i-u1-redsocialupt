@@ -1453,6 +1453,97 @@ body.guest-shared-post-page #app-view {
   z-index: 0;
 }
 
+.bitmovin-post-video__surface {
+  position: relative;
+}
+
+.bitmovin-post-video__mount,
+.bitmovin-post-video__fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bitmovin-post-video__mount {
+  z-index: 1;
+  opacity: 0;
+  transition: opacity .18s ease;
+}
+
+.bitmovin-post-video.is-bitmovin-active .bitmovin-post-video__mount {
+  opacity: 1;
+}
+
+.bitmovin-post-video__fallback {
+  display: block;
+  object-fit: contain;
+  background: #030712;
+  z-index: 1;
+}
+
+.bitmovin-post-video__fallback[hidden] {
+  display: none !important;
+}
+
+.bitmovin-post-video__launcher {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.1rem;
+  height: 4.1rem;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  background: rgba(15, 23, 42, .68);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(2, 6, 23, .36);
+  transition: transform .16s ease, opacity .16s ease, background-color .16s ease;
+}
+
+.bitmovin-post-video__launcher .material-symbols-outlined {
+  font-size: 2.2rem;
+}
+
+.bitmovin-post-video__launcher:hover {
+  transform: translate(-50%, -50%) scale(1.04);
+  background: rgba(15, 23, 42, .82);
+}
+
+.bitmovin-post-video.is-bitmovin-active .bitmovin-post-video__launcher,
+.bitmovin-post-video.is-bitmovin-fallback .bitmovin-post-video__launcher {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bitmovin-post-video.is-bitmovin-active .social-video-player__poster,
+.bitmovin-post-video.is-bitmovin-fallback .social-video-player__poster {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bitmovin-post-video .bmpui-ui-uicontainer {
+  font-family: inherit;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.bitmovin-post-video .bmpui-ui-controlbar {
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0) 0%, rgba(2, 6, 23, .82) 100%);
+}
+
+.bitmovin-post-video .bmpui-ui-playbacktoggle-overlay {
+  background: transparent;
+}
+
+.bitmovin-post-video .bmpui-ui-titlebar {
+  display: none;
+}
+
 .social-video-player.is-media-ready .social-video-player__poster {
   opacity: 0;
   pointer-events: none;
@@ -1646,6 +1737,15 @@ body.guest-shared-post-page #app-view {
     gap: .4rem;
     padding: 1.3rem .55rem .56rem;
     background: linear-gradient(180deg, transparent 0%, rgba(2, 6, 23, .22) 16%, rgba(2, 6, 23, .74) 100%);
+  }
+
+  .bitmovin-post-video__launcher {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .bitmovin-post-video__launcher .material-symbols-outlined {
+    font-size: 1.95rem;
   }
 
   .social-video-player__icon-btn {

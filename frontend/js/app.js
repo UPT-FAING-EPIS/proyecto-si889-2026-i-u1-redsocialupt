@@ -2743,6 +2743,199 @@
   let adaptivePostMediaBindingsReady = false;
   let adaptivePostMediaResizeFrame = 0;
   let adaptiveMediaResizeObserver = null;
+  let bitmovinPostPlayerAssetsPromise = null;
+  let bitmovinPostPlayerViewportObserver = null;
+  const bitmovinPostPlayers = new Map();
+  const BITMOVIN_POST_PLAYER_SCRIPT = 'https://cdn.bitmovin.com/player/web/8/bitmovinplayer.js';
+  const BITMOVIN_POST_PLAYER_STYLE = 'https://cdn.bitmovin.com/player/web/8/bitmovinplayer-ui.css';
+  const BITMOVIN_POST_PLAYER_KEY_STORAGE = 'upt-bitmovin-player-key';
+
+  function getBitmovinPostPlayerLicenseKey() {
+    const direct =
+      window.__UPT_CONFIG?.bitmovinPlayerKey ||
+      window.__UPT_BITMOVIN_PLAYER_KEY ||
+      document.documentElement?.dataset?.bitmovinPlayerKey ||
+      '';
+    if (String(direct || '').trim()) {
+      return String(direct).trim();
+    }
+    try {
+      return String(window.localStorage.getItem(BITMOVIN_POST_PLAYER_KEY_STORAGE) || '').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  function canUseBitmovinPostPlayer() {
+    return !isDesktopClient() && !!getBitmovinPostPlayerLicenseKey();
+  }
+
+  async function ensureBitmovinPostPlayerAssets() {
+    if (!canUseBitmovinPostPlayer()) {
+      return null;
+    }
+    if (!bitmovinPostPlayerAssetsPromise) {
+      loadExternalStyle(BITMOVIN_POST_PLAYER_STYLE);
+      bitmovinPostPlayerAssetsPromise = loadExternalScript(BITMOVIN_POST_PLAYER_SCRIPT, 'bitmovin')
+        .then(() => window.bitmovin || null)
+        .catch((error) => {
+          console.error('No se pudo cargar Bitmovin Player:', error);
+          bitmovinPostPlayerAssetsPromise = null;
+          return null;
+        });
+    }
+    return bitmovinPostPlayerAssetsPromise;
+  }
+
+  function pauseOtherBitmovinPostPlayers(currentShell = null) {
+    bitmovinPostPlayers.forEach((entry, shell) => {
+      if (!entry?.player || shell === currentShell) return;
+      try {
+        entry.player.pause?.();
+      } catch { }
+    });
+  }
+
+  function revealBitmovinPostNativeFallback(shell) {
+    if (!(shell instanceof HTMLElement)) return;
+    const fallbackVideo = shell.querySelector('[data-bitmovin-post-fallback="true"]');
+    const launcher = shell.querySelector('[data-bitmovin-post-launcher="true"]');
+    if (!(fallbackVideo instanceof HTMLVideoElement)) return;
+    const src = String(fallbackVideo.dataset.src || '').trim();
+    if (src && !fallbackVideo.getAttribute('src')) {
+      fallbackVideo.src = src;
+      fallbackVideo.preload = 'metadata';
+      try {
+        fallbackVideo.load?.();
+      } catch { }
+    }
+    fallbackVideo.controls = true;
+    fallbackVideo.hidden = false;
+    shell.classList.add('is-bitmovin-fallback');
+    launcher?.remove();
+  }
+
+  function destroyBitmovinPostPlayer(shell) {
+    const entry = bitmovinPostPlayers.get(shell);
+    if (!entry) return;
+    try {
+      entry.player?.pause?.();
+    } catch { }
+    try {
+      entry.player?.destroy?.();
+    } catch { }
+    bitmovinPostPlayers.delete(shell);
+    shell.classList.remove('is-bitmovin-active');
+    shell.dataset.bitmovinReady = '0';
+  }
+
+  function ensureBitmovinPostPlayerViewportObserver() {
+    if (bitmovinPostPlayerViewportObserver || !('IntersectionObserver' in window)) {
+      return bitmovinPostPlayerViewportObserver;
+    }
+    bitmovinPostPlayerViewportObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const shell = entry.target;
+        if (!(shell instanceof HTMLElement)) return;
+        const instance = bitmovinPostPlayers.get(shell);
+        if (!instance?.player) return;
+        if (!entry.isIntersecting) {
+          try {
+            instance.player.pause?.();
+          } catch { }
+        }
+      });
+    }, {
+      rootMargin: '0px 0px',
+      threshold: 0.22,
+    });
+    return bitmovinPostPlayerViewportObserver;
+  }
+
+  function registerBitmovinPostShell(shell) {
+    if (!(shell instanceof HTMLElement) || shell.dataset.bitmovinObserved === '1') return;
+    shell.dataset.bitmovinObserved = '1';
+    ensureBitmovinPostPlayerViewportObserver()?.observe?.(shell);
+  }
+
+  async function ensureBitmovinPostPlayer(shell, { autoplay = false } = {}) {
+    if (!(shell instanceof HTMLElement) || shell.dataset.bitmovinInitPending === '1') {
+      return bitmovinPostPlayers.get(shell)?.player || null;
+    }
+
+    const existing = bitmovinPostPlayers.get(shell)?.player;
+    if (existing) {
+      if (autoplay) {
+        pauseOtherSocialVideos(null);
+        pauseOtherBitmovinPostPlayers(shell);
+        try {
+          await existing.play?.();
+        } catch { }
+      }
+      return existing;
+    }
+
+    shell.dataset.bitmovinInitPending = '1';
+    const bitmovin = await ensureBitmovinPostPlayerAssets();
+    if (!bitmovin?.player?.Player) {
+      delete shell.dataset.bitmovinInitPending;
+      revealBitmovinPostNativeFallback(shell);
+      return null;
+    }
+
+    const mount = shell.querySelector('[data-bitmovin-post-mount="true"]');
+    const mediaUrl = String(shell.dataset.bitmovinPostUrl || '').trim();
+    const mimeType = String(shell.dataset.bitmovinPostMime || 'video/mp4').trim();
+    const posterUrl = String(shell.dataset.bitmovinPostPoster || '').trim();
+    if (!(mount instanceof HTMLElement) || !mediaUrl) {
+      delete shell.dataset.bitmovinInitPending;
+      revealBitmovinPostNativeFallback(shell);
+      return null;
+    }
+
+    try {
+      const player = new bitmovin.player.Player(mount, {
+        key: getBitmovinPostPlayerLicenseKey(),
+        playback: {
+          autoplay: false,
+          muted: false,
+        },
+      });
+      await player.load({
+        poster: posterUrl || undefined,
+        progressive: [{
+          url: mediaUrl,
+          type: mimeType || undefined,
+        }],
+      });
+      try {
+        player.setVolume?.(100);
+      } catch { }
+      try {
+        player.setLoop?.(true);
+      } catch { }
+      bitmovinPostPlayers.set(shell, { player });
+      registerBitmovinPostShell(shell);
+      shell.classList.add('is-bitmovin-active');
+      shell.dataset.bitmovinReady = '1';
+      const launcher = shell.querySelector('[data-bitmovin-post-launcher="true"]');
+      launcher?.setAttribute('aria-hidden', 'true');
+      pauseOtherSocialVideos(null);
+      pauseOtherBitmovinPostPlayers(shell);
+      if (autoplay) {
+        try {
+          await player.play?.();
+        } catch { }
+      }
+      return player;
+    } catch (error) {
+      console.error('No se pudo inicializar Bitmovin Player para la publicacion:', error);
+      revealBitmovinPostNativeFallback(shell);
+      return null;
+    } finally {
+      delete shell.dataset.bitmovinInitPending;
+    }
+  }
 
   function hasHydratedSocialVideoSource(video) {
     if (!(video instanceof HTMLVideoElement)) return false;
@@ -3186,6 +3379,28 @@
       if (isMobileFeedVideoPlaybackMode()) return;
       hydrateSocialVideoSource(video, { preload: 'metadata' });
     };
+
+    window.__uptBitmovinPostLauncherClick = async (button, event) => {
+      const shell = button?.closest?.('[data-bitmovin-post-shell="true"]');
+      if (!(shell instanceof HTMLElement)) return;
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      const player = await ensureBitmovinPostPlayer(shell, { autoplay: true });
+      if (!player) {
+        const fallbackVideo = shell.querySelector('[data-bitmovin-post-fallback="true"]');
+        if (fallbackVideo instanceof HTMLVideoElement) {
+          pauseOtherSocialVideos(fallbackVideo);
+          try {
+            await fallbackVideo.play?.();
+          } catch { }
+        }
+      }
+    };
+
+    window.__uptPauseOtherBitmovinPosts = (currentVideo) => {
+      pauseOtherSocialVideos(currentVideo instanceof HTMLVideoElement ? currentVideo : null);
+      pauseOtherBitmovinPostPlayers(currentVideo?.closest?.('[data-bitmovin-post-shell="true"]') || null);
+    };
   }
 
   function resolveAdaptiveMediaRatio(element) {
@@ -3367,7 +3582,7 @@
     }
   }
 
-  function renderInlineSocialVideo(media, options = {}) {
+  function renderInlineSocialVideoNative(media, options = {}) {
     const heightClass = options.heightClass || '';
     const roundedClass = options.roundedClass || 'rounded-2xl';
     const shellClass = options.shellClass || '';
@@ -3432,6 +3647,68 @@
         </div>
       </div>
     `;
+  }
+
+  function renderBitmovinInlineSocialVideo(media, options = {}) {
+    const heightClass = options.heightClass || '';
+    const roundedClass = options.roundedClass || 'rounded-2xl';
+    const shellClass = options.shellClass || '';
+    const aspectStyle = options.aspectStyle ? ` style="${options.aspectStyle}"` : '';
+    const tagLabel = options.tagLabel ? `<span class="social-video-player__tag">${escapeHtml(options.tagLabel)}</span>` : '';
+    const adaptiveFrameClass = options.adaptiveFrameClass || '';
+    const adaptiveContext = escapeHtml(options.adaptiveContext || 'card');
+    const posterAttr = media.posterUrl ? ` poster="${media.posterUrl}"` : '';
+    const fallbackPoster = media.posterUrl
+      ? `<img class="social-video-player__poster" src="${media.posterUrl}" alt="" loading="lazy" decoding="async" aria-hidden="true" onload="window.__uptAdaptiveMediaLoad?.(this)"/>`
+      : '';
+
+    return `
+      <div
+        class="social-video-player bitmovin-post-video post-adaptive-media post-adaptive-media--video is-pending ${roundedClass} ${heightClass} ${shellClass} ${adaptiveFrameClass}"
+        data-bitmovin-post-shell="true"
+        data-post-card-ignore="true"
+        data-adaptive-media-frame="true"
+        data-adaptive-media-context="${adaptiveContext}"
+        data-bitmovin-post-url="${media.url}"
+        data-bitmovin-post-mime="${media.mimeType || 'video/mp4'}"
+        data-bitmovin-post-poster="${media.posterUrl || ''}"${aspectStyle}>
+        <div class="social-video-player__surface bitmovin-post-video__surface">
+          ${fallbackPoster}
+          <div class="bitmovin-post-video__mount" data-bitmovin-post-mount="true"></div>
+          <video
+            class="bitmovin-post-video__fallback"
+            hidden
+            playsinline
+            loop
+            preload="none"
+            ${posterAttr}
+            data-bitmovin-post-fallback="true"
+            data-src="${media.url}"
+            onloadedmetadata="window.__uptAdaptiveMediaLoad?.(this)"
+            onloadeddata="window.__uptAdaptiveMediaLoad?.(this)"
+            onplay="window.__uptPauseOtherBitmovinPosts?.(this)"
+            onerror="this.closest('[data-bitmovin-post-shell]').style.display='none'"></video>
+          <div class="social-video-player__top">
+            ${tagLabel}
+          </div>
+          <button
+            type="button"
+            class="bitmovin-post-video__launcher"
+            data-bitmovin-post-launcher="true"
+            aria-label="Reproducir video"
+            onclick="window.__uptBitmovinPostLauncherClick?.(this, event)">
+            <span class="material-symbols-outlined">play_arrow</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderInlineSocialVideo(media, options = {}) {
+    if (canUseBitmovinPostPlayer()) {
+      return renderBitmovinInlineSocialVideo(media, options);
+    }
+    return renderInlineSocialVideoNative(media, options);
   }
 
   function renderPostMediaBlock(post, options = {}) {
