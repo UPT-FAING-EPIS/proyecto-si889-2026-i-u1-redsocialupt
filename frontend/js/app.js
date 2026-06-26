@@ -2775,6 +2775,16 @@
     syncSocialVideoPosterState(video);
   }
 
+  function shouldKeepHydratedSocialVideo(video) {
+    if (!(video instanceof HTMLVideoElement)) return false;
+    if (!isMobileFeedVideoPlaybackMode()) return false;
+    if (video === activeSocialVideoElement) return true;
+    if (video.closest('#comment-modal, #group-comment-modal, #profile-comment-modal, #admin-comments-modal')) return true;
+    if (video.dataset.socialVideoPlayedOnce === '1') return true;
+    if (Number(video.currentTime || 0) > 0.05) return true;
+    return false;
+  }
+
   function shouldHydrateSocialVideoOnViewport(video, entry) {
     if (!(video instanceof HTMLVideoElement)) return false;
     if (hasHydratedSocialVideoSource(video)) return true;
@@ -2817,8 +2827,10 @@
         if (activeSocialVideoElement === target) {
           activeSocialVideoElement = null;
         }
-        if (isMobileFeedVideoPlaybackMode()) {
+        if (isMobileFeedVideoPlaybackMode() && !shouldKeepHydratedSocialVideo(target)) {
           dehydrateSocialVideoSource(target);
+        } else if (isMobileFeedVideoPlaybackMode()) {
+          target.preload = 'metadata';
         }
       });
     }, {
@@ -2921,6 +2933,19 @@
     }
   }
 
+  function shouldSkipSocialVideoUiSync(video, eventName = '') {
+    if (!(video instanceof HTMLVideoElement)) return false;
+    if (eventName !== 'timeupdate') return false;
+    if (!isMobileFeedVideoPlaybackMode()) return false;
+    const now = Date.now();
+    const last = Number(video.dataset.socialVideoLastUiSyncAt || 0);
+    if (last && now - last < 120) {
+      return true;
+    }
+    video.dataset.socialVideoLastUiSyncAt = String(now);
+    return false;
+  }
+
   function closeOpenSocialVideoVolumePopovers(exceptShell = null) {
     document.querySelectorAll('.social-video-player__volume-shell.is-volume-open').forEach((shell) => {
       if (!(shell instanceof HTMLElement)) return;
@@ -2936,8 +2961,10 @@
       if (!candidate.paused) {
         candidate.pause();
       }
-      if (isMobileFeedVideoPlaybackMode()) {
+      if (isMobileFeedVideoPlaybackMode() && !shouldKeepHydratedSocialVideo(candidate)) {
         dehydrateSocialVideoSource(candidate);
+      } else if (isMobileFeedVideoPlaybackMode()) {
+        candidate.preload = 'metadata';
       }
     });
     activeSocialVideoElement = currentVideo;
@@ -3025,6 +3052,7 @@
     document.addEventListener('play', (event) => {
       const target = event.target;
       if (!(target instanceof HTMLVideoElement) || target.dataset.socialVideoElement !== 'true') return;
+      target.dataset.socialVideoPlayedOnce = '1';
       pauseOtherSocialVideos(target);
       target.preload = 'auto';
       syncSocialVideoPlayerUi(target);
@@ -3034,8 +3062,12 @@
       document.addEventListener(eventName, (event) => {
         const target = event.target;
         if (!(target instanceof HTMLVideoElement) || target.dataset.socialVideoElement !== 'true') return;
+        if (shouldSkipSocialVideoUiSync(target, eventName)) return;
         if (eventName === 'ended' && activeSocialVideoElement === target && !target.loop) {
           activeSocialVideoElement = null;
+        }
+        if (eventName === 'pause' && isMobileFeedVideoPlaybackMode()) {
+          target.preload = 'metadata';
         }
         syncSocialVideoPlayerUi(target);
       }, true);

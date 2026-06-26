@@ -1629,8 +1629,6 @@ body.guest-shared-post-page #app-view {
 @media (max-width: 640px) {
   .social-video-player {
     box-shadow: 0 6px 14px rgba(15, 23, 42, .1);
-    content-visibility: auto;
-    contain-intrinsic-size: 320px;
   }
 
   .social-video-player__top {
@@ -1691,11 +1689,6 @@ body.guest-shared-post-page #app-view {
 }
 
 @media (pointer: coarse) {
-  .social-video-player {
-    content-visibility: auto;
-    contain-intrinsic-size: 320px;
-  }
-
   .social-video-player__icon-btn {
     backdrop-filter: none;
   }
@@ -1704,6 +1697,15 @@ body.guest-shared-post-page #app-view {
   .social-video-player__top,
   .social-video-player__poster {
     will-change: auto;
+  }
+
+  .social-video-player__surface {
+    contain: layout paint style;
+  }
+
+  .social-video-player__video {
+    transform: translateZ(0);
+    backface-visibility: hidden;
   }
 }
 
