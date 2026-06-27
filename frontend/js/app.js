@@ -2749,6 +2749,7 @@
   const BITMOVIN_POST_PLAYER_SCRIPT = 'https://cdn.bitmovin.com/player/web/8/bitmovinplayer.js';
   const BITMOVIN_POST_PLAYER_STYLE = 'https://cdn.bitmovin.com/player/web/8/bitmovinplayer-ui.css';
   const BITMOVIN_POST_PLAYER_KEY_STORAGE = 'upt-bitmovin-player-key';
+  let bitmovinPostPlayerDisabled = false;
 
   function getBitmovinPostPlayerLicenseKey() {
     const direct =
@@ -2767,7 +2768,7 @@
   }
 
   function canUseBitmovinPostPlayer() {
-    return !isDesktopClient() && !!getBitmovinPostPlayerLicenseKey();
+    return !bitmovinPostPlayerDisabled && !isDesktopClient() && !!getBitmovinPostPlayerLicenseKey();
   }
 
   async function ensureBitmovinPostPlayerAssets() {
