@@ -3731,9 +3731,7 @@
   }
 
   function renderInlineSocialVideo(media, options = {}) {
-    const adaptiveContext = String(options.adaptiveContext || 'card');
-    const shouldPreferNativeInline = adaptiveContext === 'card' && !isDesktopClient();
-    if (!shouldPreferNativeInline && canUseBitmovinPostPlayer()) {
+    if (canUseBitmovinPostPlayer()) {
       return renderBitmovinInlineSocialVideo(media, options);
     }
     return renderInlineSocialVideoNative(media, options);
