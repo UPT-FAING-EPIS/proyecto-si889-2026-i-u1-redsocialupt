@@ -15726,7 +15726,7 @@
 
         function renderSanctionActions(report) {
           const isLivestreamReport = formatReportType(report) === 'livestream';
-          const actions = [`
+          const primaryActions = [`
             <div id="sanction-action-block-card" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
               <label class="flex items-start gap-3">
                 <input id="sanction-action-block" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]" checked/>
@@ -15737,9 +15737,10 @@
               </label>
             </div>
           `];
+          const secondaryActions = [];
 
           if (report.service === 'posts' && report.target_type === 'post') {
-            actions.push(`
+            secondaryActions.push(`
               <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                 <input id="sanction-action-delete-post" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]"/>
                 <span>
@@ -15751,7 +15752,7 @@
           }
 
           if (report.service === 'posts' && report.target_type === 'comment') {
-            actions.push(`
+            secondaryActions.push(`
               <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                 <input id="sanction-action-delete-comment" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1B2A6B] focus:ring-[#1B2A6B]"/>
                 <span>
@@ -15762,11 +15763,13 @@
             `);
           }
 
-          container.querySelector('#sanction-actions').innerHTML = actions.join('');
-          const blockConfig = container.querySelector('#sanction-block-config');
-          const blockCard = container.querySelector('#sanction-action-block-card');
-          if (blockConfig && blockCard) {
-            blockCard.appendChild(blockConfig);
+          const primaryContainer = container.querySelector('#sanction-actions-primary');
+          const secondaryContainer = container.querySelector('#sanction-actions-secondary');
+          if (primaryContainer) {
+            primaryContainer.innerHTML = primaryActions.join('');
+          }
+          if (secondaryContainer) {
+            secondaryContainer.innerHTML = secondaryActions.join('');
           }
           toggleSanctionBlockAccordion(true);
         }
