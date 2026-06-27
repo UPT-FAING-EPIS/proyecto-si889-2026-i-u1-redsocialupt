@@ -2816,6 +2816,26 @@
     launcher?.remove();
   }
 
+  function restoreBitmovinPostShellToLauncher(shell) {
+    if (!(shell instanceof HTMLElement)) return;
+    shell.classList.remove('is-bitmovin-active', 'is-bitmovin-fallback');
+    shell.dataset.bitmovinReady = '0';
+    const launcher = shell.querySelector('[data-bitmovin-post-launcher="true"]');
+    if (launcher instanceof HTMLElement) {
+      launcher.removeAttribute('aria-hidden');
+    }
+    const mount = shell.querySelector('[data-bitmovin-post-mount="true"]');
+    if (mount instanceof HTMLElement) {
+      mount.innerHTML = '';
+    }
+    const fallbackVideo = shell.querySelector('[data-bitmovin-post-fallback="true"]');
+    if (fallbackVideo instanceof HTMLVideoElement) {
+      fallbackVideo.pause?.();
+      fallbackVideo.hidden = true;
+      fallbackVideo.controls = false;
+    }
+  }
+
   function destroyBitmovinPostPlayer(shell) {
     const entry = bitmovinPostPlayers.get(shell);
     if (!entry) return;
@@ -3037,6 +3057,8 @@
 
   function registerSocialVideoElement(video) {
     if (!(video instanceof HTMLVideoElement)) return;
+    video.disablePictureInPicture = true;
+    video.setAttribute('disableremoteplayback', '');
     if (!video.dataset.socialVideoElementObserved) {
       video.dataset.socialVideoElementObserved = '1';
       ensureSocialVideoViewportObserver()?.observe?.(video);
@@ -3131,9 +3153,12 @@
     if (!(video instanceof HTMLVideoElement)) return false;
     if (eventName !== 'timeupdate') return false;
     if (!isMobileFeedVideoPlaybackMode()) return false;
+    const shell = video.closest('[data-social-video-player]');
+    const context = String(shell?.dataset?.adaptiveMediaContext || 'card');
     const now = Date.now();
     const last = Number(video.dataset.socialVideoLastUiSyncAt || 0);
-    if (last && now - last < 120) {
+    const minDelta = context === 'card' ? 240 : 120;
+    if (last && now - last < minDelta) {
       return true;
     }
     video.dataset.socialVideoLastUiSyncAt = String(now);
@@ -3706,7 +3731,9 @@
   }
 
   function renderInlineSocialVideo(media, options = {}) {
-    if (canUseBitmovinPostPlayer()) {
+    const adaptiveContext = String(options.adaptiveContext || 'card');
+    const shouldPreferNativeInline = adaptiveContext === 'card' && !isDesktopClient();
+    if (!shouldPreferNativeInline && canUseBitmovinPostPlayer()) {
       return renderBitmovinInlineSocialVideo(media, options);
     }
     return renderInlineSocialVideoNative(media, options);
