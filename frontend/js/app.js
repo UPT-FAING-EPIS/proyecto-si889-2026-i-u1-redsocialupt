@@ -4473,6 +4473,7 @@
       windowWidth: null,
       minimized: false,
       mobileExpanded: false,
+      expandedMode: null,
       mobileExpandedUsingFullscreen: false,
       mobileExpandSnapshot: null,
       resizing: null,
@@ -4530,6 +4531,18 @@
 
     function isMobileCallViewport() {
       return window.innerWidth <= 767;
+    }
+
+    function isCallWindowExpanded() {
+      return Boolean(callState.mobileExpanded);
+    }
+
+    function isDesktopExpandedCallWindow() {
+      return callState.expandedMode === 'desktop';
+    }
+
+    function isMobileExpandedCallWindow() {
+      return callState.expandedMode === 'mobile';
     }
 
     function getCallWindowFullscreenElement() {
@@ -4610,7 +4623,7 @@
 
     function clampCallWindow(root = ensureCallWindow()) {
       if (!root || root.classList.contains('hidden')) return;
-      if (callState.mobileExpanded) {
+      if (isCallWindowExpanded()) {
         root.style.setProperty('position', 'fixed', 'important');
         root.style.setProperty('inset', '0', 'important');
         root.style.setProperty('left', '0', 'important');
@@ -4645,6 +4658,8 @@
         borderRadius: root.style.borderRadius || '',
         transform: root.style.transform || '',
         margin: root.style.margin || '',
+        boxSizing: root.style.boxSizing || '',
+        transition: root.style.transition || '',
       };
     }
 
@@ -4672,12 +4687,17 @@
       apply('border-radius', snapshot?.borderRadius || '');
       apply('transform', snapshot?.transform || '');
       apply('margin', snapshot?.margin || '');
+      apply('box-sizing', snapshot?.boxSizing || '');
+      apply('transition', snapshot?.transition || '');
     }
 
     function clearCallWindowExpandedStyles(root = ensureCallWindow()) {
       if (!root) return;
       callState.mobileExpandedUsingFullscreen = false;
       root.classList.remove('call-window--mobile-expanded');
+      root.classList.remove('call-window--desktop-expanded');
+      root.classList.remove('call-window--expanded-animating');
+      root.classList.remove('call-window--expanded-restoring');
       document.body.classList.remove('call-window-mobile-expanded-active');
       document.documentElement.classList.remove('call-window-mobile-expanded-active');
       [
@@ -4697,6 +4717,8 @@
         'border-radius',
         'transform',
         'margin',
+        'box-sizing',
+        'transition',
       ].forEach((prop) => root.style.removeProperty(prop));
     }
 
@@ -4724,6 +4746,69 @@
       root.style.setProperty('box-sizing', 'border-box', 'important');
     }
 
+    function waitForNextAnimationFrame() {
+      return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+    }
+
+    function waitForCallWindowTransitionEnd(root) {
+      return new Promise((resolve) => {
+        if (!root) {
+          resolve();
+          return;
+        }
+        let finished = false;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          root.removeEventListener('transitionend', onTransitionEnd);
+          window.clearTimeout(timeoutId);
+          resolve();
+        };
+        const onTransitionEnd = (event) => {
+          if (event.target !== root) return;
+          finish();
+        };
+        const timeoutId = window.setTimeout(finish, 420);
+        root.addEventListener('transitionend', onTransitionEnd);
+      });
+    }
+
+    async function animateDesktopExpandedCallWindow(root, fromRect, toRect, { targetBorderRadius = '0px', restoring = false } = {}) {
+      if (!root || !fromRect || !toRect) return;
+      root.classList.add('call-window--expanded-animating');
+      root.classList.toggle('call-window--expanded-restoring', restoring);
+      root.style.setProperty('transition', 'none', 'important');
+      root.style.setProperty('position', 'fixed', 'important');
+      root.style.setProperty('inset', 'auto', 'important');
+      root.style.setProperty('left', `${Math.round(fromRect.left)}px`, 'important');
+      root.style.setProperty('top', `${Math.round(fromRect.top)}px`, 'important');
+      root.style.setProperty('right', 'auto', 'important');
+      root.style.setProperty('bottom', 'auto', 'important');
+      root.style.setProperty('width', `${Math.round(fromRect.width)}px`, 'important');
+      root.style.setProperty('height', `${Math.round(fromRect.height)}px`, 'important');
+      root.style.setProperty('max-width', 'none', 'important');
+      root.style.setProperty('max-height', 'none', 'important');
+      root.style.setProperty('min-height', '0', 'important');
+      root.style.setProperty('margin', '0', 'important');
+      root.style.setProperty('box-sizing', 'border-box', 'important');
+      root.getBoundingClientRect();
+      root.style.setProperty(
+        'transition',
+        'left 240ms cubic-bezier(0.2, 0.8, 0.2, 1), top 240ms cubic-bezier(0.2, 0.8, 0.2, 1), width 240ms cubic-bezier(0.2, 0.8, 0.2, 1), height 240ms cubic-bezier(0.2, 0.8, 0.2, 1), border-radius 240ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+        'important'
+      );
+      await waitForNextAnimationFrame();
+      root.style.setProperty('left', `${Math.round(toRect.left)}px`, 'important');
+      root.style.setProperty('top', `${Math.round(toRect.top)}px`, 'important');
+      root.style.setProperty('width', `${Math.round(toRect.width)}px`, 'important');
+      root.style.setProperty('height', `${Math.round(toRect.height)}px`, 'important');
+      root.style.setProperty('border-radius', targetBorderRadius, 'important');
+      await waitForCallWindowTransitionEnd(root);
+      root.classList.remove('call-window--expanded-animating');
+      root.classList.remove('call-window--expanded-restoring');
+      root.style.removeProperty('transition');
+    }
+
     function applyDefaultCallWindowPosition(root = ensureCallWindow()) {
       if (!root) return;
       root.style.removeProperty('bottom');
@@ -4740,8 +4825,9 @@
     }
 
     function finalizeMobileExpandedCallWindowExit(root = ensureCallWindow(), { restoreSnapshot = true } = {}) {
-      if (!root || !callState.mobileExpanded) return;
+      if (!root || !isCallWindowExpanded()) return;
       root.classList.remove('call-window--mobile-expanded');
+      root.classList.remove('call-window--desktop-expanded');
       document.body.classList.remove('call-window-mobile-expanded-active');
       document.documentElement.classList.remove('call-window-mobile-expanded-active');
       if (restoreSnapshot) {
@@ -4750,6 +4836,7 @@
         clearCallWindowExpandedStyles(root);
       }
       callState.mobileExpanded = false;
+      callState.expandedMode = null;
       callState.mobileExpandedUsingFullscreen = false;
       callState.mobileExpandSnapshot = null;
       syncMinimizedCallWindowLayout(root);
@@ -4757,7 +4844,24 @@
     }
 
     async function exitMobileExpandedCallWindow(root = ensureCallWindow(), { restoreSnapshot = true } = {}) {
-      if (!root || !callState.mobileExpanded) return;
+      if (!root || !isCallWindowExpanded()) return;
+      if (isDesktopExpandedCallWindow()) {
+        const snapshot = callState.mobileExpandSnapshot || {};
+        const toRect = {
+          left: Number.parseFloat(snapshot.left) || 24,
+          top: Number.parseFloat(snapshot.top) || 96,
+          width: Number.parseFloat(snapshot.width) || root.offsetWidth || 400,
+          height: Number.parseFloat(snapshot.height) || root.offsetHeight || 520,
+        };
+        await animateDesktopExpandedCallWindow(
+          root,
+          { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight },
+          toRect,
+          { targetBorderRadius: snapshot.borderRadius || '1.7rem', restoring: true }
+        );
+        finalizeMobileExpandedCallWindowExit(root, { restoreSnapshot });
+        return;
+      }
       if (callState.mobileExpandedUsingFullscreen || isCallWindowFullscreen(root)) {
         await exitCallWindowFullscreen(root);
       }
@@ -4765,17 +4869,34 @@
     }
 
     async function enterMobileExpandedCallWindow(root = ensureCallWindow()) {
-      if (!root || callState.mobileExpanded || !isMobileCallViewport()) return;
+      if (!root || isCallWindowExpanded()) return;
       callState.mobileExpandSnapshot = captureMobileExpandedSnapshot(root);
       callState.mobileExpanded = true;
+      callState.expandedMode = isMobileCallViewport() ? 'mobile' : 'desktop';
       callState.mobileExpandedUsingFullscreen = false;
+      if (!isMobileCallViewport()) {
+        const rect = root.getBoundingClientRect();
+        root.classList.add('call-window--desktop-expanded');
+        document.body.classList.add('call-window-mobile-expanded-active');
+        document.documentElement.classList.add('call-window-mobile-expanded-active');
+        await animateDesktopExpandedCallWindow(
+          root,
+          rect,
+          { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight },
+          { targetBorderRadius: '0px' }
+        );
+        applyMobileExpandedCallWindowStyles(root);
+        root.classList.remove('call-window--mobile-expanded');
+        root.classList.add('call-window--desktop-expanded');
+        return;
+      }
       applyMobileExpandedCallWindowStyles(root);
       callState.mobileExpandedUsingFullscreen = await requestCallWindowFullscreen(root);
     }
 
     async function toggleMobileExpandedCallWindow(root = ensureCallWindow()) {
-      if (!isMobileCallViewport() || !root || root.classList.contains('hidden')) return;
-      if (callState.mobileExpanded) {
+      if (!root || root.classList.contains('hidden')) return;
+      if (isCallWindowExpanded()) {
         await exitMobileExpandedCallWindow(root);
       } else {
         await enterMobileExpandedCallWindow(root);
@@ -5112,7 +5233,7 @@
       };
       handle.style.touchAction = 'none';
       const onPointerDown = (event) => {
-        if (callState.mobileExpanded) return;
+        if (isCallWindowExpanded()) return;
         if (event.target.closest('button')) return;
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         const rect = root.getBoundingClientRect();
@@ -5167,7 +5288,7 @@
           };
         };
         const onResizePointerDown = (event) => {
-          if (callState.mobileExpanded) return;
+          if (isCallWindowExpanded()) return;
           if (event.pointerType === 'mouse' && event.button !== 0) return;
           beginResize(event.pointerId, event.clientX, event.clientY);
           if (typeof resizeHandle.setPointerCapture === 'function') {
@@ -5197,7 +5318,7 @@
           document.body.classList.remove('select-none');
         };
         const onResizeMouseDown = (event) => {
-          if (callState.mobileExpanded) return;
+          if (isCallWindowExpanded()) return;
           if (event.button !== 0) return;
           beginResize('mouse', event.clientX, event.clientY);
           document.body.classList.add('select-none');
@@ -5239,7 +5360,7 @@
       const minimizeButton = root.querySelector('#call-minimize-btn');
       const expandButton = root.querySelector('#call-expand-btn');
       const onMinimize = async () => {
-        if (callState.mobileExpanded) {
+        if (isCallWindowExpanded()) {
           await exitMobileExpandedCallWindow(root);
         }
         callState.minimized = !callState.minimized;
@@ -5259,7 +5380,7 @@
       cleanups.push(() => minimizeButton.removeEventListener('click', onMinimize));
 
       const onExpand = async () => {
-        if (!isMobileCallViewport() || callState.minimized) return;
+        if (callState.minimized) return;
         await toggleMobileExpandedCallWindow(root);
         updateCallWindow();
       };
@@ -5267,7 +5388,7 @@
       cleanups.push(() => expandButton?.removeEventListener('click', onExpand));
 
       const onCallWindowFullscreenChange = () => {
-        if (!callState.mobileExpanded) return;
+        if (!isMobileExpandedCallWindow()) return;
         if (isCallWindowFullscreen(root)) {
           callState.mobileExpandedUsingFullscreen = true;
           applyMobileExpandedCallWindowStyles(root);
@@ -5321,10 +5442,17 @@
       cleanups.push(() => volumeInput.removeEventListener('input', onVolumeInput));
 
       const onResize = () => {
-        if (callState.mobileExpanded && !isMobileCallViewport()) {
+        if (isDesktopExpandedCallWindow()) {
+          root.style.setProperty('left', '0', 'important');
+          root.style.setProperty('top', '0', 'important');
+          root.style.setProperty('width', `${window.innerWidth}px`, 'important');
+          root.style.setProperty('height', `${window.innerHeight}px`, 'important');
+          return;
+        }
+        if (isMobileExpandedCallWindow() && !isMobileCallViewport()) {
           exitMobileExpandedCallWindow(root).catch(() => { });
         }
-        if (!callState.mobileExpanded && !callState.drag && !callState.resizing) {
+        if (!isCallWindowExpanded() && !callState.drag && !callState.resizing) {
           applyDefaultCallWindowPosition(root);
         }
         clampCallWindow(root);
@@ -5411,7 +5539,7 @@
         root.style.removeProperty('min-height');
         root.style.removeProperty('height');
         root.style.removeProperty('max-height');
-        if (callState.windowWidth && !callState.mobileExpanded) {
+        if (callState.windowWidth && !isCallWindowExpanded()) {
           root.style.setProperty('--call-window-width', `${callState.windowWidth}px`);
           root.style.setProperty('width', `${callState.windowWidth}px`, 'important');
           root.style.setProperty('max-width', 'calc(100vw - 1rem)', 'important');
@@ -5553,17 +5681,18 @@
       root.classList.toggle('call-window--video', isVideoMode);
       root.classList.toggle('call-window--audio', !isVideoMode);
       root.classList.toggle('call-window--minimized', callState.minimized);
-      root.classList.toggle('call-window--mobile-expanded', callState.mobileExpanded);
+      root.classList.toggle('call-window--mobile-expanded', isMobileExpandedCallWindow());
+      root.classList.toggle('call-window--desktop-expanded', isDesktopExpandedCallWindow());
       root.classList.toggle('call-window--ringing', session.status === 'ringing');
       root.classList.toggle('call-window--accepted', session.status === 'accepted');
       root.classList.toggle('call-window--incoming', isIncomingRinging);
       root.classList.toggle('call-window--outgoing', isOutgoingRinging);
-      if (callState.windowWidth && !callState.minimized && !callState.mobileExpanded) {
+      if (callState.windowWidth && !callState.minimized && !isCallWindowExpanded()) {
         root.style.setProperty('--call-window-width', `${callState.windowWidth}px`);
         root.style.setProperty('width', `${callState.windowWidth}px`, 'important');
         root.style.setProperty('max-width', 'calc(100vw - 1rem)', 'important');
         root.style.setProperty('flex-basis', `${callState.windowWidth}px`, 'important');
-      } else if (!callState.minimized && !callState.mobileExpanded) {
+      } else if (!callState.minimized && !isCallWindowExpanded()) {
         root.style.removeProperty('--call-window-width');
         root.style.removeProperty('width');
         root.style.removeProperty('max-width');
@@ -5580,7 +5709,7 @@
       root.querySelector('#call-toggle-mic-btn').classList.toggle('hidden', !showMicControl);
       volumePill.classList.toggle('hidden', !showVolumeControl);
       root.querySelector('#call-minimize-btn').classList.toggle('hidden', !showVideoStage);
-      expandButton?.classList.toggle('hidden', !isMobileCallViewport() || callState.minimized);
+      expandButton?.classList.toggle('hidden', callState.minimized);
 
       const micIcon = root.querySelector('#call-toggle-mic-btn .material-symbols-outlined');
       const videoIcon = root.querySelector('#call-toggle-video-btn .material-symbols-outlined');
@@ -5591,9 +5720,9 @@
         minimizeIcon.textContent = callState.minimized ? 'open_in_full' : 'remove';
       }
       if (expandButton && expandIcon) {
-        expandIcon.textContent = callState.mobileExpanded ? '❐' : '□';
-        expandButton.setAttribute('aria-label', callState.mobileExpanded ? 'Restaurar llamada' : 'Maximizar llamada');
-        expandButton.setAttribute('title', callState.mobileExpanded ? 'Restaurar' : 'Maximizar');
+        expandIcon.textContent = isCallWindowExpanded() ? '❐' : '□';
+        expandButton.setAttribute('aria-label', isCallWindowExpanded() ? 'Restaurar llamada' : 'Maximizar llamada');
+        expandButton.setAttribute('title', isCallWindowExpanded() ? 'Restaurar' : 'Maximizar');
       }
 
       const remoteVideo = root.querySelector('#call-remote-video');
@@ -5613,7 +5742,7 @@
         localPreviewPlaceholder.classList.toggle('hidden', Boolean(callState.localVideoEnabled && callState.localStream));
       }
       if (resizeHandle) {
-        const canResize = isVideoMode && !callState.minimized && !callState.mobileExpanded;
+        const canResize = isVideoMode && !callState.minimized && !isCallWindowExpanded();
         resizeHandle.classList.toggle('hidden', !canResize);
       }
 
@@ -6081,6 +6210,7 @@
       callState.windowWidth = null;
       callState.minimized = false;
       callState.mobileExpanded = false;
+      callState.expandedMode = null;
       callState.mobileExpandedUsingFullscreen = false;
       callState.mobileExpandSnapshot = null;
       clearCallWindowExpandedStyles();
@@ -6188,6 +6318,7 @@
       callState.windowWidth = null;
       callState.minimized = false;
       callState.mobileExpanded = false;
+      callState.expandedMode = null;
       callState.mobileExpandedUsingFullscreen = false;
       callState.mobileExpandSnapshot = null;
       clearCallWindowExpandedStyles();
@@ -6315,6 +6446,7 @@
       callState.drag = null;
       callState.minimized = false;
       callState.mobileExpanded = false;
+      callState.expandedMode = null;
       callState.mobileExpandedUsingFullscreen = false;
       callState.mobileExpandSnapshot = null;
       callState.windowWidth = null;
@@ -6583,7 +6715,7 @@
 
         return `
           <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
-            <div class="max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}">
+            <div class="max-w-[84%] sm:max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}">
               <div class="rounded-2xl ${isMine ? 'rounded-br-sm' : 'rounded-bl-sm'} shadow-sm ${bubbleClass}">
                 ${hasImage ? `
                   <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" loading="lazy" decoding="async" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
@@ -6594,7 +6726,7 @@
                   </div>
                 ` : ''}
               </div>
-              <div class="mt-1 px-1 flex items-center gap-2">
+              <div class="mt-1 px-1 flex items-center gap-1.5 sm:gap-2">
                 <span class="text-[11px] text-slate-500">${escapeHtml(formatClock(message.created_at))}</span>
                 ${!isMine ? `
                   <button type="button" data-action="report-message" data-message-id="${message.id}" class="text-[11px] font-semibold text-slate-500 hover:text-slate-700 transition-colors">
@@ -6624,7 +6756,7 @@
 
       return `
         <div class="flex ${isMine ? 'justify-end' : 'justify-start'}${enterClass}">
-          <div class="max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}">
+            <div class="max-w-[84%] sm:max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}">
             <div class="rounded-2xl ${isMine ? 'rounded-br-sm' : 'rounded-bl-sm'} shadow-sm ${bubbleClass}">
               ${hasImage ? `
                 <img src="${safeUrl(message.image_url)}" alt="Imagen enviada" loading="lazy" decoding="async" class="block w-full max-w-[320px] max-h-[320px] object-cover ${hasContent ? '' : 'rounded-2xl'}"/>
@@ -6635,7 +6767,7 @@
                 </div>
               ` : ''}
             </div>
-            <div class="mt-1 px-1 flex items-center gap-2">
+            <div class="mt-1 px-1 flex items-center gap-1.5 sm:gap-2">
               <span class="text-[11px] text-slate-500">${escapeHtml(formatClock(message.created_at))}</span>
               ${!isMine ? `
                 <button type="button" data-action="report-message" data-message-id="${message.id}" class="text-[11px] font-semibold text-slate-500 hover:text-slate-700 transition-colors">
@@ -6673,7 +6805,7 @@
         activeUser = resolveProfileData(liveUser);
       }
 
-      const headerPresence = chatPanel.querySelector('p.text-sm.text-slate-500.truncate');
+      const headerPresence = chatPanel.querySelector('p[class*="text-slate-500"][class*="truncate"]');
       if (!headerPresence) {
         return;
       }
@@ -6739,38 +6871,38 @@
       syncMessagesResponsiveLayout();
 
       chatPanel.innerHTML = `
-        <div class="flex items-center gap-3 p-3 sm:p-4 bg-white border-b border-slate-200 shrink-0">
-          <button id="back-to-inbox-btn" type="button" class="lg:hidden w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center text-slate-700 shrink-0" title="Volver a conversaciones">
+        <div class="flex items-center gap-2.5 p-2.5 sm:p-4 bg-white border-b border-slate-200 shrink-0">
+          <button id="back-to-inbox-btn" type="button" class="lg:hidden w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center text-slate-700 shrink-0" title="Volver a conversaciones">
             <span class="material-symbols-outlined text-[20px]">arrow_back</span>
           </button>
-          ${renderAvatar(friendProfile, { sizeClass: 'w-12 h-12', textClass: 'text-white font-bold', showOnline: true })}
+          ${renderAvatar(friendProfile, { sizeClass: 'w-11 h-11 sm:w-12 sm:h-12', textClass: 'text-white font-bold', showOnline: true })}
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 flex-wrap">
-                <h2 class="font-bold text-slate-900 text-base sm:text-lg leading-tight">${escapeHtml(displayName(friendProfile))}</h2>
+              <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h2 class="font-bold text-slate-900 text-[15px] sm:text-lg leading-tight">${escapeHtml(displayName(friendProfile))}</h2>
               ${friendProfile.faculty ? `
-                <span class="text-white text-[10px] font-bold px-2 py-0.5 rounded-full" style="background:${userColor(friendProfile)}">
+                <span class="text-white text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full" style="background:${userColor(friendProfile)}">
                   ${escapeHtml(friendProfile.faculty)}
                 </span>
                 ` : ''}
               </div>
             <p class="text-sm text-slate-500 truncate">${escapeHtml(`${careerLabel(friendProfile) || 'Amigo UPT'} · ${presenceLabel(friendProfile)}`)}</p>
           </div>
-          <div class="flex items-center gap-2 ml-auto">
-            <button id="start-audio-call-btn" type="button" class="w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center text-slate-700" title="Llamada">
-              <span class="material-symbols-outlined text-[22px]">call</span>
+          <div class="flex items-center gap-1.5 sm:gap-2 ml-auto shrink-0">
+            <button id="start-audio-call-btn" type="button" class="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center text-slate-700" title="Llamada">
+              <span class="material-symbols-outlined text-[20px] sm:text-[22px]">call</span>
             </button>
-            <button id="start-video-call-btn" type="button" class="w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center text-slate-700" title="Videollamada">
-              <span class="material-symbols-outlined text-[22px]">videocam</span>
+            <button id="start-video-call-btn" type="button" class="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors flex items-center justify-center text-slate-700" title="Videollamada">
+              <span class="material-symbols-outlined text-[20px] sm:text-[22px]">videocam</span>
             </button>
           </div>
         </div>
-        <div class="flex-1 overflow-y-auto p-4 md:p-5 flex flex-col gap-3 custom-scrollbar" id="messages-area">
+        <div class="flex-1 overflow-y-auto px-3 py-3 md:p-5 flex flex-col gap-2.5 sm:gap-3 custom-scrollbar" id="messages-area">
           <p class="text-center text-slate-400 text-sm">Cargando mensajes...</p>
         </div>
-        <div class="p-4 bg-white border-t border-slate-200 shrink-0">
-          <div class="flex items-end gap-3">
-            <textarea id="msg-input" enterkeyhint="send" class="flex-1 bg-slate-100 border border-slate-200 rounded-[1.4rem] px-4 py-3 text-sm focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none min-h-[50px] max-h-36" placeholder="Escribe un mensaje para ${escapeHtml(displayName(friendProfile))}..." rows="1"></textarea>
-            <button id="send-msg-btn" type="button" class="w-11 h-11 rounded-full bg-[#D4A017] flex items-center justify-center text-white hover:bg-[#b88a14] transition-colors shrink-0 shadow-sm">
+        <div class="p-3 sm:p-4 bg-white border-t border-slate-200 shrink-0">
+          <div class="flex items-end gap-2 sm:gap-3">
+            <textarea id="msg-input" enterkeyhint="send" class="flex-1 bg-slate-100 border border-slate-200 rounded-[1.3rem] px-4 py-3 text-sm leading-5 text-slate-900 placeholder:text-slate-500 focus:ring-1 focus:ring-[#1B2A6B] outline-none resize-none min-h-[48px] max-h-32 sm:max-h-36" placeholder="Escribe un mensaje" rows="1"></textarea>
+            <button id="send-msg-btn" type="button" class="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#D4A017] flex items-center justify-center text-white hover:bg-[#b88a14] transition-colors shrink-0 shadow-sm">
               <span class="material-symbols-outlined text-[20px] ml-0.5">send</span>
             </button>
           </div>
@@ -6788,6 +6920,15 @@
         exitMobileConversationView();
       });
 
+      function focusMessageInput() {
+        const nextInput = chatPanel.querySelector('#msg-input');
+        nextInput?.focus({ preventScroll: true });
+        if (nextInput && typeof nextInput.setSelectionRange === 'function') {
+          const length = nextInput.value.length;
+          nextInput.setSelectionRange(length, length);
+        }
+      }
+
       async function sendMessage() {
         const content = input.value.trim();
         if (!activeChat || !content) return;
@@ -6804,8 +6945,7 @@
         if (!result?.ok) {
           showToast(result?.data?.error || 'Error al enviar el mensaje', 'error');
           setTimeout(() => {
-            const nextInput = chatPanel.querySelector('#msg-input');
-            nextInput?.focus();
+            focusMessageInput();
           }, 0);
           return;
         }
@@ -6827,7 +6967,7 @@
         loadInbox(false).catch(() => {});
         setTimeout(() => {
           const nextInput = chatPanel.querySelector('#msg-input');
-          nextInput?.focus();
+          focusMessageInput();
           if (nextInput) {
             nextInput.style.height = 'auto';
             nextInput.style.height = `${Math.min(nextInput.scrollHeight, 144)}px`;
@@ -6835,6 +6975,11 @@
         }, 0);
         startChatPolling();
       }
+      const preserveInputFocus = (event) => {
+        event.preventDefault();
+        focusMessageInput();
+      };
+      sendButton.addEventListener('pointerdown', preserveInputFocus);
       sendButton.addEventListener('click', sendMessage);
       input.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey) {
