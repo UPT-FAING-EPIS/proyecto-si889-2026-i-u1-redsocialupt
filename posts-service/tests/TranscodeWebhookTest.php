@@ -43,6 +43,13 @@ class TranscodeWebhookTest extends TestCase
             'name' => 'high',
             'width' => 1280,
             'height' => 720,
+            'keyFrameInterval' => 30,
+            'bFrames' => 0,
+        ]);
+        $this->seeJsonContains([
+            'name' => 'audio_main',
+            'codec' => 'opus',
+            'bitrate' => 128000,
         ]);
         $this->seeJsonContains([
             'name' => 'medium',
@@ -68,6 +75,8 @@ class TranscodeWebhookTest extends TestCase
             'name' => 'high',
             'width' => 720,
             'height' => 1280,
+            'keyFrameInterval' => 30,
+            'bFrames' => 0,
         ]);
         $this->seeJsonContains([
             'name' => 'medium',
@@ -78,6 +87,31 @@ class TranscodeWebhookTest extends TestCase
             'name' => 'low',
             'width' => 360,
             'height' => 640,
+        ]);
+    }
+
+    #[TestDox('Webhook agrega un fallback seguro cuando la fuente es mas pequena que los perfiles estandar')]
+    public function testSmallSourceGetsSafeFallbackProfile(): void
+    {
+        $this->post('/api/internal/ome/transcode', $this->buildPayload(640, 360, 900000));
+        $this->seeStatusCode(200);
+        $this->seeJson([
+            'allowed' => true,
+        ]);
+        $this->seeJsonContains([
+            'name' => 'original',
+            'video' => 'video_original',
+        ]);
+        $this->seeJsonContains([
+            'name' => 'safe',
+            'video' => 'video_safe_low',
+        ]);
+        $this->seeJsonContains([
+            'name' => 'video_safe_low',
+            'width' => 640,
+            'height' => 360,
+            'keyFrameInterval' => 30,
+            'bFrames' => 0,
         ]);
     }
 }

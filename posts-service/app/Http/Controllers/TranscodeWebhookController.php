@@ -8,9 +8,10 @@ use Laravel\Lumen\Routing\Controller as BaseController;
 
 class TranscodeWebhookController extends BaseController
 {
-    private const AUDIO_BITRATE = 96000;
+    private const AUDIO_BITRATE = 128000;
     private const AUDIO_SAMPLE_RATE = 48000;
     private const AUDIO_CHANNELS = 2;
+    private const MIN_VIDEO_BITRATE = 350000;
 
     public function profiles(Request $request): JsonResponse
     {
@@ -69,6 +70,7 @@ class TranscodeWebhookController extends BaseController
 
     private function buildProfiles(int $sourceWidth, int $sourceHeight, int $framerate, int $sourceBitrate, bool $isPortrait): array
     {
+        $normalizedSourceBitrate = max(self::MIN_VIDEO_BITRATE, $sourceBitrate);
         $videoEncodes = [
             [
                 'name' => 'video_original',
@@ -112,18 +114,43 @@ class TranscodeWebhookController extends BaseController
             }
 
             $videoName = 'video_' . $target['name'];
+            $targetBitrate = min($target['bitrate'], $this->deriveSafeBitrate($sourceBitrate, $target['bitrate']));
             $videoEncodes[] = [
                 'name' => $videoName,
                 'codec' => 'h264',
                 'width' => $target['width'],
                 'height' => $target['height'],
-                'bitrate' => min($target['bitrate'], $this->deriveSafeBitrate($sourceBitrate, $target['bitrate'])),
+                'bitrate' => $targetBitrate,
                 'framerate' => $framerate,
+                'keyFrameInterval' => $framerate,
+                'bFrames' => 0,
+                'preset' => 'faster',
             ];
 
             $renditions[] = [
                 'name' => $target['name'],
                 'video' => $videoName,
+                'audio' => 'audio_main',
+            ];
+        }
+
+        if (count($renditions) === 1) {
+            $fallbackName = 'video_safe_low';
+            [$fallbackWidth, $fallbackHeight] = $this->buildSafeFallbackDimensions($sourceWidth, $sourceHeight, $isPortrait);
+            $videoEncodes[] = [
+                'name' => $fallbackName,
+                'codec' => 'h264',
+                'width' => $fallbackWidth,
+                'height' => $fallbackHeight,
+                'bitrate' => min($normalizedSourceBitrate, $this->deriveSafeBitrate($sourceBitrate, $normalizedSourceBitrate)),
+                'framerate' => $framerate,
+                'keyFrameInterval' => $framerate,
+                'bFrames' => 0,
+                'preset' => 'faster',
+            ];
+            $renditions[] = [
+                'name' => 'safe',
+                'video' => $fallbackName,
                 'audio' => 'audio_main',
             ];
         }
@@ -143,6 +170,33 @@ class TranscodeWebhookController extends BaseController
             return $targetBitrate;
         }
 
-        return max(350000, min($targetBitrate, (int) floor($sourceBitrate * 0.92)));
+        return max(self::MIN_VIDEO_BITRATE, min($targetBitrate, (int) floor($sourceBitrate * 0.92)));
+    }
+
+    private function buildSafeFallbackDimensions(int $sourceWidth, int $sourceHeight, bool $isPortrait): array
+    {
+        $maxLongEdge = $isPortrait ? 960 : 960;
+        $maxShortEdge = $isPortrait ? 540 : 540;
+
+        if ($isPortrait) {
+            if ($sourceHeight <= $maxLongEdge && $sourceWidth <= $maxShortEdge) {
+                return [$sourceWidth, $sourceHeight];
+            }
+            $scale = min($maxShortEdge / max(1, $sourceWidth), $maxLongEdge / max(1, $sourceHeight));
+            return [
+                max(2, (int) floor(($sourceWidth * $scale) / 2) * 2),
+                max(2, (int) floor(($sourceHeight * $scale) / 2) * 2),
+            ];
+        }
+
+        if ($sourceWidth <= $maxLongEdge && $sourceHeight <= $maxShortEdge) {
+            return [$sourceWidth, $sourceHeight];
+        }
+
+        $scale = min($maxLongEdge / max(1, $sourceWidth), $maxShortEdge / max(1, $sourceHeight));
+        return [
+            max(2, (int) floor(($sourceWidth * $scale) / 2) * 2),
+            max(2, (int) floor(($sourceHeight * $scale) / 2) * 2),
+        ];
     }
 }

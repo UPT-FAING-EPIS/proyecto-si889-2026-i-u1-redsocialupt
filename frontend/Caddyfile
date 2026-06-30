@@ -19,7 +19,13 @@
 
 	handle_path /ome-ready/* {
 		header Cache-Control "no-store"
-		reverse_proxy ovenmediaengine:3333
+		reverse_proxy ovenmediaengine:3333 {
+			@missing status 404
+			handle_response @missing {
+				header Cache-Control "no-store"
+				respond "" 204
+			}
+		}
 	}
 
 	handle_path /ome/* {

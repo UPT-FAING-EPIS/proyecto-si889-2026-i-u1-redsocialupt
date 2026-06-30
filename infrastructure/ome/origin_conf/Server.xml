@@ -192,7 +192,7 @@
 					<Type>live</Type>
 					<TranscodeWebhook>
 						<Enable>true</Enable>
-						<ControlServerUrl>http://posts-service/api/internal/ome/transcode</ControlServerUrl>
+						<ControlServerUrl>http://posts-service:8000/index.php/api/internal/ome/transcode</ControlServerUrl>
 						<Timeout>1500</Timeout>
 						<UseLocalProfilesOnConnectionFailure>true</UseLocalProfilesOnConnectionFailure>
 						<UseLocalProfilesOnServerDisallow>true</UseLocalProfilesOnServerDisallow>
@@ -242,14 +242,14 @@
 									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>
 								<Rendition>
-									<Name>source</Name>
+									<Name>original</Name>
 									<Video>bypass_video</Video>
 									<Audio>bypass_audio</Audio>
 								</Rendition>
 								<Rendition>
 									<Name>low</Name>
 									<Video>fallback_low</Video>
-									<Audio>bypass_audio</Audio>
+									<Audio>fallback_audio</Audio>
 								</Rendition>
 							</Playlist>
 
@@ -269,6 +269,13 @@
 								<Audio>
 									<Name>bypass_audio</Name>
 									<Bypass>true</Bypass>
+								</Audio>
+								<Audio>
+									<Name>fallback_audio</Name>
+									<Codec>opus</Codec>
+									<Bitrate>128000</Bitrate>
+									<Samplerate>48000</Samplerate>
+									<Channel>2</Channel>
 								</Audio>
 							</Encodes>
 						</OutputProfile>

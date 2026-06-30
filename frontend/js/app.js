@@ -2596,7 +2596,7 @@
   }
 
   async function ensureLivestreamLibraries() {
-    await loadExternalScript('https://cdn.jsdelivr.net/npm/ovenplayer@0.10.14/dist/ovenplayer.js', 'OvenPlayer');
+    await loadExternalScript('https://cdn.jsdelivr.net/npm/ovenplayer@0.10.52/dist/ovenplayer.js', 'OvenPlayer');
     await loadExternalScript('https://cdn.jsdelivr.net/npm/ovenlivekit@latest/dist/OvenLiveKit.min.js', 'OvenLiveKit');
   }
 
@@ -4417,8 +4417,12 @@
     const messagesCount = container.querySelector('#messages-count');
     const CHAT_POLL_INTERVAL_MS = 1000;
     const CALL_INBOX_POLL_INTERVAL_MS = 650;
-    const CALL_SESSION_POLL_INTERVAL_MS = 450;
-    const CALL_SIGNAL_POLL_INTERVAL_MS = 250;
+    const CALL_SESSION_POLL_INTERVAL_MS = 850;
+    const CALL_SIGNAL_POLL_INTERVAL_MS = 280;
+    const CALL_SESSION_POLL_INTERVAL_FAST_MS = 180;
+    const CALL_SIGNAL_POLL_INTERVAL_FAST_MS = 100;
+    const CALL_RINGING_SESSION_POLL_INTERVAL_MS = 240;
+    const CALL_NEGOTIATION_BOOST_WINDOW_MS = 7000;
     const CALL_ICE_SERVERS = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
@@ -4485,6 +4489,7 @@
       ignoreOffer: false,
       pendingIceCandidates: [],
       initialVideoSyncDone: false,
+      negotiationBoostUntil: 0,
       audioSender: null,
       videoSender: null,
       videoTransceiver: null,
@@ -5793,19 +5798,75 @@
       return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
 
+    function isCallNegotiationBoostActive() {
+      return Number(callState.negotiationBoostUntil || 0) > Date.now();
+    }
+
+    function getCallSessionPollDelay() {
+      if (!callState.session) {
+        return CALL_SESSION_POLL_INTERVAL_MS;
+      }
+      if (callState.session.status === 'ringing') {
+        return CALL_RINGING_SESSION_POLL_INTERVAL_MS;
+      }
+      return isCallNegotiationBoostActive()
+        ? CALL_SESSION_POLL_INTERVAL_FAST_MS
+        : CALL_SESSION_POLL_INTERVAL_MS;
+    }
+
+    function getCallSignalPollDelay() {
+      if (!callState.session) {
+        return CALL_SIGNAL_POLL_INTERVAL_MS;
+      }
+      return isCallNegotiationBoostActive()
+        ? CALL_SIGNAL_POLL_INTERVAL_FAST_MS
+        : CALL_SIGNAL_POLL_INTERVAL_MS;
+    }
+
+    function activateCallNegotiationBoost(durationMs = CALL_NEGOTIATION_BOOST_WINDOW_MS, { restart = true } = {}) {
+      callState.negotiationBoostUntil = Math.max(
+        Number(callState.negotiationBoostUntil || 0),
+        Date.now() + Math.max(250, Number(durationMs) || CALL_NEGOTIATION_BOOST_WINDOW_MS),
+      );
+      if (restart && callState.session) {
+        restartActiveCallPolling();
+      }
+    }
+
+    function clearCallNegotiationBoost() {
+      callState.negotiationBoostUntil = 0;
+    }
+
     function stopCallTimers() {
       if (callInboxTimer) {
         window.clearInterval(callInboxTimer);
         callInboxTimer = null;
       }
       if (callSessionTimer) {
-        window.clearInterval(callSessionTimer);
+        window.clearTimeout(callSessionTimer);
         callSessionTimer = null;
       }
       if (callSignalTimer) {
-        window.clearInterval(callSignalTimer);
+        window.clearTimeout(callSignalTimer);
         callSignalTimer = null;
       }
+    }
+
+    function stopActiveCallPollingTimers() {
+      if (callSessionTimer) {
+        window.clearTimeout(callSessionTimer);
+        callSessionTimer = null;
+      }
+      if (callSignalTimer) {
+        window.clearTimeout(callSignalTimer);
+        callSignalTimer = null;
+      }
+    }
+
+    function restartActiveCallPolling() {
+      if (!callState.session) return;
+      stopActiveCallPollingTimers();
+      startActiveCallPolling();
     }
 
     function cleanupPeerConnection() {
@@ -5838,6 +5899,7 @@
       callState.ignoreOffer = false;
       callState.pendingIceCandidates = [];
       callState.initialVideoSyncDone = false;
+      clearCallNegotiationBoost();
       callState.audioSender = null;
       callState.videoSender = null;
       callState.videoTransceiver = null;
@@ -5966,6 +6028,10 @@
       };
 
       peer.onconnectionstatechange = () => {
+        if (peer.connectionState === 'connected') {
+          clearCallNegotiationBoost();
+          restartActiveCallPolling();
+        }
         if (peer.connectionState === 'failed') {
           console.warn('La conexion WebRTC fallo');
         }
@@ -5994,6 +6060,7 @@
       if (!callState.session || callState.session.status !== 'accepted' || callState.awaitingAnswer || callState.makingOffer) return;
       const peer = createPeerConnection();
       try {
+        activateCallNegotiationBoost();
         callState.makingOffer = true;
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
@@ -6009,6 +6076,7 @@
       const payload = signal.payload || null;
 
       if (signal.signal_type === 'offer' && payload) {
+        activateCallNegotiationBoost();
         const offerCollision = callState.makingOffer || peer.signalingState !== 'stable';
         callState.ignoreOffer = !isPolitePeer() && offerCollision;
         if (callState.ignoreOffer) {
@@ -6043,6 +6111,7 @@
           }, 150);
         }
       } else if (signal.signal_type === 'answer' && payload) {
+        activateCallNegotiationBoost();
         try {
           const sameAnswer = peer.currentRemoteDescription?.type === 'answer'
             && peer.currentRemoteDescription?.sdp === payload.sdp;
@@ -6056,6 +6125,7 @@
           callState.ignoreOffer = false;
         }
       } else if (signal.signal_type === 'ice-candidate' && payload) {
+        activateCallNegotiationBoost(2200, { restart: false });
         if (!peer.remoteDescription) {
           callState.pendingIceCandidates.push(payload);
           return;
@@ -6092,6 +6162,7 @@
 
     async function beginWebRtcIfNeeded() {
       if (!callState.session || callState.session.status !== 'accepted') return;
+      activateCallNegotiationBoost();
       const needsVideo = callState.localVideoEnabled;
       const needsLocalStream =
         !callState.localStream
@@ -6164,6 +6235,7 @@
           if (!callState.startedAt) {
             callState.startedAt = Date.now();
           }
+          activateCallNegotiationBoost(2600, { restart: false });
           await beginWebRtcIfNeeded();
         } else if (['rejected', 'ended', 'missed'].includes(nextSession.status)) {
           const isCaller = Number(nextSession.caller_id) === Number(user.id);
@@ -6177,6 +6249,56 @@
       } finally {
         callSessionPollInFlight = false;
       }
+    }
+
+    function queueNextCallSessionPoll(delay = getCallSessionPollDelay()) {
+      if (!callState.session) {
+        callSessionTimer = null;
+        return;
+      }
+      if (callSessionTimer) {
+        window.clearTimeout(callSessionTimer);
+      }
+      callSessionTimer = window.setTimeout(async () => {
+        callSessionTimer = null;
+        if (!callState.session) {
+          return;
+        }
+        try {
+          await pollActiveCallState();
+        } catch (error) {
+          console.warn('Error de estado de llamada:', error);
+        } finally {
+          if (callState.session) {
+            queueNextCallSessionPoll(getCallSessionPollDelay());
+          }
+        }
+      }, Math.max(0, delay));
+    }
+
+    function queueNextCallSignalPoll(delay = getCallSignalPollDelay()) {
+      if (!callState.session) {
+        callSignalTimer = null;
+        return;
+      }
+      if (callSignalTimer) {
+        window.clearTimeout(callSignalTimer);
+      }
+      callSignalTimer = window.setTimeout(async () => {
+        callSignalTimer = null;
+        if (!callState.session) {
+          return;
+        }
+        try {
+          await pollCallSignals();
+        } catch (error) {
+          console.warn('Error de senales de llamada:', error);
+        } finally {
+          if (callState.session) {
+            queueNextCallSignalPoll(getCallSignalPollDelay());
+          }
+        }
+      }, Math.max(0, delay));
     }
 
     function presentIncomingCall(incoming) {
@@ -6216,6 +6338,7 @@
       clearCallWindowExpandedStyles();
       applyDefaultCallWindowPosition();
       resetCallNegotiationState();
+      activateCallNegotiationBoost(CALL_NEGOTIATION_BOOST_WINDOW_MS, { restart: false });
       updateCallWindow();
       keepRingTonePlaying();
       startActiveCallPolling();
@@ -6273,21 +6396,8 @@
 
     function startActiveCallPolling() {
       if (!callState.session) return;
-
-      if (!callSessionTimer) {
-        callSessionTimer = window.setInterval(() => {
-          pollActiveCallState().catch((error) => console.warn('Error de estado de llamada:', error));
-        }, CALL_SESSION_POLL_INTERVAL_MS);
-      }
-
-      if (!callSignalTimer) {
-        callSignalTimer = window.setInterval(() => {
-          pollCallSignals().catch((error) => console.warn('Error de senales de llamada:', error));
-        }, CALL_SIGNAL_POLL_INTERVAL_MS);
-      }
-
-      pollActiveCallState().catch((error) => console.warn('Error de estado de llamada:', error));
-      pollCallSignals().catch((error) => console.warn('Error de senales de llamada:', error));
+      queueNextCallSessionPoll(0);
+      queueNextCallSignalPoll(0);
     }
 
     async function openOutgoingCall(mode) {
@@ -6324,6 +6434,7 @@
       clearCallWindowExpandedStyles();
       applyDefaultCallWindowPosition();
       resetCallNegotiationState();
+      activateCallNegotiationBoost(CALL_NEGOTIATION_BOOST_WINDOW_MS, { restart: false });
       tryPlayRemoteMedia();
       updateCallWindow();
       startActiveCallPolling();
@@ -6357,6 +6468,7 @@
       callState.session = result.data;
       callState.startedAt = Date.now();
       resetCallNegotiationState();
+      activateCallNegotiationBoost();
       await beginWebRtcIfNeeded();
       tryPlayRemoteMedia();
       startActiveCallPolling();
@@ -8702,15 +8814,20 @@
         let viewerPlayerMediaObserver = null;
         let suppressViewerShellExit = false;
         let viewerSourceWarmupUntil = 0;
+        let viewerSourceTransitionUntil = 0;
         let viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
         let viewerTransportEscalated = false;
         let viewerQualityLevels = [];
+        let viewerManifestQualityLevels = [];
         let viewerCurrentQualityIndex = -1;
         let viewerQualityIsAuto = true;
         let viewerPreferredQualityMode = 'auto';
         let viewerPreferredQualityName = 'original';
         let viewerQualitySelectionPending = false;
         let viewerQualityMenuOpen = false;
+        let viewerQualityManifestKey = '';
+        let viewerQualityManifestLoading = false;
+        let viewerQualityManifestRetryTimer = 0;
         let commentsInitialized = false;
         let overlayTimer = null;
         let longPressTimer = null;
@@ -9120,12 +9237,240 @@
           return String(name || '').trim().toLowerCase();
         }
 
+        function parseM3uAttributeList(rawValue = '') {
+          const attributes = {};
+          const pattern = /([A-Z0-9-]+)=("[^"]*"|[^,]*)/gi;
+          let match = null;
+          while ((match = pattern.exec(String(rawValue || '')))) {
+            const key = String(match[1] || '').trim();
+            const value = String(match[2] || '').replace(/^"|"$/g, '').trim();
+            if (key) {
+              attributes[key] = value;
+            }
+          }
+          return attributes;
+        }
+
+        function parseViewerManifestQualityName(attributes = {}, uri = '') {
+          const directName = normalizeViewerQualityName(attributes.NAME || '');
+          if (directName) {
+            return directName;
+          }
+          return normalizeViewerQualityName(
+            String(uri || '')
+              .split('?')[0]
+              .split('/')
+              .pop()
+              .replace(/\.m3u8$/i, ''),
+          );
+        }
+
+        function parseViewerManifestQualityLevels(manifestText = '') {
+          const lines = String(manifestText || '')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+          const levels = [];
+
+          for (let index = 0; index < lines.length; index += 1) {
+            const line = lines[index];
+            if (!line.startsWith('#EXT-X-STREAM-INF:')) {
+              continue;
+            }
+
+            const attributes = parseM3uAttributeList(line.slice('#EXT-X-STREAM-INF:'.length));
+            const nextUri = lines[index + 1] && !lines[index + 1].startsWith('#') ? lines[index + 1] : '';
+            const resolution = String(attributes.RESOLUTION || '').split('x');
+            const width = Math.max(0, Number.parseInt(resolution[0] || '0', 10) || 0);
+            const height = Math.max(0, Number.parseInt(resolution[1] || '0', 10) || 0);
+            const bitrate = Math.max(
+              0,
+              Number.parseInt(attributes['AVERAGE-BANDWIDTH'] || attributes.BANDWIDTH || '0', 10) || 0,
+            );
+            const qualityName = parseViewerManifestQualityName(attributes, nextUri);
+
+            levels.push({
+              name: qualityName,
+              label: qualityName,
+              width,
+              height,
+              bitrate,
+              manifestUri: nextUri,
+              playerQualityIndex: -1,
+            });
+          }
+
+          return sortViewerQualityLevels(levels);
+        }
+
+        function getViewerAvailableQualityLevels() {
+          return viewerManifestQualityLevels.length ? viewerManifestQualityLevels : viewerQualityLevels;
+        }
+
+        function clearViewerQualityManifestRetry() {
+          if (viewerQualityManifestRetryTimer) {
+            window.clearTimeout(viewerQualityManifestRetryTimer);
+            viewerQualityManifestRetryTimer = 0;
+          }
+        }
+
+        function scheduleViewerQualityManifestRetry(delayMs = 900) {
+          if (viewerQualityLevels.length || viewerManifestQualityLevels.length || viewerQualityManifestLoading) {
+            return;
+          }
+          clearViewerQualityManifestRetry();
+          viewerQualityManifestRetryTimer = window.setTimeout(() => {
+            viewerQualityManifestRetryTimer = 0;
+            if (!viewerPlayer || !liveData?.stream_key || String(liveData.live_status || '').toLowerCase() === 'ended') {
+              return;
+            }
+            refreshViewerManifestQualityLevels().catch(() => { });
+          }, Math.max(250, Number(delayMs) || 900));
+        }
+
+        function getViewerQualityLevelValue(level, keys = []) {
+          if (!level || typeof level !== 'object') {
+            return 0;
+          }
+          for (const key of keys) {
+            const value = Number(level[key] || 0);
+            if (Number.isFinite(value) && value > 0) {
+              return value;
+            }
+          }
+          return 0;
+        }
+
+        function getViewerQualityLevelName(level) {
+          const directName = normalizeViewerQualityName(level?.label || level?.name || level?.id || '');
+          if (directName) {
+            if (directName.includes('original') || directName.includes('source')) return 'original';
+            if (directName.includes('high') || directName.includes('alta')) return 'high';
+            if (directName.includes('medium') || directName.includes('media')) return 'medium';
+            if (directName.includes('low') || directName.includes('baja')) return 'low';
+            if (directName.includes('safe') || directName.includes('rescate')) return 'safe';
+            return directName;
+          }
+
+          const width = getViewerQualityLevelValue(level, ['width', 'videoWidth', 'w']);
+          const height = getViewerQualityLevelValue(level, ['height', 'videoHeight', 'h']);
+          if (!width || !height) {
+            return '';
+          }
+
+          if (width >= 1000 || height >= 1000) {
+            return 'high';
+          }
+          if (width >= 720 || height >= 720) {
+            return 'medium';
+          }
+          return 'low';
+        }
+
         function formatViewerQualityBitrate(bitrate) {
           const normalized = Number(bitrate || 0);
           if (!Number.isFinite(normalized) || normalized <= 0) {
-            return 'Auto';
+            return '';
           }
-          return `${Math.max(1, Math.round(normalized / 1000))} kbps`;
+          const normalizedKbps = normalized >= 100000
+            ? Math.round(normalized / 1000)
+            : normalized < 100
+              ? Math.round(normalized * 1000)
+              : Math.round(normalized);
+          return `${Math.max(1, normalizedKbps)}kbps`;
+        }
+
+        function sortViewerQualityLevels(levels = []) {
+          return [...levels].sort((left, right) => {
+            const leftName = getViewerQualityLevelName(left);
+            const rightName = getViewerQualityLevelName(right);
+            if (leftName === 'original' && rightName !== 'original') {
+              return -1;
+            }
+            if (rightName === 'original' && leftName !== 'original') {
+              return 1;
+            }
+            const leftPixels = (Number(left.width || 0) * Number(left.height || 0)) || 0;
+            const rightPixels = (Number(right.width || 0) * Number(right.height || 0)) || 0;
+            if (leftPixels !== rightPixels) {
+              return rightPixels - leftPixels;
+            }
+            const leftBitrate = Number(left.bitrate || left.videoBitrate || left.bandwidth || 0) || 0;
+            const rightBitrate = Number(right.bitrate || right.videoBitrate || right.bandwidth || 0) || 0;
+            if (leftBitrate !== rightBitrate) {
+              return rightBitrate - leftBitrate;
+            }
+            return String(leftName).localeCompare(String(rightName));
+          });
+        }
+
+        function resolveViewerDisplayedQualityIndex(availableLevels = getViewerAvailableQualityLevels()) {
+          if (viewerQualityIsAuto || !availableLevels.length) {
+            return -1;
+          }
+
+          const currentPlayerLevel = viewerQualityLevels.find((level) => Number(level.playerQualityIndex) === Number(viewerCurrentQualityIndex))
+            || viewerQualityLevels[viewerCurrentQualityIndex]
+            || null;
+          const currentName = getViewerQualityLevelName(currentPlayerLevel);
+          const currentWidth = getViewerQualityLevelValue(currentPlayerLevel, ['width', 'videoWidth', 'w']);
+          const currentHeight = getViewerQualityLevelValue(currentPlayerLevel, ['height', 'videoHeight', 'h']);
+
+          let matchIndex = availableLevels.findIndex((level) => {
+            if (currentName && getViewerQualityLevelName(level) === currentName) {
+              return true;
+            }
+            return currentWidth > 0
+              && currentHeight > 0
+              && getViewerQualityLevelValue(level, ['width', 'videoWidth', 'w']) === currentWidth
+              && getViewerQualityLevelValue(level, ['height', 'videoHeight', 'h']) === currentHeight;
+          });
+
+          if (matchIndex >= 0) {
+            return matchIndex;
+          }
+
+          const preferredName = normalizeViewerQualityName(viewerPreferredQualityName);
+          if (!preferredName) {
+            return -1;
+          }
+          matchIndex = availableLevels.findIndex((level) => getViewerQualityLevelName(level) === preferredName);
+          return matchIndex;
+        }
+
+        function resolveViewerPlayerQualityIndex(level) {
+          if (!level || !viewerQualityLevels.length) {
+            return -1;
+          }
+
+          const directIndex = Number(level.playerQualityIndex);
+          if (Number.isFinite(directIndex) && directIndex >= 0) {
+            return directIndex;
+          }
+
+          const targetName = getViewerQualityLevelName(level);
+          const targetWidth = getViewerQualityLevelValue(level, ['width', 'videoWidth', 'w']);
+          const targetHeight = getViewerQualityLevelValue(level, ['height', 'videoHeight', 'h']);
+
+          return viewerQualityLevels.findIndex((candidate) => {
+            if (targetName && getViewerQualityLevelName(candidate) === targetName) {
+              return true;
+            }
+            return targetWidth > 0
+              && targetHeight > 0
+              && getViewerQualityLevelValue(candidate, ['width', 'videoWidth', 'w']) === targetWidth
+              && getViewerQualityLevelValue(candidate, ['height', 'videoHeight', 'h']) === targetHeight;
+          });
+        }
+
+        function formatViewerQualityTier(level) {
+          const normalizedName = getViewerQualityLevelName(level);
+          if (normalizedName === 'original') return 'Original';
+          if (normalizedName === 'high') return 'Alta';
+          if (normalizedName === 'medium') return 'Media';
+          if (normalizedName === 'low') return 'Baja';
+          if (normalizedName === 'safe') return 'Rescate';
+          return normalizedName ? normalizedName.charAt(0).toUpperCase() + normalizedName.slice(1) : 'Calidad';
         }
 
         function formatViewerQualityLabel(level) {
@@ -9133,22 +9478,74 @@
             return 'Automatico';
           }
 
-          const width = Number(level.width || 0);
-          const height = Number(level.height || 0);
-          const bitrateLabel = formatViewerQualityBitrate(level.bitrate);
-          const normalizedName = normalizeViewerQualityName(level.label);
+          const width = getViewerQualityLevelValue(level, ['width', 'videoWidth', 'w']);
+          const height = getViewerQualityLevelValue(level, ['height', 'videoHeight', 'h']);
+          const bitrateLabel = formatViewerQualityBitrate(level.bitrate || level.videoBitrate || level.bandwidth);
+          const normalizedName = getViewerQualityLevelName(level);
 
           if (normalizedName === 'original') {
             if (width > 0 && height > 0) {
-              return `Original - ${width}x${height} - ${bitrateLabel}`;
+              return `${width}x${height}${bitrateLabel ? `, ${bitrateLabel}` : ''}`;
             }
-            return `Original - ${bitrateLabel}`;
+            return bitrateLabel ? `Original, ${bitrateLabel}` : 'Original';
           }
 
           if (width > 0 && height > 0) {
-            return `${width}x${height} - ${bitrateLabel}`;
+            return `${width}x${height}${bitrateLabel ? `, ${bitrateLabel}` : ''}`;
           }
-          return bitrateLabel;
+          return bitrateLabel || 'Calidad';
+        }
+
+        function formatViewerQualitySummary(level) {
+          if (!level) {
+            return 'Automatico';
+          }
+          return `Automatico - ${formatViewerQualityLabel(level)}`;
+        }
+
+        async function refreshViewerManifestQualityLevels(force = false) {
+          const streamKey = String(liveData?.stream_key || '').trim();
+          if (!streamKey) {
+            viewerManifestQualityLevels = [];
+            viewerQualityManifestKey = '';
+            viewerQualityManifestLoading = false;
+            clearViewerQualityManifestRetry();
+            return;
+          }
+
+          const revisionKey = `${streamKey}:${liveData?.updated_at || ''}:${liveData?.stream_aspect_ratio || ''}`;
+          if (!force && viewerQualityManifestKey === revisionKey && viewerManifestQualityLevels.length) {
+            return;
+          }
+
+          viewerQualityManifestLoading = true;
+          try {
+            const manifestUrl = buildLivestreamProbeUrl(streamKey, liveData?.updated_at || '');
+            const response = await fetch(`${manifestUrl}${manifestUrl.includes('?') ? '&' : '?'}t=${Date.now()}`, {
+              method: 'GET',
+              cache: 'no-store',
+            });
+            if (response.status === 204 || !response.ok) {
+              scheduleViewerQualityManifestRetry();
+              return;
+            }
+
+            const manifestText = await response.text();
+            const parsedLevels = parseViewerManifestQualityLevels(manifestText);
+            if (parsedLevels.length) {
+              viewerManifestQualityLevels = parsedLevels;
+              viewerQualityManifestKey = revisionKey;
+              clearViewerQualityManifestRetry();
+            } else {
+              scheduleViewerQualityManifestRetry();
+            }
+          } catch (_error) {
+            scheduleViewerQualityManifestRetry();
+          } finally {
+            viewerQualityManifestLoading = false;
+            renderViewerQualityMenu();
+            syncViewerQualityButtonsVisibility();
+          }
         }
 
         function closeViewerQualityMenu() {
@@ -9159,7 +9556,7 @@
         }
 
         function openViewerQualityMenu() {
-          if (!qualityMenu || viewerQualityLevels.length <= 1 || isHostOwner()) {
+          if (!qualityMenu || isHostOwner()) {
             return;
           }
           viewerQualityMenuOpen = true;
@@ -9170,6 +9567,7 @@
 
         function toggleViewerQualityMenu(event) {
           event?.stopPropagation?.();
+          event?.preventDefault?.();
           if (viewerQualityMenuOpen) {
             closeViewerQualityMenu();
             return;
@@ -9178,7 +9576,7 @@
         }
 
         function syncViewerQualityButtonsVisibility() {
-          const visible = !isHostOwner() && viewerQualityLevels.length > 1;
+          const visible = !isHostOwner() && !!liveData && String(liveData.live_status || '').toLowerCase() !== 'ended';
           [qualityBtn, playerQualityBtn].forEach((button) => {
             if (!button) {
               return;
@@ -9196,21 +9594,37 @@
             return;
           }
 
-          const activeLevel = viewerQualityLevels[viewerCurrentQualityIndex] || null;
+          const availableLevels = getViewerAvailableQualityLevels();
+          const displayedQualityIndex = resolveViewerDisplayedQualityIndex(availableLevels);
+          const activeLevel = displayedQualityIndex >= 0 ? availableLevels[displayedQualityIndex] : null;
           qualitySummary.textContent = viewerQualityIsAuto
-            ? `Automatico${activeLevel ? ` · ${formatViewerQualityLabel(activeLevel)}` : ''}`
+            ? formatViewerQualitySummary(activeLevel)
             : (activeLevel ? formatViewerQualityLabel(activeLevel) : 'Seleccion manual');
 
           if (qualityAutoBtn) {
             qualityAutoBtn.classList.toggle('is-active', viewerQualityIsAuto);
+            qualityAutoBtn.disabled = viewerQualitySelectionPending;
+            qualityAutoBtn.classList.toggle('opacity-70', viewerQualitySelectionPending);
           }
 
-          qualityOptions.innerHTML = viewerQualityLevels.map((level, index) => {
-            const isActive = !viewerQualityIsAuto && index === viewerCurrentQualityIndex;
+          if (!availableLevels.length) {
+            qualityOptions.innerHTML = `
+              <div class="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white/70">
+                Cargando calidades...
+              </div>
+            `;
+            if (!viewerQualityManifestLoading) {
+              scheduleViewerQualityManifestRetry(350);
+            }
+            syncViewerQualityButtonsVisibility();
+            return;
+          }
+
+          qualityOptions.innerHTML = availableLevels.map((level, index) => {
+            const isActive = !viewerQualityIsAuto && index === displayedQualityIndex;
             return `
-              <button type="button" class="live-quality-option ${isActive ? 'is-active' : ''} w-full rounded-xl px-3 py-2.5 text-left transition text-white hover:bg-white/10" data-live-quality-index="${index}">
+              <button type="button" class="live-quality-option ${isActive ? 'is-active' : ''} w-full rounded-xl px-3 py-2.5 text-left transition text-white hover:bg-white/10 ${viewerQualitySelectionPending ? 'opacity-70' : ''}" data-live-quality-index="${index}" ${viewerQualitySelectionPending ? 'disabled' : ''}>
                 <span class="block text-sm font-semibold">${escapeHtml(formatViewerQualityLabel(level))}</span>
-                <span class="live-quality-option__meta block text-xs mt-0.5">${escapeHtml(normalizeViewerQualityName(level.label) || 'quality')}</span>
               </button>
             `;
           }).join('');
@@ -9222,7 +9636,12 @@
           const nextLevels = typeof viewerPlayer?.getQualityLevels === 'function'
             ? (viewerPlayer.getQualityLevels() || [])
             : [];
-          viewerQualityLevels = Array.isArray(nextLevels) ? nextLevels : [];
+          viewerQualityLevels = sortViewerQualityLevels(
+            (Array.isArray(nextLevels) ? nextLevels : []).map((level, index) => ({
+              ...level,
+              playerQualityIndex: index,
+            })),
+          );
 
           if (typeof viewerPlayer?.getCurrentQuality === 'function') {
             const nextCurrent = Number(viewerPlayer.getCurrentQuality());
@@ -9242,8 +9661,24 @@
           applyPreferredViewerQualitySelection();
         }
 
+        function scheduleViewerQualityRefresh(player, attempts = 4) {
+          if (!player || attempts <= 0) {
+            return;
+          }
+          window.setTimeout(() => {
+            if (viewerPlayer !== player) {
+              return;
+            }
+            refreshViewerQualityState();
+            if (viewerQualityLevels.length <= 1) {
+              scheduleViewerQualityRefresh(player, attempts - 1);
+            }
+          }, 250);
+        }
+
         function findViewerPreferredQualityIndex() {
-          if (!viewerQualityLevels.length) {
+          const availableLevels = getViewerAvailableQualityLevels();
+          if (!availableLevels.length) {
             return -1;
           }
 
@@ -9252,11 +9687,12 @@
             return -1;
           }
 
-          return viewerQualityLevels.findIndex((level) => normalizeViewerQualityName(level?.label) === normalizedTarget);
+          return availableLevels.findIndex((level) => getViewerQualityLevelName(level) === normalizedTarget);
         }
 
         function applyPreferredViewerQualitySelection() {
-          if (!viewerPlayer || viewerQualitySelectionPending || !viewerQualityLevels.length) {
+          const availableLevels = getViewerAvailableQualityLevels();
+          if (!viewerPlayer || viewerQualitySelectionPending || !availableLevels.length) {
             return;
           }
 
@@ -9304,18 +9740,32 @@
         }
 
         function setViewerQualityIndex(index) {
-          const level = viewerQualityLevels[index];
-          if (!level || typeof viewerPlayer?.setCurrentQuality !== 'function') {
+          if (viewerQualitySelectionPending) {
+            return;
+          }
+          const availableLevels = getViewerAvailableQualityLevels();
+          const level = availableLevels[index];
+          const playerIndex = resolveViewerPlayerQualityIndex(level);
+          if (!level || playerIndex < 0 || typeof viewerPlayer?.setCurrentQuality !== 'function') {
             return;
           }
 
           viewerPreferredQualityMode = 'manual';
-          viewerPreferredQualityName = normalizeViewerQualityName(level.label);
-          viewerPlayer.setCurrentQuality(index);
-          viewerCurrentQualityIndex = index;
+          viewerPreferredQualityName = getViewerQualityLevelName(level) || normalizeViewerQualityName(level.label);
+          viewerQualitySelectionPending = true;
+          try {
+            viewerPlayer.setCurrentQuality(playerIndex);
+          } catch (_error) {
+            viewerQualitySelectionPending = false;
+          }
+          viewerCurrentQualityIndex = playerIndex;
           viewerQualityIsAuto = false;
           renderViewerQualityMenu();
           closeViewerQualityMenu();
+          window.setTimeout(() => {
+            viewerQualitySelectionPending = false;
+            refreshViewerQualityState();
+          }, 120);
         }
 
         function clearViewerTapToUnmute() {
@@ -9339,6 +9789,9 @@
         }
 
         function maybeEscalateViewerTransport() {
+          if (viewerSourceTransitionUntil && Date.now() < viewerSourceTransitionUntil) {
+            return false;
+          }
           if (viewerTransportEscalated || viewerTransportMode === LIVESTREAM_FALLBACK_TRANSPORT) {
             return false;
           }
@@ -9405,12 +9858,17 @@
           viewerPendingSourceUrl = null;
           viewerSwitchPrepared = false;
           viewerBoundSourceUrl = '';
+          viewerSourceTransitionUntil = 0;
           viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
           viewerTransportEscalated = false;
           viewerQualityLevels = [];
+          viewerManifestQualityLevels = [];
           viewerCurrentQualityIndex = -1;
           viewerQualityIsAuto = true;
           viewerQualitySelectionPending = false;
+          viewerQualityManifestKey = '';
+          viewerQualityManifestLoading = false;
+          clearViewerQualityManifestRetry();
           viewerPlayerRoot.innerHTML = '';
           viewerRetrySpinner = null;
           if (!preserveFreezeFrame) {
@@ -9447,6 +9905,12 @@
         function queueViewerReconnect(sourceUrl, delayMs = 550) {
           if (!sourceUrl || viewerReconnectTimer) {
             return;
+          }
+          if (viewerSourceTransitionUntil) {
+            const remainingTransitionMs = viewerSourceTransitionUntil - Date.now();
+            if (remainingTransitionMs > 0) {
+              delayMs = Math.max(delayMs, remainingTransitionMs + 120);
+            }
           }
           viewerPlayerLastRetryAt = Date.now();
           showViewerRetrySpinner();
@@ -9657,10 +10121,31 @@
             state = {
               activeCount: 0,
               laneCursor: 0,
+              pool: [],
+              activeBubbles: [],
             };
             floatingReactionState.set(target, state);
           }
           return state;
+        }
+
+        function recycleFloatingReactionBubble(state, bubble) {
+          if (!bubble) return;
+          state.activeBubbles = state.activeBubbles.filter((activeBubble) => activeBubble !== bubble);
+          state.activeCount = Math.max(0, state.activeCount - 1);
+          bubble.style.animation = 'none';
+          bubble.style.opacity = '0';
+          bubble.textContent = '';
+          if (bubble.parentElement) {
+            bubble.parentElement.removeChild(bubble);
+          }
+          if (!state.pool.includes(bubble)) {
+            state.pool.push(bubble);
+          }
+        }
+
+        function getFloatingReactionBubble(state) {
+          return state.pool.pop() || document.createElement('div');
         }
 
         function addFloatingReaction(type) {
@@ -9680,23 +10165,24 @@
             const now = Date.now();
             const delayMs = Math.max(0, nextAvailableAt - now);
             const spacingMs = isDesktopClient() ? 210 : 255;
+            const maxQueueDelayMs = isDesktopClient() ? 2400 : 1800;
+            if (delayMs > maxQueueDelayMs) {
+              return;
+            }
             floatingReactionQueues.set(target, Math.max(now, nextAvailableAt) + spacingMs);
 
             window.setTimeout(() => {
               if (!target.isConnected) {
+                floatingReactionQueues.delete(target);
                 return;
               }
 
               const maxActive = isDesktopClient() ? 10 : 7;
-              if (state.activeCount >= maxActive) {
-                const oldestBubble = target.querySelector('.live-float-emoji');
-                if (oldestBubble) {
-                  oldestBubble.remove();
-                  state.activeCount = Math.max(0, state.activeCount - 1);
-                }
+              if (state.activeCount >= maxActive && state.activeBubbles.length) {
+                recycleFloatingReactionBubble(state, state.activeBubbles[0]);
               }
 
-              const bubble = document.createElement('div');
+              const bubble = getFloatingReactionBubble(state);
               const lanes = isDesktopClient() ? 6 : 5;
               const lane = state.laneCursor % lanes;
               state.laneCursor += 1;
@@ -9709,13 +10195,14 @@
               bubble.style.bottom = `${10 + (lane % 3) * 6}px`;
               bubble.style.setProperty('--float-x', `${xOffset}px`);
               bubble.style.setProperty('--float-rise', `${-150 - lane * (isDesktopClient() ? 16 : 12) - Math.floor(Math.random() * 28)}px`);
+              bubble.style.animation = 'none';
               bubble.style.animationDuration = `${durationMs}ms`;
               state.activeCount += 1;
-              bubble.addEventListener('animationend', () => {
-                bubble.remove();
-                state.activeCount = Math.max(0, state.activeCount - 1);
-              }, { once: true });
+              state.activeBubbles.push(bubble);
+              bubble.onanimationend = () => recycleFloatingReactionBubble(state, bubble);
               target.appendChild(bubble);
+              void bubble.offsetWidth;
+              bubble.style.animation = `live-float-up ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`;
             }, delayMs);
           });
         }
@@ -9812,6 +10299,8 @@
             switchSourceButton.classList.toggle('hidden', !showSwitchSource);
             switchSourceButton.classList.toggle('inline-flex', showSwitchSource);
           }
+
+          syncViewerQualityButtonsVisibility();
         }
 
         function isHostOwner() {
@@ -10000,6 +10489,9 @@
           }
 
           const now = Date.now();
+          if (viewerSourceTransitionUntil && now < viewerSourceTransitionUntil) {
+            return false;
+          }
           // Give player plenty of time before declaring stalled (mobile needs more time)
           if ((now - viewerPlayerCreatedAt) < 8000 || (now - viewerPlayerLastRetryAt) < 8000) {
             return false;
@@ -10179,6 +10671,7 @@
           const hideFallback = () => {
             liveVideoFallback.classList.add('hidden');
             video.style.opacity = '1';
+            viewerSourceTransitionUntil = 0;
             clearViewerFreezeFrame();
             hideViewerRetrySpinner();
             endLiveSourceTransition(transitionToken, 1000).catch(() => { });
@@ -10227,6 +10720,7 @@
             showViewerPlayer();
             liveVideoFallback.classList.add('hidden');
             video.style.opacity = '1';
+            viewerSourceTransitionUntil = 0;
             clearViewerFreezeFrame();
             hideViewerRetrySpinner();
             endLiveSourceTransition(transitionToken, 1000).catch(() => { });
@@ -10350,6 +10844,8 @@
             viewerPlayer = player;
             viewerQualitySelectionPending = false;
             refreshViewerQualityState();
+            scheduleViewerQualityRefresh(player);
+            refreshViewerManifestQualityLevels(true).catch(() => { });
             observeViewerPlayerMedia(player, sourceUrl, readyAt);
             scheduleViewerMediaBinding(player, sourceUrl, readyAt);
             if (typeof player.on === 'function') {
@@ -10360,6 +10856,8 @@
                 observeViewerPlayerMedia(player, sourceUrl, readyAt);
                 scheduleViewerMediaBinding(player, sourceUrl, readyAt);
                 refreshViewerQualityState();
+                scheduleViewerQualityRefresh(player);
+                refreshViewerManifestQualityLevels(true).catch(() => { });
               });
               player.on('qualityLevelChanged', (data) => {
                 if (viewerPlayer !== player) {
@@ -10380,11 +10878,15 @@
                 }
                 const nextState = String(data?.newstate || '').toLowerCase();
                 refreshViewerQualityState();
+                if (!viewerQualityLevels.length && !viewerQualityManifestLoading) {
+                  refreshViewerManifestQualityLevels().catch(() => { });
+                }
                 if (nextState === 'playing') {
                   if (viewerReconnectTimer) {
                     window.clearTimeout(viewerReconnectTimer);
                     viewerReconnectTimer = 0;
                   }
+                  viewerSourceTransitionUntil = 0;
                   scheduleViewerMediaBinding(player, sourceUrl, readyAt);
                   showViewerPlayer();
                   liveVideoFallback.classList.add('hidden');
@@ -10402,9 +10904,13 @@
                   viewerPlayer = null;
                 }
                 viewerQualityLevels = [];
+                viewerManifestQualityLevels = [];
                 viewerCurrentQualityIndex = -1;
                 viewerQualityIsAuto = true;
                 viewerQualitySelectionPending = false;
+                viewerQualityManifestKey = '';
+                viewerQualityManifestLoading = false;
+                clearViewerQualityManifestRetry();
                 syncViewerQualityButtonsVisibility();
               });
             }
@@ -10620,101 +11126,6 @@
           }
         }
 
-        async function createMobilePortraitCameraOutput(cameraStream) {
-          const sourceTrack = cameraStream?.getVideoTracks?.()[0] || null;
-          if (!sourceTrack) {
-            return null;
-          }
-
-          const probeVideo = document.createElement('video');
-          probeVideo.muted = true;
-          probeVideo.playsInline = true;
-          probeVideo.setAttribute('playsinline', '');
-          probeVideo.srcObject = cameraStream;
-
-          await new Promise((resolve) => {
-            if (probeVideo.readyState >= 1) {
-              resolve();
-              return;
-            }
-            const done = () => resolve();
-            probeVideo.addEventListener('loadedmetadata', done, { once: true });
-            window.setTimeout(done, 700);
-          });
-          await probeVideo.play().catch(() => { });
-
-          const sourceWidth = Number(probeVideo.videoWidth || sourceTrack.getSettings?.().width || 0);
-          const sourceHeight = Number(probeVideo.videoHeight || sourceTrack.getSettings?.().height || 0);
-          if (!sourceWidth || !sourceHeight || sourceHeight >= sourceWidth) {
-            probeVideo.pause();
-            probeVideo.srcObject = null;
-            return null;
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = 720;
-          canvas.height = 1280;
-          const context = canvas.getContext('2d', { alpha: false });
-          if (!context || typeof canvas.captureStream !== 'function') {
-            probeVideo.pause();
-            probeVideo.srcObject = null;
-            return null;
-          }
-
-          let stopped = false;
-          let animationFrame = 0;
-          const drawFrame = () => {
-            if (stopped) {
-              return;
-            }
-
-            const videoWidth = Number(probeVideo.videoWidth || sourceWidth);
-            const videoHeight = Number(probeVideo.videoHeight || sourceHeight);
-            context.fillStyle = '#000';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            context.save();
-            const scale = Math.max(canvas.width / videoWidth, canvas.height / videoHeight);
-            const drawWidth = videoWidth * scale;
-            const drawHeight = videoHeight * scale;
-            context.drawImage(
-              probeVideo,
-              (canvas.width - drawWidth) / 2,
-              (canvas.height - drawHeight) / 2,
-              drawWidth,
-              drawHeight
-            );
-            context.restore();
-            animationFrame = window.requestAnimationFrame(drawFrame);
-          };
-          drawFrame();
-
-          const canvasStream = canvas.captureStream(24);
-          const portraitStream = new MediaStream([
-            ...canvasStream.getVideoTracks(),
-            ...cameraStream.getAudioTracks(),
-          ]);
-
-          return {
-            stream: portraitStream,
-            settings: {
-              width: canvas.width,
-              height: canvas.height,
-              frameRate: 24,
-              facingMode: sourceTrack.getSettings?.().facingMode || currentFacingMode,
-              deviceId: sourceTrack.getSettings?.().deviceId || '',
-              transformedFrom: `${sourceWidth}x${sourceHeight}`,
-            },
-            stop() {
-              stopped = true;
-              if (animationFrame) {
-                window.cancelAnimationFrame(animationFrame);
-              }
-              probeVideo.pause();
-              probeVideo.srcObject = null;
-            },
-          };
-        }
-
         async function buildHostInputStream(source) {
           const bundle = {
             source,
@@ -10883,6 +11294,21 @@
           });
         }
 
+        async function waitForViewerReadyStreamSoft(streamKey, options = {}) {
+          if (!streamKey) {
+            return false;
+          }
+          const timeoutMs = Math.max(400, Number(options.timeoutMs || 1500));
+          try {
+            return await Promise.race([
+              waitForViewerReadyStream(streamKey),
+              new Promise((resolve) => window.setTimeout(() => resolve(false), timeoutMs)),
+            ]);
+          } catch (_error) {
+            return false;
+          }
+        }
+
         function createOvenLivekit() {
           return window.OvenLiveKit.create({
             callbacks: {
@@ -10896,9 +11322,10 @@
         function buildLivestreamConnectionConfig(source, transportMode = LIVESTREAM_PRIMARY_TRANSPORT) {
           const isScreen = source === 'screen';
           const desktop = isDesktopClient();
-          const targetVideoBitrate = isScreen ? 12000 : (desktop ? 10000 : 3800);
-          const startBitrate = isScreen ? 8000 : (desktop ? 7600 : 2400);
-          const minBitrate = isScreen ? 3200 : (desktop ? 3500 : 1200);
+          const isMobileCamera = !desktop && source === 'camera';
+          const targetVideoBitrate = isScreen ? 12000 : (desktop ? 10000 : (isMobileCamera ? 2400 : 3000));
+          const startBitrate = isScreen ? 8000 : (desktop ? 7600 : (isMobileCamera ? 1500 : 2000));
+          const minBitrate = isScreen ? 3200 : (desktop ? 3500 : (isMobileCamera ? 700 : 1000));
 
           return {
             preferredVideoFormat: 'H264',
@@ -11026,6 +11453,71 @@
           return livekit;
         }
 
+        function getLivekitVideoSender(livekit) {
+          const peer = livekit?.peerConnection || livekit?._peerConnection || livekit?.pc || null;
+          if (!peer || typeof peer.getSenders !== 'function') {
+            return null;
+          }
+          return peer.getSenders().find((sender) => sender?.track?.kind === 'video') || null;
+        }
+
+        function cleanupUnusedCameraSwitchBundle(bundle, adoptedVideoTrack) {
+          if (!bundle) return;
+          const adoptedId = adoptedVideoTrack?.id || '';
+          const tracks = [];
+          [bundle.previewStream, bundle.publishedStream, bundle.micStream, bundle.cameraStream].forEach((stream) => {
+            if (stream?.getTracks) {
+              tracks.push(...stream.getTracks());
+            }
+          });
+          const seen = new Set();
+          tracks.forEach((track) => {
+            if (!track || seen.has(track.id) || track.id === adoptedId) {
+              return;
+            }
+            seen.add(track.id);
+            try {
+              track.stop();
+            } catch (_error) { }
+          });
+          if (bundle.audioContext) {
+            bundle.audioContext.close().catch(() => { });
+          }
+        }
+
+        async function tryReplaceHostCameraTrack(previousLivekit, previousBundle, nextBundle) {
+          const nextVideoTrack = nextBundle?.publishedStream?.getVideoTracks?.()[0] || null;
+          const sender = getLivekitVideoSender(previousLivekit);
+          if (!previousLivekit || !previousBundle || !nextVideoTrack || !sender || typeof sender.replaceTrack !== 'function') {
+            return false;
+          }
+
+          try {
+            applyLiveTrackHints(new MediaStream([nextVideoTrack]), 'camera');
+            await sender.replaceTrack(nextVideoTrack);
+            const audioTracks = (previousBundle.micAudioTracks || [])
+              .filter((track) => track && track.readyState !== 'ended');
+            const switchedStream = new MediaStream([nextVideoTrack, ...audioTracks]);
+            previousBundle.previewStream = switchedStream;
+            previousBundle.publishedStream = switchedStream;
+            previousBundle.cameraStream = switchedStream;
+            previousBundle.videoSettings = nextBundle.videoSettings || nextVideoTrack.getSettings?.() || {};
+            previousBundle.videoTransformer = null;
+            if (previousLivekit.inputStream) {
+              previousLivekit.inputStream = switchedStream;
+            }
+            hostPreviewVideo.srcObject = switchedStream;
+            hostPreviewVideo.style.objectFit = 'cover';
+            await hostPreviewVideo.play().catch(() => { });
+            cleanupUnusedCameraSwitchBundle(nextBundle, nextVideoTrack);
+            await syncHostTorchSupport(previousBundle);
+            return true;
+          } catch (error) {
+            console.warn('No se pudo cambiar la camara sin republicar; usando republish:', error);
+            return false;
+          }
+        }
+
         function nextLivestreamStreamKey() {
           return buildLivestreamStreamKey(Number(liveData?.user_id || user.id || 0));
         }
@@ -11065,15 +11557,36 @@
             }
 
             nextBundle = await buildHostInputStream(source);
+            if (isMobileCameraFlip && previousLivekit && previousBundle) {
+              const replacedTrack = await tryReplaceHostCameraTrack(previousLivekit, previousBundle, nextBundle);
+              if (replacedTrack) {
+                const nextAspectRatio = getLivestreamAspectRatioFromSettings(source, previousBundle?.videoSettings || {});
+                liveData.live_source = source;
+                liveData.stream_aspect_ratio = nextAspectRatio;
+                liveData.updated_at = new Date().toISOString();
+                await syncLivestreamSourceState(source, previousStreamKey, nextAspectRatio);
+                ovenLivekit = previousLivekit;
+                hostMediaBundle = previousBundle;
+                hostPublishing = true;
+                hostPublishedSource = source;
+                refreshHostAudioButtons();
+                showHostPreview();
+                return true;
+              }
+            }
             nextLivekit = await publishHostBundle(nextBundle, source, nextStreamKey);
-            const viewerReadyPromise = waitForViewerReadyStream(nextStreamKey).catch(() => false);
             const nextAspectRatio = getLivestreamAspectRatioFromSettings(source, nextBundle?.videoSettings || {});
+            const shouldDelayViewerSwitch = !isInitialPublish || forceRestart;
+            if (shouldDelayViewerSwitch) {
+              await waitForViewerReadyStreamSoft(nextStreamKey, {
+                timeoutMs: isMobileCameraFlip ? 2200 : 1600,
+              });
+            }
             liveData.live_source = source;
             liveData.stream_key = nextStreamKey;
             liveData.stream_aspect_ratio = nextAspectRatio;
             liveData.updated_at = new Date().toISOString();
             await syncLivestreamSourceState(source, nextStreamKey, nextAspectRatio);
-            await viewerReadyPromise;
             ovenLivekit = nextLivekit;
             hostMediaBundle = nextBundle;
             hostPublishing = true;
@@ -11081,7 +11594,7 @@
             refreshHostAudioButtons();
             showHostPreview();
             if (previousLivekit && previousLivekit !== nextLivekit) {
-              await delay(450);
+              await delay(180);
               await disposeOvenLivekit(previousLivekit, { clearCurrent: false });
             }
             if (previousBundle && previousBundle !== nextBundle) {
@@ -11117,7 +11630,9 @@
                 const recoveredBundle = await buildHostInputStream(previousSource);
                 const recoveryStreamKey = nextLivestreamStreamKey();
                 const recoveredLivekit = await publishHostBundle(recoveredBundle, previousSource, recoveryStreamKey);
-                const recoveryViewerReadyPromise = waitForViewerReadyStream(recoveryStreamKey).catch(() => false);
+                await waitForViewerReadyStreamSoft(recoveryStreamKey, {
+                  timeoutMs: releasedPreviousCamera ? 2200 : 1500,
+                });
                 ovenLivekit = recoveredLivekit;
                 hostMediaBundle = recoveredBundle;
                 hostPublishing = true;
@@ -11128,7 +11643,6 @@
                 liveData.stream_aspect_ratio = recoveredAspectRatio;
                 liveData.updated_at = new Date().toISOString();
                 await syncLivestreamSourceState(previousSource, recoveryStreamKey, recoveredAspectRatio);
-                await recoveryViewerReadyPromise;
                 restored = true;
                 showHostPreview();
                 refreshHostAudioButtons();
@@ -11224,6 +11738,7 @@
               viewerTransportEscalated = false;
               viewerBoundSourceUrl = '';
               viewerSourceWarmupUntil = Date.now() + 180;
+              viewerSourceTransitionUntil = Date.now() + 2600;
               captureViewerFreezeFrame({ hideVideo: true });
               beginLiveSourceTransition();
               showViewerPlayer();
@@ -11937,6 +12452,60 @@
             else armViewerTapToUnmute();
           });
         }
+
+        [qualityBtn, playerQualityBtn].forEach((button) => {
+          if (!button) {
+            return;
+          }
+          button.addEventListener('click', toggleViewerQualityMenu);
+        });
+
+        qualityMenu?.addEventListener('click', (event) => {
+          event.stopPropagation();
+        });
+
+        qualityAutoBtn?.addEventListener('click', (event) => {
+          event.stopPropagation();
+          event.preventDefault();
+          setViewerQualityModeAuto();
+        });
+
+        qualityOptions?.addEventListener('click', (event) => {
+          const optionButton = event.target instanceof Element
+            ? event.target.closest('[data-live-quality-index]')
+            : null;
+          if (!optionButton) {
+            return;
+          }
+          event.stopPropagation();
+          event.preventDefault();
+          const nextIndex = Number(optionButton.getAttribute('data-live-quality-index'));
+          if (!Number.isFinite(nextIndex)) {
+            return;
+          }
+          setViewerQualityIndex(nextIndex);
+        });
+
+        document.addEventListener('click', (event) => {
+          if (!viewerQualityMenuOpen || !qualityMenu) {
+            return;
+          }
+          const target = event.target;
+          if (!(target instanceof Element)) {
+            closeViewerQualityMenu();
+            return;
+          }
+          if (target.closest('#live-quality-menu, #live-quality-btn, #live-player-quality-btn')) {
+            return;
+          }
+          closeViewerQualityMenu();
+        });
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && viewerQualityMenuOpen) {
+            closeViewerQualityMenu();
+          }
+        });
         syncViewerMuteButtons();
 
         // ── Mobile mic button (in input row, host only) ──

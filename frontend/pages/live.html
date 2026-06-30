@@ -50,7 +50,7 @@
                         <button id="live-player-mute-btn" type="button" class="hidden w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Silenciar / Activar sonido">
                           <span class="material-symbols-outlined text-[20px]">volume_up</span>
                         </button>
-                        <button id="live-quality-btn" type="button" class="hidden w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Seleccionar calidad">
+                        <button id="live-quality-btn" type="button" class="hidden w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Seleccionar calidad" aria-label="Seleccionar calidad" aria-expanded="false" aria-controls="live-quality-menu">
                           <span class="material-symbols-outlined text-[20px]">settings</span>
                         </button>
                         <button id="live-immersive-btn" type="button" class="w-9 h-9 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Modo inmersivo">
@@ -101,7 +101,7 @@
                         </div>
                       </div>
                       <div class="live-player-control-buttons flex items-center gap-2">
-                        <button id="live-player-quality-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Seleccionar calidad">
+                        <button id="live-player-quality-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Seleccionar calidad" aria-label="Seleccionar calidad" aria-expanded="false" aria-controls="live-quality-menu">
                           <span class="material-symbols-outlined text-[20px]">settings</span>
                         </button>
                         <button id="live-player-fs-btn" type="button" class="hidden w-10 h-10 rounded-full glass flex items-center justify-center text-white hover:bg-white/20 transition" title="Pantalla completa">
@@ -110,7 +110,7 @@
                       </div>
                     </div>
 
-                    <div id="live-quality-menu" class="hidden absolute top-16 right-4 z-40 w-[min(88vw,320px)] rounded-2xl border border-white/10 bg-slate-950/90 backdrop-blur-xl shadow-2xl overflow-hidden">
+                    <div id="live-quality-menu" class="hidden absolute top-16 right-4 z-40 w-[min(88vw,320px)] rounded-2xl border border-white/10 bg-slate-950/90 backdrop-blur-xl shadow-2xl overflow-hidden" role="menu" aria-label="Seleccionar calidad del directo">
                       <div class="px-4 py-3 border-b border-white/10">
                         <p class="text-[11px] uppercase tracking-[0.22em] font-black text-white/45">Calidad</p>
                         <p id="live-quality-summary" class="text-sm text-white/80 mt-1">Automatico</p>
@@ -118,7 +118,6 @@
                       <div class="p-2">
                         <button id="live-quality-auto-btn" type="button" class="live-quality-option w-full rounded-xl px-3 py-2.5 text-left transition text-white hover:bg-white/10">
                           <span class="block text-sm font-semibold">Automatico</span>
-                          <span class="block text-xs text-white/50 mt-0.5">Se adapta en tiempo real a la red del viewer.</span>
                         </button>
                         <div id="live-quality-options" class="mt-1 space-y-1"></div>
                       </div>
