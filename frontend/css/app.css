@@ -6847,6 +6847,38 @@ body.guest-shared-post-page > div.max-w-7xl {
   transition: opacity 0.3s ease;
 }
 
+.live-quality-option {
+  border: 1px solid transparent;
+}
+
+.live-quality-option:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.live-quality-option.is-active {
+  background: rgba(236, 72, 153, 0.14);
+  border-color: rgba(236, 72, 153, 0.34);
+}
+
+.live-quality-option.is-active .live-quality-option__meta,
+.live-quality-option.is-active .live-quality-option__copy {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.live-quality-option__meta {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+#live-quality-menu {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+#live-quality-menu.hidden {
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
 .live-is-desktop .live-video-wrap {
   border-radius: 18px;
   aspect-ratio: 16 / 9;
@@ -6956,6 +6988,12 @@ body.guest-shared-post-page > div.max-w-7xl {
 
 .live-video-wrap:fullscreen #live-mobile-overlay {
   display: none !important;
+}
+
+.live-video-wrap:fullscreen #live-quality-menu {
+  top: max(60px, env(safe-area-inset-top, 16px) + 46px) !important;
+  right: max(14px, env(safe-area-inset-right, 14px)) !important;
+  z-index: 2147483647 !important;
 }
 
 .live-video-wrap:fullscreen.live-video-hud-hidden #live-player-controls {

@@ -8655,6 +8655,7 @@
 
         const fullscreenBtn = container.querySelector('#live-fullscreen-btn');
         const immersiveBtn = container.querySelector('#live-immersive-btn');
+        const qualityBtn = container.querySelector('#live-quality-btn');
         const reactionTrigger = container.querySelector('#live-reaction-trigger');
         const reactionSelector = container.querySelector('#live-reaction-selector');
         const reactionTriggerDesktop = container.querySelector('#live-reaction-trigger-desktop');
@@ -8703,6 +8704,13 @@
         let viewerSourceWarmupUntil = 0;
         let viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
         let viewerTransportEscalated = false;
+        let viewerQualityLevels = [];
+        let viewerCurrentQualityIndex = -1;
+        let viewerQualityIsAuto = true;
+        let viewerPreferredQualityMode = 'auto';
+        let viewerPreferredQualityName = 'original';
+        let viewerQualitySelectionPending = false;
+        let viewerQualityMenuOpen = false;
         let commentsInitialized = false;
         let overlayTimer = null;
         let longPressTimer = null;
@@ -8724,7 +8732,12 @@
 
         // Mobile-only player controls (on the video itself)
         const playerMuteBtn = container.querySelector('#live-player-mute-btn');
+        const playerQualityBtn = container.querySelector('#live-player-quality-btn');
         const playerFsBtn = container.querySelector('#live-player-fs-btn');
+        const qualityMenu = container.querySelector('#live-quality-menu');
+        const qualitySummary = container.querySelector('#live-quality-summary');
+        const qualityAutoBtn = container.querySelector('#live-quality-auto-btn');
+        const qualityOptions = container.querySelector('#live-quality-options');
 
         // Wake Lock: keep screen awake during livestream
         async function requestWakeLock() {
@@ -9103,6 +9116,208 @@
           syncViewerMuteButtons();
         }
 
+        function normalizeViewerQualityName(name) {
+          return String(name || '').trim().toLowerCase();
+        }
+
+        function formatViewerQualityBitrate(bitrate) {
+          const normalized = Number(bitrate || 0);
+          if (!Number.isFinite(normalized) || normalized <= 0) {
+            return 'Auto';
+          }
+          return `${Math.max(1, Math.round(normalized / 1000))} kbps`;
+        }
+
+        function formatViewerQualityLabel(level) {
+          if (!level) {
+            return 'Automatico';
+          }
+
+          const width = Number(level.width || 0);
+          const height = Number(level.height || 0);
+          const bitrateLabel = formatViewerQualityBitrate(level.bitrate);
+          const normalizedName = normalizeViewerQualityName(level.label);
+
+          if (normalizedName === 'original') {
+            if (width > 0 && height > 0) {
+              return `Original - ${width}x${height} - ${bitrateLabel}`;
+            }
+            return `Original - ${bitrateLabel}`;
+          }
+
+          if (width > 0 && height > 0) {
+            return `${width}x${height} - ${bitrateLabel}`;
+          }
+          return bitrateLabel;
+        }
+
+        function closeViewerQualityMenu() {
+          viewerQualityMenuOpen = false;
+          qualityMenu?.classList.add('hidden');
+          qualityBtn?.setAttribute('aria-expanded', 'false');
+          playerQualityBtn?.setAttribute('aria-expanded', 'false');
+        }
+
+        function openViewerQualityMenu() {
+          if (!qualityMenu || viewerQualityLevels.length <= 1 || isHostOwner()) {
+            return;
+          }
+          viewerQualityMenuOpen = true;
+          qualityMenu.classList.remove('hidden');
+          qualityBtn?.setAttribute('aria-expanded', 'true');
+          playerQualityBtn?.setAttribute('aria-expanded', 'true');
+        }
+
+        function toggleViewerQualityMenu(event) {
+          event?.stopPropagation?.();
+          if (viewerQualityMenuOpen) {
+            closeViewerQualityMenu();
+            return;
+          }
+          openViewerQualityMenu();
+        }
+
+        function syncViewerQualityButtonsVisibility() {
+          const visible = !isHostOwner() && viewerQualityLevels.length > 1;
+          [qualityBtn, playerQualityBtn].forEach((button) => {
+            if (!button) {
+              return;
+            }
+            button.classList.toggle('hidden', !visible);
+            button.classList.toggle('flex', visible);
+          });
+          if (!visible) {
+            closeViewerQualityMenu();
+          }
+        }
+
+        function renderViewerQualityMenu() {
+          if (!qualityOptions || !qualitySummary) {
+            return;
+          }
+
+          const activeLevel = viewerQualityLevels[viewerCurrentQualityIndex] || null;
+          qualitySummary.textContent = viewerQualityIsAuto
+            ? `Automatico${activeLevel ? ` · ${formatViewerQualityLabel(activeLevel)}` : ''}`
+            : (activeLevel ? formatViewerQualityLabel(activeLevel) : 'Seleccion manual');
+
+          if (qualityAutoBtn) {
+            qualityAutoBtn.classList.toggle('is-active', viewerQualityIsAuto);
+          }
+
+          qualityOptions.innerHTML = viewerQualityLevels.map((level, index) => {
+            const isActive = !viewerQualityIsAuto && index === viewerCurrentQualityIndex;
+            return `
+              <button type="button" class="live-quality-option ${isActive ? 'is-active' : ''} w-full rounded-xl px-3 py-2.5 text-left transition text-white hover:bg-white/10" data-live-quality-index="${index}">
+                <span class="block text-sm font-semibold">${escapeHtml(formatViewerQualityLabel(level))}</span>
+                <span class="live-quality-option__meta block text-xs mt-0.5">${escapeHtml(normalizeViewerQualityName(level.label) || 'quality')}</span>
+              </button>
+            `;
+          }).join('');
+
+          syncViewerQualityButtonsVisibility();
+        }
+
+        function refreshViewerQualityState() {
+          const nextLevels = typeof viewerPlayer?.getQualityLevels === 'function'
+            ? (viewerPlayer.getQualityLevels() || [])
+            : [];
+          viewerQualityLevels = Array.isArray(nextLevels) ? nextLevels : [];
+
+          if (typeof viewerPlayer?.getCurrentQuality === 'function') {
+            const nextCurrent = Number(viewerPlayer.getCurrentQuality());
+            viewerCurrentQualityIndex = Number.isFinite(nextCurrent) ? nextCurrent : -1;
+          } else {
+            viewerCurrentQualityIndex = -1;
+          }
+
+          if (typeof viewerPlayer?.isAutoQuality === 'function') {
+            viewerQualityIsAuto = !!viewerPlayer.isAutoQuality();
+          } else {
+            viewerQualityIsAuto = true;
+          }
+
+          renderViewerQualityMenu();
+          syncViewerQualityButtonsVisibility();
+          applyPreferredViewerQualitySelection();
+        }
+
+        function findViewerPreferredQualityIndex() {
+          if (!viewerQualityLevels.length) {
+            return -1;
+          }
+
+          const normalizedTarget = normalizeViewerQualityName(viewerPreferredQualityName);
+          if (!normalizedTarget) {
+            return -1;
+          }
+
+          return viewerQualityLevels.findIndex((level) => normalizeViewerQualityName(level?.label) === normalizedTarget);
+        }
+
+        function applyPreferredViewerQualitySelection() {
+          if (!viewerPlayer || viewerQualitySelectionPending || !viewerQualityLevels.length) {
+            return;
+          }
+
+          if (viewerPreferredQualityMode === 'auto') {
+            if (!viewerQualityIsAuto && typeof viewerPlayer?.setAutoQuality === 'function') {
+              viewerQualitySelectionPending = true;
+              try {
+                viewerPlayer.setAutoQuality(true);
+              } catch (_error) { }
+              window.setTimeout(() => {
+                viewerQualitySelectionPending = false;
+                refreshViewerQualityState();
+              }, 80);
+            }
+            return;
+          }
+
+          const preferredIndex = findViewerPreferredQualityIndex();
+          if (preferredIndex < 0 || preferredIndex === viewerCurrentQualityIndex) {
+            return;
+          }
+
+          if (typeof viewerPlayer?.setCurrentQuality !== 'function') {
+            return;
+          }
+
+          viewerQualitySelectionPending = true;
+          try {
+            viewerPlayer.setCurrentQuality(preferredIndex);
+          } catch (_error) { }
+          window.setTimeout(() => {
+            viewerQualitySelectionPending = false;
+            refreshViewerQualityState();
+          }, 120);
+        }
+
+        function setViewerQualityModeAuto() {
+          viewerPreferredQualityMode = 'auto';
+          viewerPreferredQualityName = 'original';
+          if (typeof viewerPlayer?.setAutoQuality === 'function') {
+            viewerPlayer.setAutoQuality(true);
+          }
+          refreshViewerQualityState();
+          closeViewerQualityMenu();
+        }
+
+        function setViewerQualityIndex(index) {
+          const level = viewerQualityLevels[index];
+          if (!level || typeof viewerPlayer?.setCurrentQuality !== 'function') {
+            return;
+          }
+
+          viewerPreferredQualityMode = 'manual';
+          viewerPreferredQualityName = normalizeViewerQualityName(level.label);
+          viewerPlayer.setCurrentQuality(index);
+          viewerCurrentQualityIndex = index;
+          viewerQualityIsAuto = false;
+          renderViewerQualityMenu();
+          closeViewerQualityMenu();
+        }
+
         function clearViewerTapToUnmute() {
           if (viewerTapUnmuteHandler && liveVideoWrap) {
             liveVideoWrap.removeEventListener('click', viewerTapUnmuteHandler);
@@ -9157,6 +9372,7 @@
 
         function destroyPlayer(options = {}) {
           const preserveFreezeFrame = options.preserveFreezeFrame === true;
+          closeViewerQualityMenu();
           hideViewerRetrySpinner();
           disconnectViewerPlayerMediaObserver();
           if (viewerReconnectTimer) {
@@ -9191,6 +9407,10 @@
           viewerBoundSourceUrl = '';
           viewerTransportMode = LIVESTREAM_PRIMARY_TRANSPORT;
           viewerTransportEscalated = false;
+          viewerQualityLevels = [];
+          viewerCurrentQualityIndex = -1;
+          viewerQualityIsAuto = true;
+          viewerQualitySelectionPending = false;
           viewerPlayerRoot.innerHTML = '';
           viewerRetrySpinner = null;
           if (!preserveFreezeFrame) {
@@ -9371,6 +9591,7 @@
         }
 
         function showFallback(title, copy) {
+          closeViewerQualityMenu();
           hideViewerRetrySpinner();
           viewerPlayerRoot.classList.add('hidden');
           hostPreviewVideo.classList.add('hidden');
@@ -9380,6 +9601,7 @@
         }
 
         function showHostPreview() {
+          closeViewerQualityMenu();
           viewerPlayerRoot.classList.add('hidden');
           hostPreviewVideo.classList.remove('hidden');
           liveVideoFallback.classList.add('hidden');
@@ -10126,6 +10348,8 @@
               sources: [{ type: 'webrtc', file: sourceUrl }],
             });
             viewerPlayer = player;
+            viewerQualitySelectionPending = false;
+            refreshViewerQualityState();
             observeViewerPlayerMedia(player, sourceUrl, readyAt);
             scheduleViewerMediaBinding(player, sourceUrl, readyAt);
             if (typeof player.on === 'function') {
@@ -10135,12 +10359,27 @@
                 }
                 observeViewerPlayerMedia(player, sourceUrl, readyAt);
                 scheduleViewerMediaBinding(player, sourceUrl, readyAt);
+                refreshViewerQualityState();
+              });
+              player.on('qualityLevelChanged', (data) => {
+                if (viewerPlayer !== player) {
+                  return;
+                }
+                if (Number.isFinite(Number(data?.currentQuality))) {
+                  viewerCurrentQualityIndex = Number(data.currentQuality);
+                }
+                if (typeof data?.isAuto === 'boolean') {
+                  viewerQualityIsAuto = data.isAuto;
+                }
+                renderViewerQualityMenu();
+                syncViewerQualityButtonsVisibility();
               });
               player.on('stateChanged', (data) => {
                 if (viewerPlayer !== player) {
                   return;
                 }
                 const nextState = String(data?.newstate || '').toLowerCase();
+                refreshViewerQualityState();
                 if (nextState === 'playing') {
                   if (viewerReconnectTimer) {
                     window.clearTimeout(viewerReconnectTimer);
@@ -10162,6 +10401,11 @@
                 if (viewerPlayer === player) {
                   viewerPlayer = null;
                 }
+                viewerQualityLevels = [];
+                viewerCurrentQualityIndex = -1;
+                viewerQualityIsAuto = true;
+                viewerQualitySelectionPending = false;
+                syncViewerQualityButtonsVisibility();
               });
             }
 

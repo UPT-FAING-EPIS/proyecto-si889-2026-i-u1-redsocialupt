@@ -190,6 +190,14 @@
 					<Name>app</Name>
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
+					<TranscodeWebhook>
+						<Enable>true</Enable>
+						<ControlServerUrl>http://posts-service/api/internal/ome/transcode</ControlServerUrl>
+						<Timeout>1500</Timeout>
+						<UseLocalProfilesOnConnectionFailure>true</UseLocalProfilesOnConnectionFailure>
+						<UseLocalProfilesOnServerDisallow>true</UseLocalProfilesOnServerDisallow>
+						<UseLocalProfilesOnErrorResponse>true</UseLocalProfilesOnErrorResponse>
+					</TranscodeWebhook>
 					<OutputProfiles>
 						<!--  This option is deprecated. Please use the 'HWAccels' option. -->
 						<!-- 

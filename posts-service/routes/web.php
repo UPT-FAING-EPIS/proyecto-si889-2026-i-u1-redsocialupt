@@ -11,6 +11,7 @@ $router->get('/', function () {
 });
 
 $router->get('/api/public/posts/{hash}', 'PostController@showPublicShared');
+$router->post('/api/internal/ome/transcode', 'TranscodeWebhookController@profiles');
 
 $router->group(['prefix' => 'api', 'middleware' => 'jwt'], function () use ($router) {
     $router->post('/posts', 'PostController@store');
