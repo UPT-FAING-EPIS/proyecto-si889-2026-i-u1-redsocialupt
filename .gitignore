@@ -22,6 +22,17 @@ Thumbs.db
 # Logs
 *.log
 storage/logs/
+ops/last-vps-deploy.log
 
 # Composer
 composer.phar
+
+# Runtime uploads / generated media
+auth-service/public/auth-uploads/
+posts-service/public/uploads/
+profile-social-service/public/group-covers/
+
+# Local-only files
+frontend/js/runtime-config.local.js
+bitmovin-license-test.html
+diseno.html

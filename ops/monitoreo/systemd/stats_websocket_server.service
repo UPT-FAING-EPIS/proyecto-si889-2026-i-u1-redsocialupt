@@ -1,0 +1,13 @@
+[Unit]
+Description=monitoreorevivir Stats WebSocket Server
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/monitoreorevivir/ome
+ExecStart=/usr/bin/python3 /opt/monitoreorevivir/ome/stats_websocket_server.py
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

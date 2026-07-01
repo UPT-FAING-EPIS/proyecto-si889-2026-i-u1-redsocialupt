@@ -1,0 +1,13 @@
+[Unit]
+Description=monitoreorevivir Upload Server
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/monitoreorevivir/ome
+ExecStart=/usr/bin/python3 /opt/monitoreorevivir/ome/upload_server.py
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target
