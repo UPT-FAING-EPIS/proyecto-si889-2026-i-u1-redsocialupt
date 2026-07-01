@@ -38,7 +38,6 @@ class TranscodeWebhookController extends BaseController
                                 'options' => [
                                     'enableTsPackaging' => true,
                                     'webRtcAutoAbr' => true,
-                                    'hlsChunklistPathDepth' => 0,
                                 ],
                                 'renditions' => $profiles['renditions'],
                             ],

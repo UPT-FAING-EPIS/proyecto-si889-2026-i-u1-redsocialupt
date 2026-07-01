@@ -9473,13 +9473,22 @@
           return normalizedName ? normalizedName.charAt(0).toUpperCase() + normalizedName.slice(1) : 'Calidad';
         }
 
+        function getViewerQualityDisplayDimensions(level) {
+          const width = getViewerQualityLevelValue(level, ['width', 'videoWidth', 'w']);
+          const height = getViewerQualityLevelValue(level, ['height', 'videoHeight', 'h']);
+          const aspectRatio = normalizeLiveAspectRatio(liveData?.stream_aspect_ratio, liveSource);
+          if (aspectRatio === '9:16' && width > height) {
+            return { width: height, height: width };
+          }
+          return { width, height };
+        }
+
         function formatViewerQualityLabel(level) {
           if (!level) {
             return 'Automatico';
           }
 
-          const width = getViewerQualityLevelValue(level, ['width', 'videoWidth', 'w']);
-          const height = getViewerQualityLevelValue(level, ['height', 'videoHeight', 'h']);
+          const { width, height } = getViewerQualityDisplayDimensions(level);
           const bitrateLabel = formatViewerQualityBitrate(level.bitrate || level.videoBitrate || level.bandwidth);
           const normalizedName = getViewerQualityLevelName(level);
 
